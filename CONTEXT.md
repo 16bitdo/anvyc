@@ -67,6 +67,9 @@
 | 2026-05-18 | v0.5 sops CLI W2 확정: rotate-keys 기본 범위 = 모든 backup, --backup-id 로 제한 가능 | dry-run 으로 사전 검증 가능 |
 | 2026-05-18 | v0.5 sops CLI W3 확정: rotate 구현 = anvyc 의 decrypt+encrypt+atomic-replace | sops updatekeys 는 .sops.yaml 의존, anvyc 의 단일 source of truth (anvyc.yaml) 와 충돌. 명시적 swap 채택 |
 | 2026-05-18 | v0.5 sops CLI W4 확정: rotate 실패는 continue + 요약 (default), --strict 로 fail-fast 옵트인 | 1건 실패가 전체 차단하지 않음, 부분 진행 가능 |
+| 2026-05-18 | v0.5.1 iTerm2 status 정합화 X1 확정: 메서드 명 = `target_hash` | 간결, sha256_file 과 자연스러운 대구 |
+| 2026-05-18 | v0.5.1 X2 확정: NotImplementedError fallback dispatch | adapter.apply() 의 dispatch 패턴과 일관 |
+| 2026-05-18 | v0.5.1 X3 확정: iTerm2 만 override, 다른 adapter 는 default | YAGNI — cursor/claude 디렉터리 재귀는 file-level hash 가 자연스러움 |
 
 ---
 

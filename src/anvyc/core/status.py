@@ -8,6 +8,25 @@ from pathlib import Path
 from anvyc.utils.hashing import sha256_file
 
 
+def _adapter_target_hash(tool: str, target: Path) -> str:
+    """tool 의 adapter 가 target_hash override 를 제공하면 호출, 아니면 sha256_file.
+
+    iTerm2 처럼 backup 이 target 의 일부만 추출하는 경우 정확한 비교 가능.
+    """
+    from anvyc.core.backup import ADAPTERS
+
+    cls = ADAPTERS.get(tool)
+    if cls is not None:
+        try:
+            adapter = cls()
+            return adapter.target_hash(target)
+        except NotImplementedError:
+            pass
+        except (TypeError, AttributeError):
+            pass
+    return sha256_file(target)
+
+
 @dataclass
 class FileStatus:
     tool: str
@@ -66,25 +85,30 @@ def compute_status(root: Path, backup_id: str | None = None) -> StatusReport:
         encryption = entry.get("encryption")
         source_path = backup_dir / str(entry.get("sourcePath", ""))
 
+        # tool 은 sourcePath 의 첫 segment 로부터 추출 (예: "shell/.zshrc" → "shell")
+        tool = ""
+        sp = str(entry.get("sourcePath", ""))
+        if "/" in sp:
+            tool = sp.split("/", 1)[0]
+
         actual: str | None
         if not target_resolved.exists():
             state = "missing"
             actual = None
         else:
             try:
-                actual = sha256_file(target_resolved)
-                # encrypted entry → target 은 평문이므로 plainSha256 과 비교
-                cmp = plain_sha256 if (encryption and plain_sha256) else expected
+                if encryption and plain_sha256:
+                    # SOPS: target 은 평문 → sha256_file 직접
+                    actual = sha256_file(target_resolved)
+                    cmp = plain_sha256
+                else:
+                    # adapter target_hash override 우선 (iTerm2 등)
+                    actual = _adapter_target_hash(tool, target_resolved)
+                    cmp = expected
                 state = "unchanged" if actual == cmp else "modified"
             except OSError:
                 actual = None
                 state = "missing"
-
-        # tool 은 sourcePath 의 첫 segment 로부터 추출 (예: "shell/.zshrc" → "shell")
-        tool = ""
-        sp = str(entry.get("sourcePath", ""))
-        if "/" in sp:
-            tool = sp.split("/", 1)[0]
 
         report.entries.append(
             FileStatus(

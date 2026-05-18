@@ -121,12 +121,14 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
             state_before = "missing"
         else:
             try:
-                actual = sha256_file(resolved)
                 if encryption and plain_sha256:
-                    # encrypted entry: target 은 평문, backup sha256 은 encrypted →
-                    # plainSha256 (encrypt 전 src 평문 hash) 와 비교
+                    # encrypted entry: target 평문 vs plainSha256
+                    actual = sha256_file(resolved)
                     state_before = "unchanged" if actual == plain_sha256 else "modified"
                 else:
+                    # adapter target_hash override (iTerm2 등) 우선
+                    from anvyc.core.status import _adapter_target_hash
+                    actual = _adapter_target_hash(tool, resolved)
                     state_before = "unchanged" if actual == expected else "modified"
             except OSError:
                 state_before = "missing"

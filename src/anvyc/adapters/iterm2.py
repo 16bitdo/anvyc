@@ -15,6 +15,7 @@ from anvyc.adapters.base import ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
+from anvyc.utils.hashing import sha256_file
 
 PLIST_CANONICAL = "~/Library/Preferences/com.googlecode.iterm2.plist"
 PLIST_PATH = Path(PLIST_CANONICAL).expanduser()
@@ -143,6 +144,32 @@ class Iterm2Adapter:
 
     def diff(self, source: Path, target: Path) -> DiffResult:
         raise NotImplementedError
+
+    def target_hash(self, target: Path) -> str:
+        """target binary plist 에서 SAFE_KEYS 만 추출 후 collect() 와 동일한
+        XML 직렬화 (FMT_XML, sort_keys=True) 로 sha256 계산.
+
+        이 값은 같은 plist 가 변경되지 않은 한 backup metadata 의 sha256 과 동일하다 →
+        status 가 unchanged 로 정확히 판정 가능.
+        """
+        if not target.is_file():
+            raise FileNotFoundError(target)
+        with target.open("rb") as f:
+            data = plistlib.load(f)
+        if not isinstance(data, dict):
+            data = {}
+        safe = _extract_safe(data)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".plist") as tf:
+            tmp = Path(tf.name)
+        try:
+            with tmp.open("wb") as f:
+                plistlib.dump(safe, f, fmt=plistlib.FMT_XML, sort_keys=True)
+            return sha256_file(tmp)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
     def apply(self, source: Path, target: Path) -> ApplyResult:
         """backup XML plist 의 safe subset 을 target binary plist 에 deep-merge."""
