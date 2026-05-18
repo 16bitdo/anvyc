@@ -1115,6 +1115,38 @@ anvyc doctor --only cross-user     # 특정 check만
 anvyc doctor --skip cross-user     # 특정 check 제외
 ```
 
+#### 27.4.1 `--json` schema (v0.5.3 정식화)
+
+```json
+{
+  "results": [
+    {
+      "check_name": "cross-user",
+      "severity": "warning-foreign",
+      "message": "/Users/aliasuser/ in plist key '…'",
+      "location": "/Users/edward/Library/Preferences/com.googlecode.iterm2.plist",
+      "line": null,
+      "suggestion": "…"
+    }
+  ],
+  "summary": {
+    "info": 11,
+    "info-aliased": 0,
+    "warning": 1,
+    "warning-foreign": 21,
+    "warning-dangling": 0,
+    "critical": 0
+  }
+}
+```
+
+필수 필드:
+- top-level: `results` (list), `summary` (dict)
+- result entry: `check_name`/`severity`/`message` 필수, `location`/`line`/`suggestion` 은 `null` 가능
+- summary: 6 severity 모두 포함 (0 카운트도 명시)
+
+회귀 안전망: `tests/integration/test_doctor_json.py` 가 5 case 로 schema 안정성을 검증한다.
+
 ### 27.5 안전 원칙
 
 - Doctor는 **read-only**. 어떤 파일도 수정하지 않는다.
