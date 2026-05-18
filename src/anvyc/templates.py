@@ -45,28 +45,23 @@ tools:
       - "~/.config/gh/hosts.yml"
 
   cursor:
-    enabled: false
+    enabled: true
+    # Layer A — ~/.cursor/ (rules/skills/mcp/plugins/plans). 비워두면 adapter defaults 사용.
     global:
-      include:
-        - "~/.cursor/rules"
-        - "~/.cursor/skills"
-        - "~/.cursor/skills-cursor"
-        - "~/.cursor/mcp.json"
-      exclude:
-        - "~/.cursor/cli-config.json"
-        - "~/.cursor/projects"
-        - "~/.cursor/chats"
-      follow_symlinks: false
-      mask_mcp_tokens: true
+      include: []
+      exclude: []
+      follow_symlinks: false   # symlink 는 metadata 만 기록 (DESIGN.md §15.1)
+      mask_mcp_tokens: false   # v0.2 까지는 scanner 차단만 사용
+    # Layer B — Library/.../User (settings/keybindings/snippets/profiles).
     ide:
-      include:
-        - "~/Library/Application Support/Cursor/User/settings.json"
-        - "~/Library/Application Support/Cursor/User/keybindings.json"
-        - "~/Library/Application Support/Cursor/User/snippets"
-      exclude:
-        - "~/Library/Application Support/Cursor/User/workspaceStorage"
-        - "~/Library/Application Support/Cursor/User/History"
-        - "~/Library/Application Support/Cursor/User/globalStorage"
+      include: []
+      exclude: []
+      global_storage_allowlist: []   # 예: ["anysphere.cursor-mcp"]
+    # Layer C — project-local (opt-in). roots 가 비어 있으면 비활성.
+    projects:
+      enabled: false
+      roots: []
+      patterns: []   # 비우면 default: .cursor/rules, .cursor/skills, .cursor/mcp.json, .cursorrules
 
   claude:
     enabled: true

@@ -20,8 +20,10 @@ if TYPE_CHECKING:
 class ManagedFile:
     """adapter 가 관리하는 단일 파일 단위.
 
-    relpath  backup/<tool>/ 아래에서의 상대 경로. 비워두면 source_path.name 으로 채워진다.
-             디렉터리 재귀 수집 시 nested 경로를 보존하기 위해 사용 (예: 'hooks/script.sh').
+    relpath          backup/<tool>/ 아래에서의 상대 경로. 비워두면 source_path.name 으로 채워진다.
+                     디렉터리 재귀 수집 시 nested 경로를 보존하기 위해 사용 (예: 'hooks/script.sh').
+    symlink_target   None 이 아니면 이 entry 는 symlink. backup 은 콘텐츠를 복사하지 않고
+                     metadata.json 에 symlinkTarget 만 기록. apply 는 os.symlink 로 재생성.
     """
 
     tool: str
@@ -30,6 +32,7 @@ class ManagedFile:
     mode: int = 0o600
     sha256: str | None = None
     relpath: str = ""
+    symlink_target: str | None = None
 
     def __post_init__(self) -> None:
         if not self.relpath:

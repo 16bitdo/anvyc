@@ -18,6 +18,7 @@ class FileEntry:
     target_path: str
     sha256: str
     mode: str
+    symlink_target: str | None = None
 
 
 @dataclass
@@ -66,14 +67,17 @@ def write_metadata(metadata: Metadata, target_dir: Path) -> Path:
     }
     payload = {rename.get(k, k): v for k, v in payload.items()}
     # files[].* 도 camelCase 로
-    payload["files"] = [
-        {
+    files_out = []
+    for f in payload.get("files", []):
+        entry = {
             "sourcePath": f["source_path"],
             "targetPath": f["target_path"],
             "sha256": f["sha256"],
             "mode": f["mode"],
         }
-        for f in payload.get("files", [])
-    ]
+        if f.get("symlink_target"):
+            entry["symlinkTarget"] = f["symlink_target"]
+        files_out.append(entry)
+    payload["files"] = files_out
     target.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
     return target

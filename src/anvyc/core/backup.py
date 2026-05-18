@@ -80,6 +80,16 @@ def _select_adapters(cfg: AnvycConfig, only: list[str] | None = None) -> list[Ad
             exc = list(tool_cfg.exclude or [])
             selected.append(cls(includes=inc or None, excludes=exc or None))  # type: ignore[call-arg]
             continue
+        if name == "cursor" and tool_cfg is not None:
+            extra = tool_cfg.extra
+            selected.append(
+                cls(  # type: ignore[call-arg]
+                    global_cfg=extra.get("global") or {},
+                    ide_cfg=extra.get("ide") or {},
+                    projects_cfg=extra.get("projects") or {},
+                )
+            )
+            continue
         selected.append(cls())
     return selected
 
@@ -116,6 +126,18 @@ def run_backup(
     )
 
     for mf in inventory.files:
+        if mf.symlink_target is not None:
+            # symlink entry — 콘텐츠 복사 X, metadata 에만 기록
+            md.files.append(
+                FileEntry(
+                    source_path=f"{mf.tool}/{mf.relpath}",
+                    target_path=str(mf.target_path),
+                    sha256="",
+                    mode=f"{mf.mode:04o}",
+                    symlink_target=mf.symlink_target,
+                )
+            )
+            continue
         dest = backup_dir / mf.tool / mf.relpath
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(mf.source_path, dest)

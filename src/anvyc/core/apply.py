@@ -12,6 +12,7 @@ Adapter.apply() 가 NotImplementedError 인 경우 orchestrator 가 기본 동�
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ class FileApplyEntry:
     state_before: str              # "unchanged" | "modified" | "missing"
     state_after: str               # "applied" | "skipped" | "would_apply" | "would_skip" | "error"
     error: str | None = None
+    symlink_target: str | None = None  # None 이 아니면 symlink — os.symlink 로 재생성
 
 
 @dataclass
@@ -99,9 +101,20 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
         resolved = canonical.expanduser()
         expected = str(raw.get("sha256", ""))
         mode = _parse_mode(str(raw.get("mode", "0600")))
+        symlink_target = raw.get("symlinkTarget")
 
         state_before: str
-        if not resolved.exists():
+        if symlink_target is not None:
+            # symlink entry — 현재 target 이 같은 symlink 인지 비교
+            if resolved.is_symlink():
+                try:
+                    current_target = os.readlink(resolved)
+                except OSError:
+                    current_target = None
+                state_before = "unchanged" if current_target == symlink_target else "modified"
+            else:
+                state_before = "missing"
+        elif not resolved.exists():
             state_before = "missing"
         else:
             try:
@@ -121,6 +134,7 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
                 mode=mode,
                 state_before=state_before,
                 state_after="pending",
+                symlink_target=symlink_target,
             )
         )
     return entries
@@ -142,12 +156,27 @@ def _default_apply(entry: FileApplyEntry) -> None:
         )
 
 
+def _apply_symlink(entry: FileApplyEntry) -> None:
+    """symlink 재생성. target 부재 시 WARNING (skip 은 호출측 책임 X — 여기서 안 raise)."""
+    target = entry.target_resolved
+    if target.is_symlink() or target.exists():
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(entry.symlink_target, target)
+    # symlink target 부재 안내는 호출측에서 별도 로그
+
+
 def _apply_entry(entry: FileApplyEntry) -> None:
     """adapter 가 custom apply() 를 제공하면 그것을 호출, 아니면 _default_apply.
 
+    symlink entry → os.symlink 분기.
     iterm2 처럼 plist deep-merge 가 필요한 경우 adapter.apply() 가 동작한다.
     shell/git/aws/gh/pulumi/claude 는 NotImplementedError 를 던지므로 default 로 폴백.
     """
+    if entry.symlink_target is not None:
+        _apply_symlink(entry)
+        return
+
     # 지연 import — apply.py ↔ backup.py 순환 회피
     from anvyc.core.backup import ADAPTERS as _ADAPTERS
 
@@ -206,6 +235,9 @@ def run_apply(
     local_backup_dir = new_local_backup_dir(root)
     for e in entries:
         if e.state_before == "unchanged":
+            continue
+        if e.symlink_target is not None:
+            # symlink 은 데이터가 아니라 포인터 — local-backup 생략. 롤백은 다른 backup_id 로 restore.
             continue
         if not e.target_resolved.exists():
             continue

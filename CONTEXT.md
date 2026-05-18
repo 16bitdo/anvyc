@@ -54,6 +54,11 @@
 | 2026-05-18 | iTerm2 adapter: backup 은 XML plist safe subset, apply 는 binary plist deep-merge | DESIGN.md §14 정책. 사용자 plist 의 31 safe keys 만 추출. apply 시 target 의 위험 키(NSWindow Frame, NoSyncInstallationId 등)는 보존 |
 | 2026-05-18 | iTerm2 status 가 항상 modified 로 표시되는 PoC 한계 | sha256(backup XML safe subset) ≠ sha256(target binary plist 전체). 동작 안전성에는 영향 없음. 향후 adapter 별 custom compute_target_hash() 도입으로 정합화 가능 |
 | 2026-05-18 | adapter.apply() dispatch: apply.py 가 adapter 의 custom apply 우선 시도, NotImplementedError 시에만 _default_apply 폴백 | iterm2 처럼 plist merge 가 필요한 도구는 adapter.apply() 가 동작. 다른 어댑터는 그대로 default copy. 어댑터 추가 시 별도 등록 불필요 |
+| 2026-05-18 | Cursor adapter C1 확정: mcp.json 자동 마스킹 v0.1.0 비포함 | 사용자 mcp.json 에 raw token 없음 (envFile/headers 패턴). v0.1.0 은 scanner 차단만, mask 동작은 v0.2 |
+| 2026-05-18 | Cursor adapter C2 확정: ~/.cursor/plugins 전체 포함, marketplaces 만 제외 | local/blocklist/known_marketplaces 등 user-curated 보존. 14M 중 marketplaces clone(재현 가능) 제외 |
+| 2026-05-18 | Cursor adapter C3 확정: symlink target 부재 시 WARNING + skip (안전) | rules.bak-* 같은 외부 repo 경로가 다른 머신에서 부재할 때 apply 실패 X. 사용자 검토 후 수동 처리 |
+| 2026-05-18 | Cursor adapter C4 확정: Layer C project-name = root last segment | `~/Documents/anvyc` → `anvyc`. 충돌 시 후속 작업에서 slugify 폴백 검토 |
+| 2026-05-18 | ManagedFile.symlink_target 필드 도입 (cursor adapter 지원) | symlink 백업: 콘텐츠 복사 X, metadata.json 에 symlinkTarget 만 기록. apply 시 os.symlink 재생성 |
 
 ---
 
