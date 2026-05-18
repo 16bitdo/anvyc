@@ -178,7 +178,46 @@ class CursorAdapter:
         return out
 
     def validate(self) -> list[CheckResult]:
-        return []
+        """~/.cursor 내부 symlink 의 target 존재 여부 점검.
+
+        backup 자체는 symlink 콘텐츠를 복사하지 않으므로 영향 없지만, apply 시
+        target 부재면 WARNING 으로 안내 (DESIGN.md §27.5 C3 정책: skip + warn).
+        """
+        from anvyc.checks.base import Severity
+
+        results: list[CheckResult] = []
+        if not GLOBAL_ROOT.exists():
+            return results
+        for root, dirs, files in os.walk(GLOBAL_ROOT, followlinks=False):
+            depth = len(Path(root).relative_to(GLOBAL_ROOT).parts)
+            if depth >= 3:
+                dirs[:] = []
+            for entry_name in list(dirs) + list(files):
+                p = Path(root) / entry_name
+                if not p.is_symlink():
+                    continue
+                try:
+                    target = os.readlink(p)
+                except OSError:
+                    continue
+                target_abs = Path(target)
+                if not target_abs.is_absolute():
+                    target_abs = p.parent / target
+                if not target_abs.exists():
+                    results.append(
+                        CheckResult(
+                            check_name="cursor-symlink-integrity",
+                            severity=Severity.WARNING,
+                            message=f"broken symlink: {p.name} → {target}",
+                            location=p,
+                            suggestion=(
+                                "심볼릭 링크가 가리키는 대상이 없습니다. "
+                                "다른 머신의 경로이거나 submodule 미초기화 가능. "
+                                "apply 시 자동으로 skip + WARNING 됩니다."
+                            ),
+                        )
+                    )
+        return results
 
     def diff(self, source: Path, target: Path) -> DiffResult:
         raise NotImplementedError

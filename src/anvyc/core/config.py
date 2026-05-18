@@ -15,6 +15,7 @@ from anvyc.checks.base import CheckContext
 
 DEFAULT_SCAN_TARGETS: tuple[str, ...] = (
     "~/.cursor/projects",
+    "~/.cursor/mcp.json",
     "~/.zshrc",
     "~/.zprofile",
     "~/.gitconfig",
@@ -24,6 +25,7 @@ DEFAULT_SCAN_TARGETS: tuple[str, ...] = (
     "~/Library/Application Support/Cursor/User/keybindings.json",
     "~/.claude/settings.json",
     "~/.claude/CLAUDE.md",
+    "~/Library/Preferences/com.googlecode.iterm2.plist",
 )
 
 

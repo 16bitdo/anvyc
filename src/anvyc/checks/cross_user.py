@@ -18,8 +18,10 @@ DESIGN.md §27.3 참고.
 from __future__ import annotations
 
 import os
+import plistlib
 import re
 from pathlib import Path
+from typing import Iterator
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 
@@ -52,6 +54,8 @@ class CrossUserCheck:
                 return self._decode_cursor_projects(target, ctx)
             return self._scan_dir_textfiles(target, ctx)
         if target.is_file():
+            if target.suffix.lower() == ".plist":
+                return self._scan_plist(target, ctx)
             return self._scan_text_file(target, ctx)
         return []
 
@@ -130,6 +134,56 @@ class CrossUserCheck:
         except (OSError, PermissionError):
             pass
         return results
+
+    # ---------- detector 2b: plist content (iTerm2 등) ----------
+
+    def _scan_plist(self, path: Path, ctx: CheckContext) -> list[CheckResult]:
+        try:
+            with path.open("rb") as f:
+                data = plistlib.load(f)
+        except (OSError, plistlib.InvalidFileException, ValueError):
+            return []
+        results: list[CheckResult] = []
+        seen: set[tuple[str, str]] = set()  # (username, key_path) — 중복 억제
+        for key_path, value in self._walk_plist(data):
+            for m in USER_PATH_RE.finditer(value):
+                username = m.group(1)
+                key = (username, key_path)
+                if key in seen:
+                    continue
+                seen.add(key)
+                severity = self._classify(username, ctx)
+                if severity is Severity.INFO:
+                    continue
+                results.append(
+                    CheckResult(
+                        check_name=self.name,
+                        severity=severity,
+                        message=f"/Users/{username}/ in plist key '{key_path}'",
+                        location=path,
+                        suggestion=(
+                            "~/ 또는 $HOME 으로 정규화 권장. iTerm2 Working Directory 같은 "
+                            "프로필 필드는 ~ 표기를 지원한다."
+                        ),
+                    )
+                )
+        return results
+
+    @staticmethod
+    def _walk_plist(data: object, prefix: str = "") -> Iterator[tuple[str, str]]:
+        """plist 트리를 walk 하면서 (key_path, str_value) 만 yield."""
+        if isinstance(data, dict):
+            for k, v in data.items():
+                child = f"{prefix}/{k}" if prefix else str(k)
+                yield from CrossUserCheck._walk_plist(v, child)
+        elif isinstance(data, list):
+            for i, v in enumerate(data):
+                child = f"{prefix}[{i}]"
+                yield from CrossUserCheck._walk_plist(v, child)
+        elif isinstance(data, str):
+            if data:
+                yield prefix, data
+        # 기타 타입 (bool/int/float/datetime/bytes) 은 path 가 들어있지 않음
 
     # ---------- detector 3: symlink target ----------
 

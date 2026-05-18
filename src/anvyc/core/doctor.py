@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from anvyc.checks.adapter_validate import AdapterValidationCheck
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.op_references import OpReferencesCheck
@@ -32,6 +33,7 @@ _REGISTRY = {
     "cross-user": CrossUserCheck(),
     "venv-hidden-flag": VenvHiddenFlagCheck(),
     "op-references-valid": OpReferencesCheck(),
+    "adapter-validate": AdapterValidationCheck(),
 }
 
 
