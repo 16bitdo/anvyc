@@ -142,6 +142,26 @@ def _default_apply(entry: FileApplyEntry) -> None:
         )
 
 
+def _apply_entry(entry: FileApplyEntry) -> None:
+    """adapter 가 custom apply() 를 제공하면 그것을 호출, 아니면 _default_apply.
+
+    iterm2 처럼 plist deep-merge 가 필요한 경우 adapter.apply() 가 동작한다.
+    shell/git/aws/gh/pulumi/claude 는 NotImplementedError 를 던지므로 default 로 폴백.
+    """
+    # 지연 import — apply.py ↔ backup.py 순환 회피
+    from anvyc.core.backup import ADAPTERS as _ADAPTERS
+
+    cls = _ADAPTERS.get(entry.tool)
+    if cls is not None:
+        adapter = cls()
+        try:
+            adapter.apply(entry.source_path, entry.target_resolved)
+            return
+        except NotImplementedError:
+            pass
+    _default_apply(entry)
+
+
 def run_apply(
     root: Path | None = None,
     *,
@@ -203,7 +223,7 @@ def run_apply(
             e.state_after = "skipped"
             continue
         try:
-            _default_apply(e)
+            _apply_entry(e)
             e.state_after = "applied"
         except (OSError, RuntimeError) as err:
             e.state_after = "error"

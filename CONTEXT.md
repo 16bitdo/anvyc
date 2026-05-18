@@ -51,6 +51,9 @@
 | 2026-05-18 | Q3 확정: cursor projects 모드 default roots = 자동 감지 후 제안 | 사용자 `~/Documents/` 에 46개의 `.cursor/` 디렉터리. `cursor-projects-suggest` doctor check 가 INFO 로 출력하고 사용자가 yaml 편집해 활성화 |
 | 2026-05-18 | Q4 확정: v0.1.0 secret 분리 = 1Password Secret Reference (`op://`), v0.2 = SOPS | `op` CLI 설치 확인됨 (v2.34.0). reference 자체는 비-secret 이므로 Git commit 안전. raw secret 은 scanner 가 계속 차단 |
 | 2026-05-18 | 1Password Secret Reference 패턴: scanner 에서 op:// 를 false-positive 강등 | 같은 라인의 다른 secret 패턴은 reference 가 있으면 placeholder 로 간주. raw secret-only 라인은 그대로 차단 |
+| 2026-05-18 | iTerm2 adapter: backup 은 XML plist safe subset, apply 는 binary plist deep-merge | DESIGN.md §14 정책. 사용자 plist 의 31 safe keys 만 추출. apply 시 target 의 위험 키(NSWindow Frame, NoSyncInstallationId 등)는 보존 |
+| 2026-05-18 | iTerm2 status 가 항상 modified 로 표시되는 PoC 한계 | sha256(backup XML safe subset) ≠ sha256(target binary plist 전체). 동작 안전성에는 영향 없음. 향후 adapter 별 custom compute_target_hash() 도입으로 정합화 가능 |
+| 2026-05-18 | adapter.apply() dispatch: apply.py 가 adapter 의 custom apply 우선 시도, NotImplementedError 시에만 _default_apply 폴백 | iterm2 처럼 plist merge 가 필요한 도구는 adapter.apply() 가 동작. 다른 어댑터는 그대로 default copy. 어댑터 추가 시 별도 등록 불필요 |
 
 ---
 

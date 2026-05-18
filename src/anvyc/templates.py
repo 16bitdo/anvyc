@@ -76,8 +76,8 @@ tools:
     exclude: []
 
   iterm2:
-    enabled: false
-    mode: "safe"
+    enabled: true
+    mode: "safe"     # 전체 plist 동기화 금지, DESIGN.md §14.2 safe subset만
 
   pulumi:
     enabled: true
