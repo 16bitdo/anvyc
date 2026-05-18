@@ -534,25 +534,38 @@ profiles / key mappings / color presets만 safe subset으로 추출
 plistlib로 파싱 후 필요한 키만 직렬화
 ```
 
-### 14.2 포함 대상
+### 14.2 포함 대상 (실측 기반)
 
-| 항목 | 정책 |
+사용자 plist (iTerm2 3.6.10, 102 top-level keys) 조사 후 다음을 안전한 포터블 키로 결정한다.
+
+| 카테고리 | 키 |
 |---|---|
-| Profiles | 포함 가능 (이름, 폰트, 색 등 시각/입력 관련) |
-| Key mappings | 포함 가능 |
-| Color presets | 포함 가능 |
-| Touch bar settings | 포함 가능 |
-| Hotkey window 설정 | 신중히 포함 |
+| 프로필 | `New Bookmarks`, `Default Bookmark Guid` |
+| 키바인딩 | `GlobalKeyMap` |
+| 포인터 | `PointerActions` |
+| 색 프리셋 | `Custom Color Presets` |
+| 동작 prefs | `DoubleClickPerformsSmartSelection`, `EnableProxyIcon`, `HideTab`, `IRMemory`, `PreventEscapeSequenceFromClearingHistory`, `SavePasteHistory`, `SplitPaneDimmingAmount` |
+| 음/시각 알림 | `SoundForEsc`, `VisualIndicatorForEsc`, `HapticFeedbackForEsc` |
+| Dim | `DimBackgroundWindows`, `DimInactiveSplitPanes`, `DimOnlyText` |
+| Hotkey | `HotkeyMigratedFromSingleToMulti` |
+| AI 통합 (iTerm2 AI feature) | `AIFeatureFunctionCalling`, `AIFeatureHostedCodeInterpeter`, `AIFeatureHostedFileSearch`, `AIFeatureHostedWebSearch`, `AIFeatureStreamingResponses`, `AITermAPI`, `AIVectorStore`, `AIVendor`, `AiMaxTokens`, `AiModel`, `AiResponseMaxTokens`, `AitermURL` |
 
-### 14.3 제외 대상
+### 14.3 제외 대상 (실측 기반)
 
-| 항목 | 이유 |
-|---|---|
-| Window arrangement | 장비별 화면 크기와 충돌 |
-| Recent sessions | 불필요한 이력 |
-| Local path | 장비별 경로 |
-| UI state | 장비별 상태 |
-| Dynamic runtime data | 장비별 휘발성 데이터 |
+| 카테고리 | 패턴 | 이유 |
+|---|---|---|
+| 윈도우 위치 | `NSWindow Frame *` (12+ keys) | 장비별 화면 크기 |
+| iTerm2 동기화 비대상 표시 | `NoSync*` (26+ keys) | iTerm2 자체가 "동기화 안 함"으로 표시한 키 |
+| macOS 시스템 prefs | `NS*`, `Apple*` | 시스템이 자동으로 관리. 동기화 부적절 |
+| 절대 경로 포함 | `LoadPrefsFromCustomFolder`, `PrefsCustomFolder` | 사용자별 절대 경로 (`/Users/edward/...`) |
+| 자동 업데이트 메타 | `SU*` (Sparkle) | 장비별 마지막 체크 시각 등 휘발성 |
+| 기기 식별 | `iTerm Version`, `NoSyncInstallationId` | 장비 의존 |
+| UI dismissal 기록 | `NeverWarnAbout*` | 사용자 환경별 누적 선호 |
+| URL handler | `URLHandlersByGuid` | 시스템 보안 영향 가능 |
+
+### 14.4 저장 형식
+
+plist 전체 동기화 금지 → 위 include 키만 추출해 `iterm2.plist` 또는 `iterm2.json` 으로 정규화 저장. apply 시 기존 plist 와 deep-merge (덮어쓰기 X) 한다.
 
 ---
 
@@ -1154,16 +1167,16 @@ MVP는 Python으로 빠르게 구현하고, 실제 Mac 2대에서 end-to-end 검
 | Doctor checks | cross-user, venv-hidden-flag |
 | Core | backup orchestrator, secret scanner, status, diff |
 
-### 29.2 Phase 분류
+### 29.2 Phase 분류 (Q1~Q4 결정 반영, 2026-05-18 확정)
 
 | Phase | 범위 | 우선순위 | 추정 |
 |---|---|---|---|
-| 1 | apply / restore (round-trip) | HIGH | 4~6h |
-| 2 | 어댑터 6개 (aws/gh/pulumi/claude/iterm2/cursor) | HIGH | 5~7h |
-| 3 | Git 동기화 (.anvyc → remote, pre-commit hook) | MEDIUM (v0.2 후보) | 3~4h |
-| 4 | Doctor 보강 (#17 iTerm2 plist, adapter validate 통합, --fix) | MEDIUM | 2~3h |
-| 5 | Encryption (~/.anvyc-secrets/, age, 1Password) | LOW (post-MVP) | 3~4h |
-| 6 | 테스트 + 패키징 + v0.1.0 릴리즈 | 필수 (MVP 직전) | 4~6h |
+| 1 | apply / restore (round-trip) | HIGH (v0.1.0 필수) | 4~6h |
+| 2 | 어댑터 6개 (aws/gh/pulumi/claude/iterm2/cursor) | HIGH (v0.1.0 필수) | 5~7h |
+| 3 | Git 동기화 (.anvyc → remote, pre-commit hook) | **HIGH (v0.1.0 필수, Q1 확정)** | 3~4h |
+| 4 | Doctor 보강 (#17, adapter validate 통합, cursor-projects-suggest, --fix v0.2) | MEDIUM | 2~3h |
+| 5 | **1Password Secret Reference (v0.1.0) / SOPS (v0.2)** — Q4 확정 | HIGH (v0.1.0 일부 필수) | 2~3h |
+| 6 | 테스트 + 패키징 + v0.1.0 릴리즈 | 필수 | 4~6h |
 
 ### 29.3 의존성
 
@@ -1173,33 +1186,99 @@ P2 → P6
 P3, P4, P5 — P1 이후 어디서든 병렬
 ```
 
-### 29.4 v0.1.0 MVP 최단 경로
+### 29.4 v0.1.0 MVP 최단 경로 (확정 후)
 
-**필수**: Phase 1 + Phase 2 (cursor/claude/iterm2 포함) + Phase 6
-**v0.2 연기 가능**: Phase 3, 4, 5
+**v0.1.0 필수**: Phase 1 + Phase 2 + Phase 3 + Phase 5 (1Password 부분) + Phase 6
+**v0.1.0 권장 (시간 허용 시)**: Phase 4 — 사용자 신뢰도용 doctor 보강
+**v0.2 로 연기**: Phase 5 SOPS 통합 (encryption-at-rest)
 
-근거: `.anvyc/` 자체는 Dropbox/iCloud/수동 SCP 로도 이전 가능. secret 기본 제외 정책으로 encryption 없이도 안전성 확보. Doctor 추가 check 은 신뢰도용.
+**근거 (Q1~Q4 확정)**:
+- Q1: Git sync 는 사용자 핵심 사용 시나리오 → v0.1.0 포함
+- Q4: 1Password Secret Reference (`op://`) 는 v0.1.0 에서 secret 분리 정책의 1차 솔루션. backup 에는 reference 만 남고 실제 secret 은 1Password 에 보관 → SOPS 없이도 안전
 
-**총 추정 (필수 경로)**: 13~19 시간 = 2~3일.
+**총 추정 (필수 경로)**: 18~26 시간 = 3~4일.
 
-### 29.5 권장 진행 순서
+### 29.5 권장 진행 순서 (확정 후)
 
 ```
-Day 1  P1.1 → P1.7  apply/restore 라운드 트립 완성
-Day 1  P2.1 ~ P2.3  aws/gh/pulumi
-Day 2  P2.4         claude
-Day 2  P2.5         iterm2 (plistlib)
-Day 2  P2.6         cursor (#6~#11)
-Day 3  P6.1 ~ P6.5  unit/integration test + pipx + v0.1.0 tag
+Day 1  P1.1 → P1.7   apply/restore 라운드 트립 완성
+Day 1  P5.1 → P5.3   1Password Secret Reference 인식 + scan-secrets 통합 (op:// 안전 허용 + 다른 secret 강제)
+Day 1  P2.1 ~ P2.3   aws / gh / pulumi
+Day 2  P2.4          claude (디렉터리 재귀 패턴 첫 케이스)
+Day 2  P2.5          iterm2 (plistlib + §14.2/§14.3 실측 키 목록)
+Day 2  P2.6          cursor (#6~#11, 3-layer)
+Day 3  P3.1 ~ P3.5   .anvyc Git 동기화 + pre-commit hook
+Day 3  P4.4          cursor-projects-suggest doctor check (Q3)
+Day 4  P4.1 ~ P4.2   doctor 보강 (iTerm2 cross-user, adapter validate 통합)
+Day 4  P6.1 ~ P6.5   unit/integration test + pipx + v0.1.0 tag
 ```
 
-각 phase 끝에 commit + push.
+각 phase 끝에 commit + push, 큰 phase 는 sub-commit.
 
-### 29.6 열린 결정
+### 29.6 결정 확정 (2026-05-18)
 
-| # | 항목 | 후보 |
+| # | 항목 | 결정 |
 |---|---|---|
-| Q1 | Phase 3 (Git sync) 를 v0.1.0 에 포함할지 | 포함 / v0.2 |
-| Q2 | iterm2 safe subset 키 목록 확정 시점 | §14.2 그대로 / 사용자 환경 기준 재조정 |
-| Q3 | Cursor projects 모드 default roots 기본값 | empty / 자동 감지 후 제안 |
-| Q4 | v0.1.0 에서 secret encryption 제공 범위 | 없음 / age 기본 통합 |
+| Q1 | Phase 3 (Git sync) v0.1.0 포함 | **포함** — `anvyc git init/commit/push` + pre-commit hook 모두 v0.1.0 |
+| Q2 | iterm2 safe subset 확정 방법 | **사용자 환경 기준 재조정** — §14.2/§14.3 실측 plist 기반으로 확정 완료 |
+| Q3 | Cursor projects 모드 default roots | **자동 감지 후 제안** — doctor 의 `cursor-projects-suggest` check 가 ~/Documents 등 스캔, INFO 로 출력하고 사용자 yaml 편집 권유 |
+| Q4 | v0.1.0 secret 분리 솔루션 | **1Password Secret Reference (`op://`)** — v0.1.0. **SOPS** 는 v0.2 로 연기 |
+
+---
+
+## 30. Secret 분리 정책 (v0.1.0: 1Password Secret Reference)
+
+§13 Secret Scanner 와 보완 관계. v0.1.0 은 1Password Secret Reference 를 1차 솔루션으로 채택한다.
+
+### 30.1 1Password Secret Reference 란
+
+```
+op://<vault>/<item>/<field>
+```
+
+1Password 의 실제 secret 을 가리키는 URI. 이 URI 자체는 secret 이 아니며 (값 노출 없음), Git 에 commit 해도 안전하다.
+
+사용자는 dotfile 에 raw secret 대신 reference 를 적고, 런타임에 `op inject` / `op run` 등으로 resolve 한다.
+
+```bash
+# .zshrc 예
+export AWS_ACCESS_KEY_ID="op://Personal/AWS/access_key_id"
+export AWS_SECRET_ACCESS_KEY="op://Personal/AWS/secret_access_key"
+```
+
+### 30.2 anvyc 의 처리 정책
+
+1. **Backup**: 파일 내용을 그대로 보존한다. `op://` reference 는 안전하므로 마스킹/제외 X.
+2. **Secret scan**:
+   - `op://...` URI 가 같은 라인에 있으면, **그 라인의 다른 secret 패턴 매칭을 false-positive 로 강등** 한다 (값이 placeholder 라는 신호).
+   - `op://` 가 없는데 raw secret 이 발견되면 기존 정책대로 차단.
+3. **Apply**: 파일을 그대로 복원. resolve 는 shell/도구가 런타임에 수행.
+4. **Doctor**: `op-references-valid` check (op CLI 설치 시) — 발견된 `op://` URI 들을 `op read --no-newline` 으로 resolve 시도. 실패 시 WARNING.
+
+### 30.3 패턴 정의
+
+```python
+OP_REFERENCE_RE = re.compile(r"\bop://[^/\s\"']+/[^/\s\"']+/[^/\s\"']+(?:/[^/\s\"']+)?")
+```
+
+vault/item/field, optional sub-field.
+
+### 30.4 사용자 가이드 (README 에 반영)
+
+```
+1. 1Password CLI 설치 + 로그인 (op signin)
+2. 민감 값을 1Password 에 등록
+3. dotfile 안의 raw secret 을 op:// reference 로 치환
+4. anvyc backup → reference 는 그대로 들어감
+5. 다른 머신에서 anvyc apply 후 1Password 로그인만 하면 동일 환경
+```
+
+### 30.5 SOPS (v0.2)
+
+암호화-at-rest 가 필요한 secret (1Password 에 두기 곤란한 대용량 key 등) 은 v0.2 에서 SOPS 통합으로 다룬다. `~/.anvyc-secrets/` 영역에 SOPS-encrypted YAML 로 저장, age/gpg/cloud KMS key 로 복호화.
+
+### 30.6 안전 원칙
+
+- 1Password Secret Reference 는 **placeholder** 다. raw secret 의 대체이지 보안 솔루션이 아니다.
+- 1Password 자체 인증 (계정, 마스터 키) 은 anvyc 가 다루지 않는다.
+- `op://` reference 가 가리키는 vault/item/field 이름이 secret 성격을 내포하는 경우 (예: `op://Personal/CompanyTopSecret/Project`) 는 사용자 책임. anvyc 는 reference 문자열 자체만 안전한 것으로 처리.

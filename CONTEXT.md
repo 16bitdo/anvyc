@@ -46,6 +46,11 @@
 | 2026-05-18 | v0.1.0 MVP 필수 경로 = Phase 1 + Phase 2 + Phase 6 | apply/restore → 어댑터 6개 → 테스트/패키징. Git sync / Doctor 보강 / encryption 은 v0.2 |
 | 2026-05-18 | Phase 1 (apply/restore) 가 Phase 2 의 선행 | apply 기본 구현이 있어야 새 어댑터가 즉시 backup+apply 양쪽 동작. 새 어댑터마다 별도 apply 구현 불필요 |
 | 2026-05-18 | 어댑터 추가 순서: aws → gh → pulumi → claude → iterm2 → cursor | 단순 단일 파일 → 디렉터리 재귀 → plist → 3-layer 순으로 복잡도 점증. claude 에서 디렉터리 재귀 수집 인벤토리 구조를 1회 검증 |
+| 2026-05-18 | Q1 확정: Phase 3 (Git sync) v0.1.0 포함 | 사용자 핵심 사용 시나리오. `.anvyc/` 를 private repo 로 push 하는 흐름이 v0.1.0 MVP 의 1차 가치 |
+| 2026-05-18 | Q2 확정: iterm2 safe subset 을 사용자 plist 실측 기반으로 재조정 | 102 keys 분석 후 §14.2 (안전 포함 22항목) + §14.3 (제외 8 카테고리) 로 확정. AI 통합 12개 키도 포함 |
+| 2026-05-18 | Q3 확정: cursor projects 모드 default roots = 자동 감지 후 제안 | 사용자 `~/Documents/` 에 46개의 `.cursor/` 디렉터리. `cursor-projects-suggest` doctor check 가 INFO 로 출력하고 사용자가 yaml 편집해 활성화 |
+| 2026-05-18 | Q4 확정: v0.1.0 secret 분리 = 1Password Secret Reference (`op://`), v0.2 = SOPS | `op` CLI 설치 확인됨 (v2.34.0). reference 자체는 비-secret 이므로 Git commit 안전. raw secret 은 scanner 가 계속 차단 |
+| 2026-05-18 | 1Password Secret Reference 패턴: scanner 에서 op:// 를 false-positive 강등 | 같은 라인의 다른 secret 패턴은 reference 가 있으면 placeholder 로 간주. raw secret-only 라인은 그대로 차단 |
 
 ---
 
