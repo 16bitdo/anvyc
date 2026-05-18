@@ -75,6 +75,11 @@ def _select_adapters(cfg: AnvycConfig, only: list[str] | None = None) -> list[Ad
             if user_files:
                 selected.append(cls(tuple(user_files)))  # type: ignore[call-arg]
                 continue
+        if name == "claude" and tool_cfg is not None:
+            inc = list(tool_cfg.files or []) + list(tool_cfg.include or [])
+            exc = list(tool_cfg.exclude or [])
+            selected.append(cls(includes=inc or None, excludes=exc or None))  # type: ignore[call-arg]
+            continue
         selected.append(cls())
     return selected
 
@@ -111,13 +116,13 @@ def run_backup(
     )
 
     for mf in inventory.files:
-        dest = backup_dir / mf.tool / mf.source_path.name
+        dest = backup_dir / mf.tool / mf.relpath
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(mf.source_path, dest)
         mf.sha256 = sha256_file(dest)
         md.files.append(
             FileEntry(
-                source_path=f"{mf.tool}/{mf.source_path.name}",
+                source_path=f"{mf.tool}/{mf.relpath}",
                 target_path=str(mf.target_path),
                 sha256=mf.sha256,
                 mode=f"{mf.mode:04o}",

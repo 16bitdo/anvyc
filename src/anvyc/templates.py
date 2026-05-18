@@ -69,13 +69,11 @@ tools:
         - "~/Library/Application Support/Cursor/User/globalStorage"
 
   claude:
-    enabled: false
-    include:
-      - "~/.claude/settings.json"
-      - "~/.claude/hooks"
-    exclude:
-      - "~/.claude/sessions"
-      - "~/.claude/tokens"
+    enabled: true
+    # 비워두면 adapter 의 DEFAULT_INCLUDES / DEFAULT_EXCLUDES 가 적용된다.
+    # 직접 지정 시 adapter defaults 위에 추가되며, 절대/`~` 경로 형식도 허용.
+    include: []
+    exclude: []
 
   iterm2:
     enabled: false

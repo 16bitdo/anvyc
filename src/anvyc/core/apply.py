@@ -35,6 +35,7 @@ class ApplyBlocked(RuntimeError):
 @dataclass
 class FileApplyEntry:
     tool: str
+    relpath: str                   # backup 내 tool root 기준 상대 경로 (예: "hooks/script.sh")
     source_path: Path              # backup 안의 파일
     target_path: Path              # canonical (~/) 경로
     target_resolved: Path          # ~ 확장된 실제 경로
@@ -86,7 +87,11 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
     entries: list[FileApplyEntry] = []
     for raw in meta.get("files") or []:
         src_rel = str(raw.get("sourcePath", ""))
-        tool = src_rel.split("/", 1)[0] if "/" in src_rel else ""
+        tool, _, relpath_in_tool = src_rel.partition("/")
+        if not relpath_in_tool:
+            # sourcePath 가 "tool/file" 이 아니면 폴백
+            relpath_in_tool = tool
+            tool = ""
         if only_tools is not None and tool not in only_tools:
             continue
         src = backup_dir / src_rel
@@ -108,6 +113,7 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
         entries.append(
             FileApplyEntry(
                 tool=tool,
+                relpath=relpath_in_tool,
                 source_path=src,
                 target_path=canonical,
                 target_resolved=resolved,
@@ -183,7 +189,7 @@ def run_apply(
             continue
         if not e.target_resolved.exists():
             continue
-        dest = local_backup_dir / e.tool / e.target_resolved.name
+        dest = local_backup_dir / e.tool / e.relpath
         dest.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.copy2(e.target_resolved, dest)

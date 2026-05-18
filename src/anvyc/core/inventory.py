@@ -18,13 +18,22 @@ if TYPE_CHECKING:
 
 @dataclass
 class ManagedFile:
-    """adapter 가 관리하는 단일 파일 단위."""
+    """adapter 가 관리하는 단일 파일 단위.
+
+    relpath  backup/<tool>/ 아래에서의 상대 경로. 비워두면 source_path.name 으로 채워진다.
+             디렉터리 재귀 수집 시 nested 경로를 보존하기 위해 사용 (예: 'hooks/script.sh').
+    """
 
     tool: str
     source_path: Path
     target_path: Path
     mode: int = 0o600
     sha256: str | None = None
+    relpath: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.relpath:
+            self.relpath = self.source_path.name
 
 
 @dataclass
