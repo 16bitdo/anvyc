@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.adapters.base import ApplyResult, Finding
+from anvyc.adapters.base import ApplyResult
+from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
 
@@ -23,7 +24,7 @@ class PulumiAdapter:
             "~/.pulumi/access_tokens",
         ]
 
-    def validate(self) -> list[Finding]:
+    def validate(self) -> list[CheckResult]:
         raise NotImplementedError
 
     def diff(self, source: Path, target: Path) -> DiffResult:

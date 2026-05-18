@@ -1,6 +1,7 @@
 """Adapter base interface.
 
-DESIGN.md §11 참고. 모든 도구별 adapter는 이 protocol을 따른다.
+DESIGN.md §11 참고. 모든 도구별 adapter 는 이 protocol 을 따른다.
+validate() 결과는 checks.base.CheckResult 로 통일한다.
 """
 from __future__ import annotations
 
@@ -8,15 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
-
-
-@dataclass
-class Finding:
-    severity: str  # "critical" | "high" | "medium" | "low"
-    path: Path
-    message: str
 
 
 @dataclass
@@ -37,7 +32,7 @@ class Adapter(Protocol):
 
     def exclude(self) -> list[str]: ...
 
-    def validate(self) -> list[Finding]: ...
+    def validate(self) -> list[CheckResult]: ...
 
     def diff(self, source: Path, target: Path) -> DiffResult: ...
 

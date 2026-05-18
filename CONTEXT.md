@@ -39,6 +39,10 @@
 | 2026-05-18 | Doctor `cross-user` check 도입, 5단계 severity (info/info-aliased/warning-foreign/warning-dangling/critical) | 실측: `/Users/aliasuser → /Users/edward` symlink. `~/.cursor/projects/`의 13/20이 alias 경로, SSH config 6라인이 alias 경로. 같은 머신에서는 동작하지만 다른 머신에 적용하면 broken |
 | 2026-05-18 | Doctor는 read-only, `--fix` 모드는 v0.2 이후 | 자동 수정은 부작용이 크고 사용자 의도와 어긋날 수 있음. 1차는 진단/제안만 |
 | 2026-05-18 | `src/anvyc/checks/` 신규 패키지 도입 | Check 컴포넌트를 doctor·adapter validate·scan-secrets 등에서 재사용. 단일 CheckResult 타입으로 통합 보고 |
+| 2026-05-18 | `Finding` → `CheckResult` 통합 (#16) | adapter validate 결과를 doctor 리포트로 직접 합치기 위해 타입 일원화. `adapters/base.py:Finding` 제거 |
+| 2026-05-18 | Shell adapter end-to-end backup PoC 완성 | DESIGN.md §12.1 절차를 실 동작으로 검증. shell → security scan → copy → hash → metadata.json → current symlink. 다른 adapter 추가 시 ADAPTERS 레지스트리에 등록만 하면 동일 파이프라인 |
+| 2026-05-18 | Backup 정책: secret scan 결과 critical/high 또는 medium(force 미지정)에서 차단 | DESIGN.md §13.2 정책 그대로. shell 파일은 통상 generic_secret 패턴에 걸리는 export 라인이 있을 수 있어 `--force` 안내가 UX 상 중요 |
+| 2026-05-18 | macOS venv 트랩 회피: `chflags -R nohidden .venv` 필수 | Python 3.13 site.py 가 UF_HIDDEN flag 있는 .pth 를 스킵. `.`-prefix 디렉터리는 macOS 에서 자동으로 hidden flag 가 붙어 editable install 의 .pth 가 무시됨 (https://github.com/python/cpython/issues/116727). README/doctor 가 안내해야 함 |
 
 ---
 

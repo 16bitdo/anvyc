@@ -14,7 +14,9 @@ from rich.table import Table
 
 from anvyc import __version__
 from anvyc.checks.base import Severity
+from anvyc.core.backup import BackupBlocked, run_backup
 from anvyc.core.doctor import DoctorReport, run_doctor
+from anvyc.templates import DEFAULT_ANVYC_YAML
 
 app = typer.Typer(
     name="anvyc",
@@ -51,9 +53,19 @@ def main(
 @app.command()
 def init(
     root: Path = typer.Option(Path.cwd(), "--root", help="anvyc 프로젝트 루트."),
+    force: bool = typer.Option(False, "--force", help="기존 anvyc.yaml 이 있어도 덮어쓴다."),
 ) -> None:
-    """`.anvyc/` 와 `anvyc.yaml` 초기화 (MVP TODO)."""
-    console.print(f"[yellow]TODO[/]: init at {root}")
+    """`.anvyc/` 와 `anvyc.yaml` 초기화."""
+    anvyc_dir = root / ".anvyc"
+    config_path = anvyc_dir / "anvyc.yaml"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True, exist_ok=True)
+    if config_path.exists() and not force:
+        console.print(f"[yellow]exists[/] {config_path} (use --force to overwrite)")
+    else:
+        config_path.write_text(DEFAULT_ANVYC_YAML)
+        console.print(f"[green]wrote[/] {config_path}")
+    console.print(f"[green]ready[/] {anvyc_dir}")
 
 
 @app.command()
@@ -162,9 +174,39 @@ def _short_path(p: Path | None) -> str:
 
 
 @app.command()
-def backup() -> None:
-    """현재 환경 설정을 `.anvyc/backups/<timestamp>/`에 저장한다 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: backup")
+def backup(
+    root: Optional[Path] = typer.Option(None, "--root", help=".anvyc 디렉터리 경로."),
+    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 백업 (반복 가능)."),
+    force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
+) -> None:
+    """enabled adapter 들의 설정 파일을 `.anvyc/backups/<ts>/`에 백업한다."""
+    try:
+        result = run_backup(root=root, config_path=config, only=only or None, force=force)
+    except BackupBlocked as e:
+        console.print("[red bold]backup 중단: secret scan 차단[/]")
+        for r in e.reasons:
+            console.print(f"  • {r}")
+        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다 (critical/high 는 강제 불가).[/]")
+        raise typer.Exit(code=2)
+
+    console.print(f"[green]backup[/] {_short_path(result.backup_dir)}")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("tool")
+    table.add_column("file")
+    table.add_column("sha256")
+    for mf in result.inventory.files:
+        table.add_row(
+            mf.tool,
+            _short_path(mf.target_path),
+            (mf.sha256 or "")[:12],
+        )
+    console.print(table)
+    if result.secret_findings:
+        console.print(
+            f"[yellow]경고[/]: secret scan 에서 {len(result.secret_findings)}건 발견 "
+            "(force 옵션으로 진행됨 또는 medium 이하)"
+        )
 
 
 @app.command()
