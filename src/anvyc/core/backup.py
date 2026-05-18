@@ -39,6 +39,10 @@ ADAPTERS: dict[str, type[Adapter]] = {
     "pulumi": PulumiAdapter,
 }
 
+# 단순 파일 기반 adapter — 생성자가 files tuple 만 받는다.
+# anvyc.yaml 에서 tools.<name>.files 또는 tools.<name>.include 키로 override 가능.
+_FILE_BASED_ADAPTERS = frozenset({"shell", "git", "aws", "gh", "pulumi"})
+
 
 class BackupBlocked(RuntimeError):
     """secret scan 결과 backup 중단."""
@@ -66,11 +70,12 @@ def _select_adapters(cfg: AnvycConfig, only: list[str] | None = None) -> list[Ad
         tool_cfg = cfg.tools.get(name)
         if tool_cfg is not None and not tool_cfg.enabled:
             continue
-        # 단순 파일 기반 adapter 는 anvyc.yaml 의 files 키를 존중
-        if name in ("shell", "git") and tool_cfg is not None and tool_cfg.files:
-            selected.append(cls(tuple(tool_cfg.files)))  # type: ignore[call-arg]
-        else:
-            selected.append(cls())
+        if name in _FILE_BASED_ADAPTERS and tool_cfg is not None:
+            user_files = tool_cfg.files or tool_cfg.include
+            if user_files:
+                selected.append(cls(tuple(user_files)))  # type: ignore[call-arg]
+                continue
+        selected.append(cls())
     return selected
 
 

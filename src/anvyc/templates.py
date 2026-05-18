@@ -31,14 +31,14 @@ tools:
       - "~/.gitignore_global"
 
   aws:
-    enabled: false
+    enabled: true
     include:
       - "~/.aws/config"
     exclude:
       - "~/.aws/credentials"
 
   gh:
-    enabled: false
+    enabled: true
     include:
       - "~/.config/gh/config.yml"
     exclude:
@@ -82,7 +82,7 @@ tools:
     mode: "safe"
 
   pulumi:
-    enabled: false
+    enabled: true
     include:
       - "~/.pulumi/config.json"
     exclude:
