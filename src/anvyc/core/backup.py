@@ -66,8 +66,8 @@ def _select_adapters(cfg: AnvycConfig, only: list[str] | None = None) -> list[Ad
         tool_cfg = cfg.tools.get(name)
         if tool_cfg is not None and not tool_cfg.enabled:
             continue
-        # Shell adapter 는 anvyc.yaml 의 files 키를 존중
-        if name == "shell" and tool_cfg is not None and tool_cfg.files:
+        # 단순 파일 기반 adapter 는 anvyc.yaml 의 files 키를 존중
+        if name in ("shell", "git") and tool_cfg is not None and tool_cfg.files:
             selected.append(cls(tuple(tool_cfg.files)))  # type: ignore[call-arg]
         else:
             selected.append(cls())

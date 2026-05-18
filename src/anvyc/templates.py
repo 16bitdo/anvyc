@@ -25,7 +25,7 @@ tools:
       - "~/.zprofile"
 
   git:
-    enabled: false      # MVP 단계: shell 검증 후 활성화
+    enabled: true
     files:
       - "~/.gitconfig"
       - "~/.gitignore_global"

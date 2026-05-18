@@ -15,7 +15,10 @@ from rich.table import Table
 from anvyc import __version__
 from anvyc.checks.base import Severity
 from anvyc.core.backup import BackupBlocked, run_backup
+from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
+from anvyc.core.list import list_backups
+from anvyc.core.status import compute_status
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
 app = typer.Typer(
@@ -159,6 +162,7 @@ def _severity_style(s: Severity) -> str:
     return {
         Severity.INFO: "dim",
         Severity.INFO_ALIASED: "cyan",
+        Severity.WARNING: "yellow",
         Severity.WARNING_FOREIGN: "yellow",
         Severity.WARNING_DANGLING: "yellow",
         Severity.CRITICAL: "red bold",
@@ -210,15 +214,82 @@ def backup(
 
 
 @app.command()
-def status() -> None:
-    """현재 target 상태와 마지막 backup의 차이를 요약한다 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: status")
+def status(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current 또는 최신."),
+) -> None:
+    """current(target) vs backup 의 drift 를 요약한다."""
+    try:
+        report = compute_status(root, backup_id=backup_id)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+
+    counts = report.counts()
+    console.print(f"[bold]backup[/] {_short_path(report.backup_dir)}")
+    console.print(
+        f"  unchanged={counts.get('unchanged', 0)}  "
+        f"[yellow]modified={counts.get('modified', 0)}[/]  "
+        f"[red]missing={counts.get('missing', 0)}[/]"
+    )
+    if not report.entries:
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("state")
+    table.add_column("tool")
+    table.add_column("target")
+    table.add_column("sha256 (target)")
+    for e in report.entries:
+        style = {"unchanged": "dim", "modified": "yellow", "missing": "red"}[e.state]
+        table.add_row(
+            f"[{style}]{e.state}[/]",
+            e.tool,
+            _short_path(e.target_path),
+            (e.actual_sha256 or "—")[:12],
+        )
+    console.print(table)
 
 
 @app.command()
-def diff() -> None:
-    """target과 source(backup) 간 unified diff 출력 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: diff")
+def diff(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current/최신."),
+    only_changed: bool = typer.Option(True, "--only-changed/--all", help="변경된 파일만 출력."),
+) -> None:
+    """backup → 현재 target unified diff 를 출력한다."""
+    try:
+        report = compute_status(root, backup_id=backup_id)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+
+    printed = 0
+    for e in report.entries:
+        if only_changed and e.state == "unchanged":
+            continue
+        target = e.target_resolved
+        d = compute_diff(
+            e.source_path,
+            target,
+            label_source=f"backup:{e.source_path.name}",
+            label_target=f"target:{_short_path(e.target_path)}",
+        )
+        console.print(f"\n[bold]── {_short_path(e.target_path)} ({e.state})[/]")
+        if not d.unified:
+            console.print("  (no diff)")
+            continue
+        for line in d.unified.splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                console.print(f"[green]{line}[/]")
+            elif line.startswith("-") and not line.startswith("---"):
+                console.print(f"[red]{line}[/]")
+            elif line.startswith("@@"):
+                console.print(f"[cyan]{line}[/]")
+            else:
+                console.print(line)
+        printed += 1
+    if printed == 0:
+        console.print("[green]no differences[/]")
 
 
 @app.command()
@@ -236,9 +307,33 @@ def restore(backup_id: str = typer.Argument(..., help="복원할 backup id (time
 
 
 @app.command(name="list")
-def list_backups() -> None:
-    """보관 중인 backup 목록을 출력한다 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: list")
+def list_(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+) -> None:
+    """보관 중인 backup 목록을 출력한다."""
+    backups = list_backups(root)
+    if not backups:
+        console.print(f"[yellow]no backups under {_short_path(root)}/backups[/]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("current")
+    table.add_column("backup_id")
+    table.add_column("generated_utc")
+    table.add_column("host")
+    table.add_column("os/arch")
+    table.add_column("tools")
+    table.add_column("files", justify="right")
+    for b in backups:
+        table.add_row(
+            "[green]●[/]" if b.is_current else "",
+            b.backup_id,
+            b.generated_at_utc,
+            b.hostname,
+            f"{b.os}/{b.arch}" if b.os else "",
+            ",".join(b.included_tools),
+            str(b.file_count),
+        )
+    console.print(table)
 
 
 @app.command(name="scan-secrets")

@@ -13,6 +13,7 @@ from typing import Protocol
 class Severity(str, Enum):
     INFO = "info"
     INFO_ALIASED = "info-aliased"
+    WARNING = "warning"  # generic warning (cross-user 외 다른 check 용)
     WARNING_FOREIGN = "warning-foreign"
     WARNING_DANGLING = "warning-dangling"
     CRITICAL = "critical"
@@ -20,7 +21,12 @@ class Severity(str, Enum):
     @property
     def is_blocking(self) -> bool:
         """strict 모드에서 exit 1 처리 대상."""
-        return self in (Severity.WARNING_FOREIGN, Severity.WARNING_DANGLING, Severity.CRITICAL)
+        return self in (
+            Severity.WARNING,
+            Severity.WARNING_FOREIGN,
+            Severity.WARNING_DANGLING,
+            Severity.CRITICAL,
+        )
 
 
 @dataclass
