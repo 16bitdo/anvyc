@@ -152,16 +152,18 @@ def run_backup(
             )
         )
 
-    # SOPS secret_files 처리 — DESIGN.md §31
+    # SOPS secret_files 처리 — DESIGN.md §31 + v0.4.1 per-tool override
     if cfg.security.sops.enabled and cfg.security.sops.age_recipients:
-        sops_mode = cfg.security.sops.format  # "binary" 또는 "inplace"
-        encryption_tag = "sops/age/inplace" if sops_mode == "inplace" else "sops/age"
+        global_mode = cfg.security.sops.format  # "binary" 또는 "inplace"
         only_set = set(only) if only else None
         for tool_name, tool_cfg in cfg.tools.items():
             if only_set is not None and tool_name not in only_set:
                 continue
             if not tool_cfg.enabled or not tool_cfg.secret_files:
                 continue
+            # tool override 우선
+            sops_mode = tool_cfg.sops_format or global_mode
+            encryption_tag = "sops/age/inplace" if sops_mode == "inplace" else "sops/age"
             for canonical_str in tool_cfg.secret_files:
                 src = Path(canonical_str).expanduser()
                 if not src.is_file():

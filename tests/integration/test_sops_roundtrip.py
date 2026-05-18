@@ -194,6 +194,78 @@ def test_sops_inplace_yaml_roundtrip(tmp_path, age_key) -> None:
     assert "user: edward" in restored
 
 
+def test_sops_per_tool_format_override(tmp_path, age_key) -> None:
+    """v0.4.1: tool 별 sops_format 이 전역보다 우선 — binary tool + inplace tool 혼합."""
+    # 두 tool 의 secret_file 을 다른 모드로 처리
+    bin_secret = tmp_path / "binsec.txt"
+    bin_secret.write_text("binary_payload_xyz\n")
+    yaml_secret = tmp_path / "yamlsec.yaml"
+    yaml_secret.write_text("api_key: yaml_value_abc\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+
+    cfg = anvyc_dir / "anvyc.yaml"
+    cfg.write_text(
+        textwrap.dedent(
+            f"""\
+            version: 1
+            storage:
+              root: ".anvyc"
+            security:
+              secret_scan: false
+              block_on_secret: false
+              sops:
+                enabled: true
+                format: "binary"
+                age_recipients: ["{age_key['public']}"]
+                age_identity_file: "{age_key['identity']}"
+            tools:
+              shell:
+                enabled: true
+                secret_files: ["{bin_secret}"]
+              claude:
+                enabled: true
+                sops_format: "inplace"
+                secret_files: ["{yaml_secret}"]
+              git:    {{enabled: false}}
+              aws:    {{enabled: false}}
+              gh:     {{enabled: false}}
+              iterm2: {{enabled: false}}
+              pulumi: {{enabled: false}}
+              cursor: {{enabled: false}}
+            """
+        )
+    )
+
+    result = run_backup(root=anvyc_dir, config_path=cfg)
+    # shell: binary → .sops.json
+    bin_enc = result.backup_dir / "shell/sops/binsec.txt.sops.json"
+    assert bin_enc.is_file(), "shell entry should be binary (.sops.json)"
+    # claude: inplace → 원본 확장자 유지
+    yaml_enc = result.backup_dir / "claude/sops/yamlsec.yaml"
+    assert yaml_enc.is_file(), "claude entry should be inplace (.yaml)"
+    # inplace 결과는 키 평문 + 값 암호화
+    assert "api_key:" in yaml_enc.read_text()
+    assert "yaml_value_abc" not in yaml_enc.read_text()
+
+    # metadata 양쪽 encryption 태그 검사
+    import json
+    meta = json.loads((result.backup_dir / "metadata.json").read_text())
+    by_tool = {f["sourcePath"].split("/", 1)[0]: f for f in meta["files"]
+               if f.get("encryption", "").startswith("sops/")}
+    assert by_tool["shell"]["encryption"] == "sops/age"
+    assert by_tool["claude"]["encryption"] == "sops/age/inplace"
+
+    # apply round-trip
+    bin_secret.unlink()
+    yaml_secret.unlink()
+    run_apply(root=anvyc_dir, config_path=cfg)
+    assert bin_secret.read_text() == "binary_payload_xyz\n"
+    assert "api_key: yaml_value_abc" in yaml_secret.read_text()
+
+
 def test_sops_status_unchanged_after_backup(tmp_path, age_key) -> None:
     """v0.4.0: SOPS entry 가 backup 직후 status 에서 unchanged 로 표시되는지."""
     from anvyc.core.status import compute_status

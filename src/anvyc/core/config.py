@@ -59,6 +59,7 @@ class ToolConfig:
     include: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     secret_files: list[str] = field(default_factory=list)
+    sops_format: str | None = None   # None 이면 전역 security.sops.format 사용
     extra: dict = field(default_factory=dict)
 
 
@@ -141,14 +142,16 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
     tools: dict[str, ToolConfig] = {}
     for name, body in tools_raw.items():
         body = body or {}
-        known = {"enabled", "files", "include", "exclude", "secret_files"}
+        known = {"enabled", "files", "include", "exclude", "secret_files", "sops_format"}
         extra = {k: v for k, v in body.items() if k not in known}
+        sops_format_raw = body.get("sops_format")
         tools[name] = ToolConfig(
             enabled=bool(body.get("enabled", True)),
             files=list(body.get("files") or []),
             include=list(body.get("include") or []),
             exclude=list(body.get("exclude") or []),
             secret_files=list(body.get("secret_files") or []),
+            sops_format=str(sops_format_raw) if sops_format_raw else None,
             extra=extra,
         )
 
