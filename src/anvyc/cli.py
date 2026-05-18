@@ -15,6 +15,7 @@ from rich.table import Table
 from anvyc import __version__
 from anvyc.checks.base import Severity
 from anvyc.core.apply import ApplyBlocked, ApplyReport, run_apply
+from anvyc.core.restore import run_restore
 from anvyc.core.backup import BackupBlocked, run_backup
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
@@ -327,9 +328,10 @@ def apply(
         raise typer.Exit(code=3)
 
 
-def _print_apply_report(report: ApplyReport) -> None:
-    mode = "[yellow]dry-run[/]" if report.dry_run else "[green]apply[/]"
-    console.print(f"{mode} backup={_short_path(report.backup_dir)}")
+def _print_apply_report(report: ApplyReport, label: str = "apply") -> None:
+    color = "yellow" if report.dry_run else "green"
+    mode = f"{label} dry-run" if report.dry_run else label
+    console.print(f"[{color}]{mode}[/] backup={_short_path(report.backup_dir)}")
     if report.local_backup_dir is not None:
         console.print(f"  local-backup → {_short_path(report.local_backup_dir)}")
 
@@ -366,9 +368,37 @@ def _print_apply_report(report: ApplyReport) -> None:
 
 
 @app.command()
-def restore(backup_id: str = typer.Argument(..., help="복원할 backup id (timestamp).")) -> None:
-    """특정 backup으로 target을 복원한다 (MVP TODO)."""
-    console.print(f"[yellow]TODO[/]: restore {backup_id}")
+def restore(
+    backup_id: str = typer.Argument(..., help="복원할 backup id (예: 20260518-130000)."),
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 시나리오만 출력."),
+    force: bool = typer.Option(False, "--force", help="medium 위험까지 허용."),
+) -> None:
+    """특정 backup 으로 target 을 복원한다. apply 와 동일하나 backup_id 가 필수."""
+    try:
+        report = run_restore(
+            root=root,
+            backup_id=backup_id,
+            config_path=config,
+            only=only or None,
+            dry_run=dry_run,
+            force=force,
+        )
+    except ApplyBlocked as e:
+        console.print("[red bold]restore 중단: secret scan 차단[/]")
+        for r in e.reasons:
+            console.print(f"  • {r}")
+        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다.[/]")
+        raise typer.Exit(code=2)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+
+    _print_apply_report(report, label="restore")
+    if not dry_run and report.has_error():
+        raise typer.Exit(code=3)
 
 
 @app.command(name="list")
