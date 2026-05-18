@@ -1,0 +1,81 @@
+version: 1
+
+storage:
+  root: ".anvyc"
+  keep_backups: 5
+  keep_local_backups: 5
+
+security:
+  secret_scan: true
+  block_on_secret: true
+  allow_encrypted_secrets: true
+
+tools:
+  shell:
+    enabled: true
+    files:
+      - "~/.zshrc"
+      - "~/.zprofile"
+
+  git:
+    enabled: true
+    files:
+      - "~/.gitconfig"
+      - "~/.gitignore_global"
+
+  aws:
+    enabled: true
+    include:
+      - "~/.aws/config"
+    exclude:
+      - "~/.aws/credentials"
+
+  gh:
+    enabled: true
+    include:
+      - "~/.config/gh/config.yml"
+    exclude:
+      - "~/.config/gh/hosts.yml"
+
+  cursor:
+    enabled: true
+    include:
+      - "~/Library/Application Support/Cursor/User/settings.json"
+      - "~/Library/Application Support/Cursor/User/keybindings.json"
+      - "~/Library/Application Support/Cursor/User/snippets"
+      - "~/.cursor/rules"
+      - "~/.cursor/skills"
+    exclude:
+      - "~/Library/Application Support/Cursor/User/workspaceStorage"
+      - "~/Library/Application Support/Cursor/User/History"
+      - "~/Library/Application Support/Cursor/User/globalStorage"
+
+  claude:
+    enabled: true
+    include:
+      - "~/.claude/settings.json"
+      - "~/.claude/hooks"
+      - "~/.claude/plugins"
+    exclude:
+      - "~/.claude/sessions"
+      - "~/.claude/tokens"
+      - "~/.claude/cache"
+      - "~/.claude/logs"
+
+  iterm2:
+    enabled: true
+    mode: "safe"
+    include:
+      - "profiles"
+      - "key_mappings"
+      - "color_presets"
+    exclude:
+      - "window_state"
+      - "recent_sessions"
+
+  pulumi:
+    enabled: true
+    include:
+      - "~/.pulumi/config.json"
+    exclude:
+      - "~/.pulumi/credentials.json"

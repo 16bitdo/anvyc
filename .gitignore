@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+.env
+.env.*
+dist/
+build/
+
+# Test/coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# anvyc runtime state (사용자 환경)
+.anvyc/local-backups/
+.anvyc/reports/
+
+# secret 영역은 절대 commit 금지
+.anvyc-secrets/
+~/.anvyc-secrets/

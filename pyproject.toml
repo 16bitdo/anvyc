@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anvyc"
+version = "0.1.0"
+description = "여러 장치에서 개발 도구 설정 정보와 인증 정보를 안전하게 백업/비교/복원/동기화하는 CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "edward", email = "16bitdo@gmail.com" }
+]
+keywords = ["dotfiles", "config", "sync", "macos", "claude-code", "cursor", "iterm2", "aws", "github-cli", "pulumi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Utilities"
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+  "pydantic>=2.6",
+  "pathspec>=0.12",
+  "pyyaml>=6.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.4",
+  "mypy>=1.10"
+]
+encryption = [
+  "cryptography>=42.0"
+]
+
+[project.scripts]
+anvyc = "anvyc.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/edward/anvyc"
+Documentation = "https://github.com/edward/anvyc/blob/main/DESIGN.md"
+Issues = "https://github.com/edward/anvyc/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anvyc"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: integration tests requiring filesystem fixtures",
+  "macos: macOS-specific behavior"
+]

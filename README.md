@@ -1,0 +1,182 @@
+# anvyc
+
+> **anvyc**는 여러 장치(주로 macOS)에서 개발 도구 설정 정보와 인증 정보를 **안전하게 백업, 비교, 복원, 동기화**하는 CLI 도구다.
+
+상세 설계는 [DESIGN.md](./DESIGN.md), 진행 상태와 결정 사항은 [CONTEXT.md](./CONTEXT.md)를 참고한다.
+
+---
+
+## 1. 한 줄 설명
+
+```text
+chezmoi의 안전 원칙을 참고한, 개발환경 특화 config sync tool.
+shell / git / AWS / GitHub CLI / Pulumi / iTerm2 / Cursor / Claude Code 설정을 한 번에.
+```
+
+---
+
+## 2. 왜 만들었나
+
+- `.zshrc`, Cursor settings, iTerm2 plist, AWS config 등 **설정 위치가 제각각**이다.
+- hostname, OS, email 등 **장비별 값이 달라** 단순 복사가 위험하다.
+- credentials/token이 **dotfiles에 섞여 Git에 올라가는 사고**가 잦다.
+- 단순 복사 방식은 **diff/검증/백업 절차가 부재**하다.
+
+anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** + **apply 전 diff/dry-run** + **restore 전 local backup**으로 풀어낸다.
+
+---
+
+## 3. 핵심 원칙
+
+1. **Secret 기본 제외** — `~/.aws/credentials`, `~/.pulumi/credentials.json`, SSH key, `.env`, Claude tokens 등은 수집하지 않는다.
+2. **Apply 전 diff & dry-run** — 어떤 변경이 일어나는지 항상 먼저 확인한다.
+3. **Restore 전 local backup** — 덮어쓰기 전 현재 상태를 자동으로 보관한다.
+4. **도구별 safe adapter** — 범용 파일 복사 대신 도구 특성에 맞춘 안전한 추출/적용 로직.
+5. **Git-friendly, secret-hostile** — Git push 전 pre-commit hook으로 secret을 재차 차단한다.
+
+---
+
+## 4. 지원 도구 (MVP)
+
+| 도구 | 기본 포함 | 기본 제외 |
+|---|---|---|
+| Shell (zsh) | `.zshrc`, `.zprofile` | shell history |
+| Git | `.gitconfig`, `.gitignore_global` | `.git-credentials` |
+| AWS CLI | `~/.aws/config` | `~/.aws/credentials`, SSO cache |
+| GitHub CLI | `config.yml` | `hosts.yml` (token) |
+| Cursor IDE | settings/keybindings/snippets/rules/skills/mcp.json | workspaceStorage, History, globalStorage |
+| Claude Code | settings.json, hooks, plugins | sessions, tokens, cache, logs |
+| iTerm2 | profiles, key mappings, color presets | window state, recent sessions, local path |
+| Pulumi | `config.json` | `credentials.json` |
+
+---
+
+## 5. 설치 (예정)
+
+> v0.1.0 릴리즈 후 사용 가능. MVP 개발 중에는 로컬 editable 설치로 사용한다.
+
+### 5.1 사용자 설치 (예정)
+
+```bash
+pipx install anvyc
+# 또는
+uv tool install anvyc
+```
+
+### 5.2 개발 설치
+
+```bash
+git clone <repo-url> anvyc
+cd anvyc
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+anvyc --help
+```
+
+---
+
+## 6. 빠른 시작
+
+```bash
+# 1) 초기화 — .anvyc/, anvyc.yaml 생성
+anvyc init
+
+# 2) 환경 점검 — 설치된 도구, 위험 경로, 권한 확인
+anvyc doctor
+
+# 3) 백업 — 현재 환경 설정을 .anvyc/backups/<timestamp>/ 에 저장
+anvyc backup
+
+# 4) 상태 확인
+anvyc status
+
+# 5) 다른 장비에서 복원
+anvyc diff
+anvyc apply --dry-run
+anvyc apply
+```
+
+---
+
+## 7. 디렉터리 구조
+
+```text
+anvyc/
+├── README.md
+├── DESIGN.md
+├── CONTEXT.md
+├── pyproject.toml
+├── src/anvyc/
+│   ├── cli.py
+│   ├── core/        # inventory, backup, diff, apply, restore, metadata
+│   ├── adapters/    # shell, git, aws, gh, cursor, claude, iterm2, pulumi
+│   ├── security/    # scanner, patterns, policy
+│   ├── storage/     # local, git, encryption
+│   └── utils/
+└── tests/{unit,integration,fixtures}
+```
+
+런타임 상태는 사용자 환경의 `.anvyc/` 와 `~/.anvyc-secrets/` 에 저장된다.
+
+---
+
+## 8. 명령어 요약
+
+```bash
+anvyc init                     # 프로젝트/설정 초기화
+anvyc doctor                   # 환경 진단
+anvyc backup                   # 현재 환경 백업
+anvyc status                   # target vs backup 차이 요약
+anvyc diff                     # unified diff 출력
+anvyc apply [--dry-run]        # source 설정 적용 (전 local backup 자동)
+anvyc restore <backup-id>      # 특정 backup으로 복원
+anvyc list                     # 백업 목록
+anvyc scan-secrets             # secret 패턴 스캔
+anvyc git {init|status|commit|push}
+```
+
+---
+
+## 9. 보안 정책 요약
+
+| 등급 | 예시 | 동작 |
+|---|---|---|
+| Critical | private key, AWS secret key | 백업/적용 즉시 중단 |
+| High | GitHub token, Pulumi token | 백업/적용 즉시 중단 |
+| Medium | `.env`, `password=` | 경고, `--force` 시 진행 |
+| Low | email, username | 정보 로그만 |
+
+`secret-scan`은 `backup` / `apply` / `git push` 모든 시점에 실행된다.
+
+---
+
+## 10. 기술 스택
+
+| 항목 | 선택 |
+|---|---|
+| 언어 | Python 3.11+ |
+| CLI | Typer |
+| 출력 | Rich |
+| 설정 검증 | pydantic |
+| 경로 패턴 | pathspec |
+| 테스트 | pytest |
+| plist 처리 | plistlib (stdlib) |
+| 암호화 (선택) | age 또는 cryptography |
+| 패키징 | pipx / uv |
+
+---
+
+## 11. 로드맵
+
+- **1주차 PoC**: CLI skeleton + shell/git/aws adapter + secret scanner v0
+- **2주차 MVP**: cursor/claude/iterm2 adapter + diff/apply/restore + pre-commit hook
+- **3주차 정비**: 테스트 보강 + 실제 Mac 2대 검증 + pipx 패키징 + v0.1.0 릴리즈
+
+자세한 내용은 [CONTEXT.md §5 Roadmap](./CONTEXT.md)를 참고한다.
+
+---
+
+## 12. 라이선스
+
+향후 결정. (후보: MIT, Apache-2.0)
