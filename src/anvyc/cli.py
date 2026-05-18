@@ -14,6 +14,7 @@ from rich.table import Table
 
 from anvyc import __version__
 from anvyc.checks.base import Severity
+from anvyc.core.apply import ApplyBlocked, ApplyReport, run_apply
 from anvyc.core.backup import BackupBlocked, run_backup
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
@@ -294,10 +295,74 @@ def diff(
 
 @app.command()
 def apply(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."),
+    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 적용 시나리오만 출력."),
+    force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
 ) -> None:
-    """source 설정을 target에 적용한다. 적용 전 local backup 자동 생성 (MVP TODO)."""
-    console.print(f"[yellow]TODO[/]: apply (dry_run={dry_run})")
+    """backup 의 설정을 현재 target 에 적용한다. 적용 전 local-backup 자동 생성."""
+    try:
+        report = run_apply(
+            root=root,
+            config_path=config,
+            backup_id=backup_id,
+            only=only or None,
+            dry_run=dry_run,
+            force=force,
+        )
+    except ApplyBlocked as e:
+        console.print("[red bold]apply 중단: secret scan 차단[/]")
+        for r in e.reasons:
+            console.print(f"  • {r}")
+        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다.[/]")
+        raise typer.Exit(code=2)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+
+    _print_apply_report(report)
+    if not dry_run and report.has_error():
+        raise typer.Exit(code=3)
+
+
+def _print_apply_report(report: ApplyReport) -> None:
+    mode = "[yellow]dry-run[/]" if report.dry_run else "[green]apply[/]"
+    console.print(f"{mode} backup={_short_path(report.backup_dir)}")
+    if report.local_backup_dir is not None:
+        console.print(f"  local-backup → {_short_path(report.local_backup_dir)}")
+
+    counts = report.counts()
+    parts = []
+    for state in ("applied", "skipped", "would_apply", "would_skip", "error"):
+        if counts.get(state, 0):
+            color = {"applied": "green", "error": "red bold"}.get(state, "dim")
+            parts.append(f"[{color}]{state}={counts[state]}[/]")
+    if parts:
+        console.print("  " + "  ".join(parts))
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("state")
+    table.add_column("tool")
+    table.add_column("target")
+    table.add_column("before → after")
+    for e in report.entries:
+        style = {
+            "applied": "green",
+            "skipped": "dim",
+            "would_apply": "yellow",
+            "would_skip": "dim",
+            "error": "red bold",
+        }.get(e.state_after, "white")
+        msg = e.error or f"{e.state_before} → {e.state_after}"
+        table.add_row(
+            f"[{style}]{e.state_after}[/]",
+            e.tool,
+            _short_path(e.target_path),
+            msg,
+        )
+    console.print(table)
 
 
 @app.command()

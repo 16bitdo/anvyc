@@ -31,7 +31,7 @@ class StatusReport:
         return out
 
 
-def _pick_backup(root: Path, backup_id: str | None) -> Path:
+def pick_backup(root: Path, backup_id: str | None) -> Path:
     if backup_id:
         candidate = root / "backups" / backup_id
         if candidate.is_dir():
@@ -50,7 +50,7 @@ def _pick_backup(root: Path, backup_id: str | None) -> Path:
 
 def compute_status(root: Path, backup_id: str | None = None) -> StatusReport:
     """metadata.json 의 sha256/targetPath 와 현재 target 의 실제 sha256 을 비교."""
-    backup_dir = _pick_backup(root, backup_id)
+    backup_dir = pick_backup(root, backup_id)
     meta_path = backup_dir / "metadata.json"
     if not meta_path.is_file():
         raise FileNotFoundError(f"metadata.json missing in {backup_dir}")
