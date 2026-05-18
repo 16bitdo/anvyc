@@ -4,13 +4,17 @@ MVP 단계에서는 명령어 시그니처와 흐름만 정의하고, 실제 동
 """
 from __future__ import annotations
 
+import json as jsonlib
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from anvyc import __version__
+from anvyc.checks.base import Severity
+from anvyc.core.doctor import DoctorReport, run_doctor
 
 app = typer.Typer(
     name="anvyc",
@@ -57,17 +61,104 @@ def doctor(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="모든 finding 나열."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
-    only: list[str] = typer.Option(None, "--only", help="실행할 check 이름 (반복 가능)."),
-    skip: list[str] = typer.Option(None, "--skip", help="건너뛸 check 이름 (반복 가능)."),
+    only: Optional[list[str]] = typer.Option(None, "--only", help="실행할 check 이름 (반복 가능)."),
+    skip: Optional[list[str]] = typer.Option(None, "--skip", help="건너뛸 check 이름 (반복 가능)."),
+    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
 ) -> None:
-    """설치된 도구, 경로, 권한, cross-user 경로 등을 read-only로 진단한다 (MVP TODO).
+    """환경을 read-only 로 진단한다. DESIGN.md §27 참고."""
+    report = run_doctor(config_path=config, only=only or None, skip=skip or None)
 
-    DESIGN.md §27 참고.
-    """
-    console.print(
-        f"[yellow]TODO[/]: doctor "
-        f"(verbose={verbose}, strict={strict}, json={json_out}, only={only}, skip={skip})"
-    )
+    if json_out:
+        payload = {
+            "results": [r.to_dict() for r in report.results],
+            "summary": _summary_counts(report),
+        }
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+    elif verbose:
+        _print_verbose(report)
+    else:
+        _print_summary(report)
+
+    if strict and report.has_blocking():
+        raise typer.Exit(code=1)
+
+
+def _summary_counts(report: DoctorReport) -> dict[str, int]:
+    buckets = report.by_severity()
+    return {s.value: len(buckets[s]) for s in Severity}
+
+
+def _print_summary(report: DoctorReport) -> None:
+    buckets = report.by_severity()
+    total = sum(len(v) for v in buckets.values())
+    if total == 0:
+        console.print("[green]doctor: clean — no cross-user findings[/]")
+        return
+
+    table = Table(title="[cross-user audit] 요약", show_header=True, header_style="bold")
+    table.add_column("severity", style="bold")
+    table.add_column("count", justify="right")
+    for s in Severity:
+        cnt = len(buckets[s])
+        if cnt == 0:
+            continue
+        style = _severity_style(s)
+        table.add_row(f"[{style}]{s.value}[/]", str(cnt))
+    console.print(table)
+
+    # 상위 5건 location 노출
+    head = report.results[:5]
+    if head:
+        console.print("\n[bold]Top findings:[/]")
+        for r in head:
+            loc = _short_path(r.location)
+            line = f":{r.line}" if r.line else ""
+            console.print(
+                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] "
+                f"{loc}{line} — {r.message}"
+            )
+        if len(report.results) > 5:
+            console.print(f"  ... and {len(report.results) - 5} more (use --verbose)")
+
+
+def _print_verbose(report: DoctorReport) -> None:
+    if not report.results:
+        console.print("[green]doctor: clean — no cross-user findings[/]")
+        return
+    table = Table(title="[cross-user audit] findings", show_header=True, header_style="bold")
+    table.add_column("severity", style="bold")
+    table.add_column("location")
+    table.add_column("line", justify="right")
+    table.add_column("message")
+    table.add_column("suggestion", overflow="fold")
+    for r in report.results:
+        loc = _short_path(r.location)
+        table.add_row(
+            f"[{_severity_style(r.severity)}]{r.severity.value}[/]",
+            loc,
+            str(r.line) if r.line else "",
+            r.message,
+            r.suggestion or "",
+        )
+    console.print(table)
+
+
+def _severity_style(s: Severity) -> str:
+    return {
+        Severity.INFO: "dim",
+        Severity.INFO_ALIASED: "cyan",
+        Severity.WARNING_FOREIGN: "yellow",
+        Severity.WARNING_DANGLING: "yellow",
+        Severity.CRITICAL: "red bold",
+    }[s]
+
+
+def _short_path(p: Path | None) -> str:
+    if p is None:
+        return ""
+    home = str(Path.home())
+    s = str(p)
+    return s.replace(home, "~", 1) if s.startswith(home) else s
 
 
 @app.command()

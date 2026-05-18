@@ -5,8 +5,11 @@ DESIGN.md §27 참고. 등록된 Check 들을 실행하고 결과를 형식화�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.checks.cross_user import CrossUserCheck
+from anvyc.core.config import build_check_context, load_config
 
 
 @dataclass
@@ -23,11 +26,31 @@ class DoctorReport:
         return any(r.severity.is_blocking for r in self.results)
 
 
+_REGISTRY = {
+    "cross-user": CrossUserCheck(),
+}
+
+
 def run_doctor(
-    ctx: CheckContext,
+    config_path: Path | None = None,
     *,
     only: list[str] | None = None,
     skip: list[str] | None = None,
+    ctx: CheckContext | None = None,
 ) -> DoctorReport:
-    """등록된 Check 들을 실행한다 (MVP TODO)."""
-    raise NotImplementedError
+    """등록된 Check 들을 실행한다."""
+    if ctx is None:
+        cfg = load_config(config_path)
+        ctx = build_check_context(cfg)
+
+    only_set = set(only) if only else None
+    skip_set = set(skip) if skip else set()
+
+    report = DoctorReport()
+    for name, check in _REGISTRY.items():
+        if only_set is not None and name not in only_set:
+            continue
+        if name in skip_set:
+            continue
+        report.results.extend(check.run(ctx))
+    return report

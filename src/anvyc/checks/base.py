@@ -32,6 +32,16 @@ class CheckResult:
     line: int | None = None
     suggestion: str | None = None
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "check_name": self.check_name,
+            "severity": self.severity.value,
+            "message": self.message,
+            "location": str(self.location) if self.location else None,
+            "line": self.line,
+            "suggestion": self.suggestion,
+        }
+
 
 @dataclass
 class CheckContext:
