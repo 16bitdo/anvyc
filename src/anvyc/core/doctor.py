@@ -12,6 +12,7 @@ from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.cursor_projects_suggest import CursorProjectsSuggestCheck
 from anvyc.checks.op_references import OpReferencesCheck
+from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.core.config import build_check_context, load_config
 
@@ -36,6 +37,7 @@ _REGISTRY = {
     "op-references-valid": OpReferencesCheck(),
     "adapter-validate": AdapterValidationCheck(),
     "cursor-projects-suggest": CursorProjectsSuggestCheck(),
+    "sops-keys-available": SopsKeysCheck(),
 }
 
 

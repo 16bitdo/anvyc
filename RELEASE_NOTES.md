@@ -1,5 +1,61 @@
 # anvyc 릴리즈 노트
 
+## v0.2.0 — 2026-05-18
+
+**SOPS encryption-at-rest 통합**. 1Password Secret Reference (v0.1.0) 와 보완 관계로, 다수 secret 묶음을 git-tracked SOPS 파일로 안전하게 백업/적용한다.
+
+### 신규
+
+- **`security.sops.*` schema** (anvyc.yaml): `enabled`, `age_recipients`, `age_identity_file`
+- **`tools.<name>.secret_files`** 키: 항목은 SOPS encrypt 후 백업
+- **`core/sops.py`** subprocess wrapper (binary 모드, byte-for-byte 보존)
+- **backup orchestrator** 의 SOPS encrypt branch: `backup/<ts>/<tool>/sops/<name>.sops.json`
+- **apply orchestrator** 의 SOPS decrypt branch: `sops -d` 후 평문 target 에 저장
+- **scanner SOPS 인식**: `.sops.*` 파일 또는 `sops:` metadata 보유 시 scan skip
+- **doctor check `sops-keys-available`**: sops/age binary + age identity file 부재 자동 안내
+- **integration test 4건** (sops round-trip + key 부재 + scanner skip)
+
+### 결정 사항 (V1~V4)
+
+| # | 항목 | 결정 |
+|---|---|---|
+| V1 | SOPS 파일 저장 위치 | `.anvyc/` 안에 git-tracked (SOPS 본래 목적) |
+| V2 | 키 backend 기본값 | **age** (clean slate, cross-platform) |
+| V3 | mcp.json 자동 마스킹 | v0.2.1 분리 |
+| V4 | 1Password Reference 와의 관계 | 양립 — 사용자 선택 |
+
+### 사용 흐름
+
+```bash
+brew install sops age
+mkdir -p ~/.config/sops/age && age-keygen -o ~/.config/sops/age/keys.txt
+# Public key 를 anvyc.yaml security.sops.age_recipients 에 등록
+# tools.<X>.secret_files 에 secret 묶음 파일 지정
+anvyc backup    # → SOPS 자동 암호화
+anvyc apply     # → SOPS 자동 복호화 (identity file 필요)
+```
+
+### 의존성
+
+- `sops` binary (사용자 설치)
+- `age` binary (사용자 설치)
+- anvyc Python 의존성 변경 없음
+
+### 알려진 한계
+
+- v0.2 는 **binary 모드만** 지원 (byte-for-byte 보존). YAML/JSON in-place 부분 암호화는 v0.2.1+ 옵션.
+- SOPS entry 의 `state_before` 는 항상 `modified` 로 표시 (encrypted backup vs plain target sha256 불일치). 동작 안전성 영향 X. iTerm2 와 동일한 PoC 한계.
+- mcp.json 자동 마스킹은 v0.2.1 로 분리.
+
+### Phase 통계
+
+- 4 commits
+- 9 sub-tasks (V2.1~V2.9)
+- 43 test cases (v0.1.0 39 + SOPS 4)
+- ~10 hours
+
+---
+
 ## v0.1.0 — 2026-05-18
 
 첫 정식 MVP. macOS 개발자 환경의 설정/규칙을 **여러 머신 사이에서 안전하게 백업·비교·복원·동기화**하는 CLI.

@@ -46,6 +46,7 @@ class FileApplyEntry:
     state_after: str               # "applied" | "skipped" | "would_apply" | "would_skip" | "error"
     error: str | None = None
     symlink_target: str | None = None  # None 이 아니면 symlink — os.symlink 로 재생성
+    encryption: str | None = None      # e.g. "sops/age" — SOPS 복호화 필요
 
 
 @dataclass
@@ -102,6 +103,7 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
         expected = str(raw.get("sha256", ""))
         mode = _parse_mode(str(raw.get("mode", "0600")))
         symlink_target = raw.get("symlinkTarget")
+        encryption = raw.get("encryption")
 
         state_before: str
         if symlink_target is not None:
@@ -135,6 +137,7 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
                 state_before=state_before,
                 state_after="pending",
                 symlink_target=symlink_target,
+                encryption=encryption,
             )
         )
     return entries
@@ -163,18 +166,33 @@ def _apply_symlink(entry: FileApplyEntry) -> None:
         target.unlink()
     target.parent.mkdir(parents=True, exist_ok=True)
     os.symlink(entry.symlink_target, target)
-    # symlink target 부재 안내는 호출측에서 별도 로그
 
 
-def _apply_entry(entry: FileApplyEntry) -> None:
+def _apply_sops(entry: FileApplyEntry, identity_file: Path | None) -> None:
+    """SOPS 암호화 파일을 복호화해 target 에 평문으로 저장. DESIGN.md §31.6."""
+    from anvyc.core.sops import decrypt as sops_decrypt
+
+    target = entry.target_resolved
+    target.parent.mkdir(parents=True, exist_ok=True)
+    sops_decrypt(entry.source_path, target, identity_file=identity_file)
+    try:
+        target.chmod(entry.mode)
+    except OSError:
+        pass
+
+
+def _apply_entry(entry: FileApplyEntry, identity_file: Path | None = None) -> None:
     """adapter 가 custom apply() 를 제공하면 그것을 호출, 아니면 _default_apply.
 
     symlink entry → os.symlink 분기.
+    encryption=sops/age entry → sops 복호화 분기.
     iterm2 처럼 plist deep-merge 가 필요한 경우 adapter.apply() 가 동작한다.
-    shell/git/aws/gh/pulumi/claude 는 NotImplementedError 를 던지므로 default 로 폴백.
     """
     if entry.symlink_target is not None:
         _apply_symlink(entry)
+        return
+    if entry.encryption and entry.encryption.startswith("sops/"):
+        _apply_sops(entry, identity_file=identity_file)
         return
 
     # 지연 import — apply.py ↔ backup.py 순환 회피
@@ -249,13 +267,21 @@ def run_apply(
             # 읽기 권한 없음 등 — skip but continue
             pass
 
+    # SOPS identity file 결정 (apply 시점에 복호화 필요)
+    sops_identity: Path | None = None
+    if cfg.security.sops.enabled and cfg.security.sops.age_identity_file:
+        cand = Path(cfg.security.sops.age_identity_file).expanduser()
+        if cand.is_file():
+            sops_identity = cand
+
     # Apply 본체
     for e in entries:
-        if e.state_before == "unchanged":
+        if e.state_before == "unchanged" and e.encryption is None:
+            # encryption entry 는 state_before 비교가 어려워 일단 항상 시도
             e.state_after = "skipped"
             continue
         try:
-            _apply_entry(e)
+            _apply_entry(e, identity_file=sops_identity)
             e.state_after = "applied"
         except (OSError, RuntimeError) as err:
             e.state_after = "error"

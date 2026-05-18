@@ -59,6 +59,10 @@
 | 2026-05-18 | Cursor adapter C3 확정: symlink target 부재 시 WARNING + skip (안전) | rules.bak-* 같은 외부 repo 경로가 다른 머신에서 부재할 때 apply 실패 X. 사용자 검토 후 수동 처리 |
 | 2026-05-18 | Cursor adapter C4 확정: Layer C project-name = root last segment | `~/Documents/anvyc` → `anvyc`. 충돌 시 후속 작업에서 slugify 폴백 검토 |
 | 2026-05-18 | ManagedFile.symlink_target 필드 도입 (cursor adapter 지원) | symlink 백업: 콘텐츠 복사 X, metadata.json 에 symlinkTarget 만 기록. apply 시 os.symlink 재생성 |
+| 2026-05-18 | v0.2 SOPS 통합 V1 확정: SOPS 파일을 .anvyc/ 안에 git-tracked 로 저장 | SOPS 본래 목적 — 암호화 자체가 안전. 별도 ~/.anvyc-secrets/ 분리 영역은 도입 보류 |
+| 2026-05-18 | v0.2 SOPS 통합 V2 확정: 키 backend = age | clean slate (sops/age 모두 미설치) → 가장 단순한 cross-platform 옵션 |
+| 2026-05-18 | v0.2 SOPS 통합 V3 확정: mcp.json 자동 마스킹은 v0.2.1 분리 | SOPS 와 결이 다른 문제. v0.2 는 SOPS 단일 주제로 집중 |
+| 2026-05-18 | v0.2 SOPS 통합 V4 확정: 1Password Reference 와 양립 | 단일 raw secret → op:// , 다수 secret 묶음 (.env/.toml) → SOPS. scanner 가 양쪽 인식 |
 
 ---
 

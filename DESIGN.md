@@ -1282,3 +1282,113 @@ vault/item/field, optional sub-field.
 - 1Password Secret Reference 는 **placeholder** 다. raw secret 의 대체이지 보안 솔루션이 아니다.
 - 1Password 자체 인증 (계정, 마스터 키) 은 anvyc 가 다루지 않는다.
 - `op://` reference 가 가리키는 vault/item/field 이름이 secret 성격을 내포하는 경우 (예: `op://Personal/CompanyTopSecret/Project`) 는 사용자 책임. anvyc 는 reference 문자열 자체만 안전한 것으로 처리.
+
+---
+
+## 31. SOPS 통합 (v0.2)
+
+§30 의 1Password Secret Reference 와 보완 관계. 다수 secret 묶음 (`.env`, `.toml`, 바이너리 등) 을 encryption-at-rest 로 처리한다.
+
+### 31.1 결정 확정 (V1~V4, 2026-05-18)
+
+| # | 항목 | 결정 |
+|---|---|---|
+| V1 | SOPS 파일 저장 위치 | `.anvyc/` 안에 git-tracked. SOPS 본래 목적 (암호화 자체가 보호) |
+| V2 | 키 backend 기본 | **age** (cross-platform, key file 단순) |
+| V3 | mcp.json 자동 마스킹 처리 시점 | v0.2.1 분리 (SOPS 와 결이 다름) |
+| V4 | 1Password Reference 와의 관계 | 양립 — 사용자 선택 |
+
+### 31.2 사용 모델
+
+| 시나리오 | 권장 도구 |
+|---|---|
+| 단일 변수 raw secret (`export AWS_KEY=...`) | `op://...` reference (§30) |
+| `.env`, `.toml`, `.json` 등 다수 secret 묶음 | SOPS 암호화 (본 절) |
+| 사용자가 1Password 미사용 | SOPS 단독 |
+
+### 31.3 의존성
+
+- `sops` binary (사용자 설치: `brew install sops`)
+- `age` binary (사용자 설치: `brew install age`)
+- anvyc 는 둘 다 subprocess 로 호출 — Python 의존성 추가 X
+
+### 31.4 anvyc.yaml schema 확장
+
+```yaml
+security:
+  secret_scan: true
+  block_on_secret: true
+  sops:
+    enabled: true
+    age_recipients:         # 암호화 대상 키 (여러 머신/사용자의 public key)
+      - "age1abc...edward-mac"
+      - "age1xyz...edward-laptop"
+    age_identity_file: "~/.config/sops/age/keys.txt"
+
+tools:
+  pulumi:
+    enabled: true
+    files: ["~/.pulumi/config.json"]
+    secret_files:           # 신규 — SOPS 로 암호화 백업
+      - "~/.pulumi/credentials.json"
+  shell:
+    enabled: true
+    files: ["~/.zshrc"]
+    secret_files: ["~/.env"]
+```
+
+### 31.5 Backup workflow
+
+```text
+1. 일반 files       → shutil.copy2 (기존 그대로)
+2. secret_files     → sops -e --age <recipients> <src> > backup/<ts>/<tool>/sops/<name>.enc
+3. metadata.json files[] 에 추가 필드:
+     "encryption": "sops/age"
+4. 암호화 파일의 sha256 도 기록 (변경 감지용)
+```
+
+### 31.6 Apply workflow
+
+```text
+1. 일반 entry             → _default_apply
+2. encryption=sops/age   → sops -d <src> > <target> + chmod
+3. key 부재 시            → state_after="error", error="sops decrypt failed: 키 부재"
+```
+
+### 31.7 새 doctor check: `sops-keys-available`
+
+```text
+- sops binary 미설치  → WARNING + "brew install sops"
+- age binary 미설치   → WARNING + "brew install age"
+- age identity 미존재 → WARNING + "age-keygen -o ~/.config/sops/age/keys.txt"
+- 모두 OK            → 0 결과 (clean)
+```
+
+### 31.8 scanner 의 SOPS 인식
+
+`security/scanner.py` 가 다음 조건 중 하나면 scan skip:
+- 파일명에 `.sops.` 포함 (예: `secret.sops.json`)
+- 파일 내용 첫 4KB 안에 `"sops":` 또는 `sops:` metadata block
+
+암호화된 파일에서 base64 등이 secret 처럼 보여도 false-positive 방지.
+
+### 31.9 구현 단계
+
+| 단계 | 작업 |
+|---|---|
+| V2.1 | doctor check `sops-keys-available` + 설치 가이드 |
+| V2.2 | anvyc.yaml schema 확장 (security.sops, tools.*.secret_files) |
+| V2.3 | core/sops.py — subprocess wrapper (encrypt/decrypt/is_sops_encrypted) |
+| V2.4 | backup orchestrator 의 SOPS encrypt branch |
+| V2.5 | apply orchestrator 의 SOPS decrypt branch |
+| V2.6 | scanner 의 .sops.* 파일 자동 인식 |
+| V2.7 | CLI 출력 (encrypted 마커) |
+| V2.8 | integration test (round-trip + key 부재 시나리오) |
+| V2.9 | README §9.2 / DESIGN §31 / RELEASE_NOTES v0.2 + tag |
+
+### 31.10 보안 원칙
+
+- anvyc 는 age private key 를 직접 다루지 않는다 (sops/age binary 에 위임).
+- key 부재 시 apply 는 **fail-safe**: 부분 적용 X, 에러 + 다음 entry 진행.
+- pre-commit hook 의 scan-secrets 는 SOPS 파일을 통과시킨다 — 이미 암호화되어 있어 raw secret 노출 위험 없음.
+- `~/.anvyc-secrets/` 영역은 v0.2 에서 도입하지 않는다 (V1 결정). SOPS-in-anvyc/ 단일 모델로 충분.

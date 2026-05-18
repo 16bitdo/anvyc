@@ -208,6 +208,20 @@ def backup(
             (mf.sha256 or "")[:12],
         )
     console.print(table)
+    # SOPS 로 암호화된 secret_files 도 metadata 에서 표시
+    import json as _jl
+    meta_path = result.backup_dir / "metadata.json"
+    if meta_path.is_file():
+        try:
+            meta = _jl.loads(meta_path.read_text())
+            encrypted = [f for f in meta.get("files", []) if f.get("encryption")]
+            if encrypted:
+                console.print(f"\n[cyan]🔒 SOPS-encrypted ({len(encrypted)}):[/]")
+                for f in encrypted:
+                    marker = "[red]FAILED[/]" if "FAILED" in f["encryption"] else "[cyan]ok[/]"
+                    console.print(f"  {marker}  {f['targetPath']}  ({f['encryption']})")
+        except (OSError, ValueError):
+            pass
     if result.secret_findings:
         console.print(
             f"[yellow]경고[/]: secret scan 에서 {len(result.secret_findings)}건 발견 "

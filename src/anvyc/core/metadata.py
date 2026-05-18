@@ -19,6 +19,7 @@ class FileEntry:
     sha256: str
     mode: str
     symlink_target: str | None = None
+    encryption: str | None = None  # e.g. "sops/age" — apply 시 복호화 필요
 
 
 @dataclass
@@ -77,6 +78,8 @@ def write_metadata(metadata: Metadata, target_dir: Path) -> Path:
         }
         if f.get("symlink_target"):
             entry["symlinkTarget"] = f["symlink_target"]
+        if f.get("encryption"):
+            entry["encryption"] = f["encryption"]
         files_out.append(entry)
     payload["files"] = files_out
     target.write_text(json.dumps(payload, indent=2, ensure_ascii=False))

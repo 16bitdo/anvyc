@@ -6,6 +6,21 @@ from pathlib import Path
 
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 
+# DESIGN.md §31.8 — SOPS metadata 검출용
+_SOPS_MARKERS = (b'"sops":', b"sops:")
+
+
+def _is_sops_encrypted(path: Path) -> bool:
+    name = path.name.lower()
+    if ".sops." in name:
+        return True
+    try:
+        with path.open("rb") as f:
+            head = f.read(4096)
+    except OSError:
+        return False
+    return any(m in head for m in _SOPS_MARKERS)
+
 _MAX_SCAN_BYTES = 10_485_760  # 10 MiB — 그 이상은 binary 가능성 + 비용 회피
 
 
@@ -23,12 +38,18 @@ def scan_file(path: Path) -> list[ScanFinding]:
 
     op:// reference (1Password Secret Reference) 가 같은 라인에 있으면 해당 라인의
     다른 secret 패턴 매칭을 "low" 로 강등한다 (DESIGN.md §30.2).
+
+    SOPS 로 암호화된 파일은 평문 secret 매칭이 의미 없으므로 scan skip
+    (DESIGN.md §31.8). 파일명에 `.sops.` 포함 또는 첫 4KB 안에 SOPS metadata
+    block 이 있으면 SOPS-encrypted 로 간주.
     """
     findings: list[ScanFinding] = []
     try:
         if not path.is_file():
             return []
         if path.stat().st_size > _MAX_SCAN_BYTES:
+            return []
+        if _is_sops_encrypted(path):
             return []
         with path.open("r", encoding="utf-8", errors="ignore") as f:
             for line_num, line in enumerate(f, start=1):
