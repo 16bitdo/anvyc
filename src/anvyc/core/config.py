@@ -41,6 +41,7 @@ class SopsConfig:
     enabled: bool = False
     age_recipients: list[str] = field(default_factory=list)
     age_identity_file: str = "~/.config/sops/age/keys.txt"
+    format: str = "binary"   # "binary" (default, byte-for-byte) | "inplace" (yaml/json 의 값만 암호화)
 
 
 @dataclass
@@ -127,6 +128,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         age_identity_file=str(
             sops_raw.get("age_identity_file") or "~/.config/sops/age/keys.txt"
         ),
+        format=str(sops_raw.get("format") or "binary"),
     )
     security = SecurityConfig(
         secret_scan=bool(sec_raw.get("secret_scan", True)),

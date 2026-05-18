@@ -154,6 +154,8 @@ def run_backup(
 
     # SOPS secret_files 처리 — DESIGN.md §31
     if cfg.security.sops.enabled and cfg.security.sops.age_recipients:
+        sops_mode = cfg.security.sops.format  # "binary" 또는 "inplace"
+        encryption_tag = "sops/age/inplace" if sops_mode == "inplace" else "sops/age"
         only_set = set(only) if only else None
         for tool_name, tool_cfg in cfg.tools.items():
             if only_set is not None and tool_name not in only_set:
@@ -164,21 +166,22 @@ def run_backup(
                 src = Path(canonical_str).expanduser()
                 if not src.is_file():
                     continue
-                # backup/<ts>/<tool>/sops/<name>.sops.json
-                relpath = f"sops/{src.name}.sops.json"
+                # inplace 모드는 원본 확장자 유지, binary 는 .sops.json suffix
+                if sops_mode == "inplace":
+                    relpath = f"sops/{src.name}"
+                else:
+                    relpath = f"sops/{src.name}.sops.json"
                 dst = backup_dir / tool_name / relpath
                 try:
-                    sops_encrypt(src, dst, cfg.security.sops.age_recipients)
+                    sops_encrypt(src, dst, cfg.security.sops.age_recipients, mode=sops_mode)
                 except SopsError as e:
-                    # 에러를 무시하지 않되 백업 자체는 중단하지 않음 — metadata 에 누락
-                    # (사용자가 다음 backup 에서 재시도하거나 doctor 로 진단)
                     md.files.append(
                         FileEntry(
                             source_path=f"{tool_name}/{relpath}",
                             target_path=canonical_str,
                             sha256="",
                             mode="0600",
-                            encryption=f"sops/age (FAILED: {e})",
+                            encryption=f"{encryption_tag} (FAILED: {e})",
                         )
                     )
                     continue
@@ -188,7 +191,7 @@ def run_backup(
                         target_path=canonical_str,
                         sha256=sha256_file(dst),
                         mode=f"{src.stat().st_mode & 0o777:04o}",
-                        encryption="sops/age",
+                        encryption=encryption_tag,
                     )
                 )
 

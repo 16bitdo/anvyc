@@ -44,7 +44,13 @@ def age_key(tmp_path: Path) -> dict:
     return {"identity": identity, "public": public}
 
 
-def _make_yaml(anvyc_dir: Path, secret_path: Path, age_pub: str, identity_file: Path) -> Path:
+def _make_yaml(
+    anvyc_dir: Path,
+    secret_path: Path,
+    age_pub: str,
+    identity_file: Path,
+    sops_format: str = "binary",
+) -> Path:
     cfg = anvyc_dir / "anvyc.yaml"
     cfg.write_text(
         textwrap.dedent(
@@ -57,6 +63,7 @@ def _make_yaml(anvyc_dir: Path, secret_path: Path, age_pub: str, identity_file: 
               block_on_secret: false
               sops:
                 enabled: true
+                format: "{sops_format}"
                 age_recipients: ["{age_pub}"]
                 age_identity_file: "{identity_file}"
             tools:
@@ -150,6 +157,41 @@ def test_sops_apply_fails_without_key(tmp_path, age_key) -> None:
     # (만약 user 의 default keyring 이 우연히 같은 recipient 라면 통과 가능 — 그 경우는 skip)
     if not err:
         pytest.skip("default keyring 에 우연히 일치하는 key 존재")
+
+
+def test_sops_inplace_yaml_roundtrip(tmp_path, age_key) -> None:
+    """inplace 모드 — yaml 값만 암호화, 키와 형식 유지."""
+    secret = tmp_path / "creds.yaml"
+    secret.write_text("api_key: plaintext_yaml_secret_value\nuser: edward\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = _make_yaml(anvyc_dir, secret, age_key["public"], age_key["identity"], sops_format="inplace")
+
+    result = run_backup(root=anvyc_dir, config_path=cfg)
+    # inplace 모드는 확장자 유지 → creds.yaml (.sops.json suffix 없음)
+    enc = result.backup_dir / "shell/sops/creds.yaml"
+    assert enc.is_file()
+    enc_text = enc.read_text()
+    # 키 'api_key' 는 평문 유지, 값은 ENC[…] 로 암호화됨
+    assert "api_key:" in enc_text
+    assert "plaintext_yaml_secret_value" not in enc_text
+    assert "ENC[" in enc_text  # sops 의 암호화 marker
+
+    # metadata 의 encryption 필드
+    import json
+    meta = json.loads((result.backup_dir / "metadata.json").read_text())
+    enc_entries = [f for f in meta["files"] if f.get("encryption", "").startswith("sops/age")]
+    assert any("inplace" in e["encryption"] for e in enc_entries)
+
+    # apply 로 복원
+    secret.unlink()
+    run_apply(root=anvyc_dir, config_path=cfg)
+    assert secret.exists()
+    restored = secret.read_text()
+    assert "api_key: plaintext_yaml_secret_value" in restored
+    assert "user: edward" in restored
 
 
 def test_scanner_skips_sops_encrypted(tmp_path, age_key) -> None:

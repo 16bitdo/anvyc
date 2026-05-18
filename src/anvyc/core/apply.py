@@ -169,12 +169,16 @@ def _apply_symlink(entry: FileApplyEntry) -> None:
 
 
 def _apply_sops(entry: FileApplyEntry, identity_file: Path | None) -> None:
-    """SOPS 암호화 파일을 복호화해 target 에 평문으로 저장. DESIGN.md §31.6."""
+    """SOPS 암호화 파일을 복호화해 target 에 평문으로 저장. DESIGN.md §31.6.
+
+    entry.encryption 의 끝이 "/inplace" 면 inplace 모드, 그 외엔 binary.
+    """
     from anvyc.core.sops import decrypt as sops_decrypt
 
+    mode = "inplace" if (entry.encryption or "").endswith("/inplace") else "binary"
     target = entry.target_resolved
     target.parent.mkdir(parents=True, exist_ok=True)
-    sops_decrypt(entry.source_path, target, identity_file=identity_file)
+    sops_decrypt(entry.source_path, target, identity_file=identity_file, mode=mode)
     try:
         target.chmod(entry.mode)
     except OSError:

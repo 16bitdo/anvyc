@@ -3,10 +3,16 @@
 DESIGN.md §31. sops binary 가 모든 cryptographic 작업을 담당하며 anvyc 는
 얇은 wrapper 만 제공.
 
+지원 모드 (v0.3.0):
+  - "binary" (기본): 모든 파일을 binary 로 처리, output 은 .sops.json. byte-for-byte 보존.
+  - "inplace": yaml/json/dotenv/ini 의 값만 SOPS 로 암호화 (키는 평문 유지).
+               sops 본래 기능 활용. metadata 에 "sops/age/inplace" 로 표시.
+
 함수:
-  - encrypt(src, dst, recipients)             age 공개 키로 암호화
-  - decrypt(src, dst, identity_file=None)     age 개인 키로 복호화
-  - is_sops_encrypted(path)                    SOPS metadata 가 있는지 확인
+  - encrypt(src, dst, recipients, mode)              age 공개 키로 암호화
+  - decrypt(src, dst, identity_file=None, mode)      age 개인 키로 복호화
+  - is_sops_encrypted(path)                           SOPS metadata 가 있는지 확인
+  - guess_inplace_type(path)                          inplace 모드 input/output type
 """
 from __future__ import annotations
 
@@ -29,11 +35,28 @@ def sops_available() -> bool:
     return shutil.which(SOPS_BIN) is not None
 
 
-def encrypt(src: Path, dst: Path, recipients: list[str]) -> None:
+def guess_inplace_type(path: Path) -> str:
+    """inplace 모드용 input-type 추론. 모르면 'binary' 폴백."""
+    s = path.suffix.lower()
+    if s in (".yaml", ".yml"):
+        return "yaml"
+    if s == ".json":
+        return "json"
+    if s == ".env":
+        return "dotenv"
+    if s == ".ini":
+        return "ini"
+    return "binary"
+
+
+def encrypt(
+    src: Path, dst: Path, recipients: list[str], mode: str = "binary"
+) -> None:
     """src 를 age recipients 로 암호화해 dst 에 저장.
 
-    PoC 는 항상 binary 모드 — byte-for-byte 보존 보장.
-    .yaml/.json 의 in-place 부분 암호화는 v0.2.1+ 옵션으로 검토.
+    mode="binary": byte-for-byte 보존, 출력 형식 json.
+    mode="inplace": yaml/json/dotenv/ini 의 값만 암호화, 키와 형식은 유지.
+                    인식 불가능한 확장자는 자동으로 binary 폴백.
     """
     if not sops_available():
         raise SopsError("sops binary 미설치 (brew install sops)")
@@ -43,13 +66,24 @@ def encrypt(src: Path, dst: Path, recipients: list[str]) -> None:
         raise SopsError(f"source 파일 없음: {src}")
 
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "inplace":
+        itype = guess_inplace_type(src)
+        if itype == "binary":
+            # 확장자 인식 실패 → binary 동작과 동일
+            otype = "json"
+        else:
+            otype = itype
+    else:  # binary
+        itype = "binary"
+        otype = "json"
+
     args = [
         SOPS_BIN,
         "--encrypt",
         "--age",
         ",".join(recipients),
-        "--input-type", "binary",
-        "--output-type", "json",   # SOPS metadata 가 들어가 .sops.json 으로 저장
+        "--input-type", itype,
+        "--output-type", otype,
         "--output",
         str(dst),
         str(src),
@@ -59,12 +93,16 @@ def encrypt(src: Path, dst: Path, recipients: list[str]) -> None:
         raise SopsError(f"sops encrypt 실패 (exit {result.returncode}): {result.stderr.strip()}")
 
 
-def decrypt(src: Path, dst: Path, identity_file: Path | None = None) -> None:
+def decrypt(
+    src: Path,
+    dst: Path,
+    identity_file: Path | None = None,
+    mode: str = "binary",
+) -> None:
     """src(SOPS) 를 복호화해 dst 에 원본 평문 저장.
 
-    binary 모드로 암호화된 파일을 byte-for-byte 복원.
-    identity_file 미지정 시 sops 가 환경변수 (SOPS_AGE_KEY_FILE 또는 default
-    ~/.config/sops/age/keys.txt) 를 자동 사용한다.
+    mode 는 encrypt 때와 같아야 한다 (metadata 의 encryption 필드에서 결정).
+    inplace 모드는 src 의 확장자로 input-type 자동 추론.
     """
     if not sops_available():
         raise SopsError("sops binary 미설치 (brew install sops)")
@@ -76,11 +114,24 @@ def decrypt(src: Path, dst: Path, identity_file: Path | None = None) -> None:
         env["SOPS_AGE_KEY_FILE"] = str(identity_file)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "inplace":
+        type_ = guess_inplace_type(src)
+        if type_ == "binary":
+            # 인식 실패 → binary 폴백
+            itype = "json"
+            otype = "binary"
+        else:
+            itype = type_
+            otype = type_
+    else:  # binary
+        itype = "json"
+        otype = "binary"
+
     args = [
         SOPS_BIN,
         "--decrypt",
-        "--input-type", "json",      # 우리가 .sops.json 으로 저장했음
-        "--output-type", "binary",   # 원본 형식 (binary) 으로 복원
+        "--input-type", itype,
+        "--output-type", otype,
         "--output",
         str(dst),
         str(src),
@@ -95,11 +146,9 @@ def decrypt(src: Path, dst: Path, identity_file: Path | None = None) -> None:
 def is_sops_encrypted(path: Path) -> bool:
     """파일명 또는 내용 첫 4KB 로 SOPS metadata 존재 여부 추정."""
     try:
-        # 파일명 힌트
         name = path.name.lower()
-        if ".sops." in name or name.endswith(".enc") or name.endswith(".sops"):
-            # 파일명만으로는 false positive 가능 — 내용으로도 확인
-            pass
+        if ".sops." in name:
+            return True
         if not path.is_file():
             return False
         if path.stat().st_size > 10_000_000:
@@ -109,17 +158,3 @@ def is_sops_encrypted(path: Path) -> bool:
         return SOPS_MARKER_BYTES in head or SOPS_YAML_MARKER in head
     except (OSError, PermissionError):
         return False
-
-
-def _guess_input_type(src: Path) -> str:
-    """sops --input-type 값 결정. 모르면 binary."""
-    s = src.suffix.lower()
-    if s in (".yaml", ".yml"):
-        return "yaml"
-    if s == ".json":
-        return "json"
-    if s == ".env":
-        return "dotenv"
-    if s == ".ini":
-        return "ini"
-    return "binary"
