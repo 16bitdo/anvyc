@@ -9,6 +9,7 @@ from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.cross_user import CrossUserCheck
+from anvyc.checks.op_references import OpReferencesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.core.config import build_check_context, load_config
 
@@ -30,6 +31,7 @@ class DoctorReport:
 _REGISTRY = {
     "cross-user": CrossUserCheck(),
     "venv-hidden-flag": VenvHiddenFlagCheck(),
+    "op-references-valid": OpReferencesCheck(),
 }
 
 

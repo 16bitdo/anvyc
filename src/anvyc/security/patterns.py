@@ -28,3 +28,10 @@ PATTERNS: tuple[SecretPattern, ...] = (
         re.compile(r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}"),
     ),
 )
+
+# 1Password Secret Reference URI 인식. PATTERNS 와 별개 — 매칭 자체가 finding 이 아니라
+# 같은 라인의 다른 secret 매칭을 "low" 로 강등시키는 signal (DESIGN.md §30).
+#  op://<vault>/<item>/<field>  (optional sub-field 1단계 허용)
+OP_REFERENCE_RE: re.Pattern[str] = re.compile(
+    r"\bop://[^/\s\"']+/[^/\s\"']+/[^/\s\"']+(?:/[^/\s\"']+)?"
+)

@@ -145,9 +145,46 @@ anvyc git {init|status|commit|push}
 | Critical | private key, AWS secret key | 백업/적용 즉시 중단 |
 | High | GitHub token, Pulumi token | 백업/적용 즉시 중단 |
 | Medium | `.env`, `password=` | 경고, `--force` 시 진행 |
-| Low | email, username | 정보 로그만 |
+| Low | email, username, op:// 와 같은 라인의 패턴 매칭 | 정보 로그만 |
 
 `secret-scan`은 `backup` / `apply` / `git push` 모든 시점에 실행된다.
+
+### 9.1 1Password Secret Reference (v0.1.0)
+
+raw secret 대신 [1Password Secret Reference](https://developer.1password.com/docs/cli/secret-references/) `op://<vault>/<item>/<field>` 를 사용한다. reference 자체는 비-secret 이므로 backup/Git commit 안전.
+
+```bash
+# .zshrc 예
+export AWS_ACCESS_KEY_ID="op://Personal/AWS/access_key_id"
+export GITHUB_TOKEN="op://Personal/GitHub/token"
+```
+
+**사용 흐름**:
+
+```bash
+# 1) 1Password CLI 설치 + 로그인
+brew install 1password-cli      # macOS
+op signin
+
+# 2) 민감 값을 1Password 에 등록 (또는 기존 항목 사용)
+op item create --category=login --title='AWS' \
+    access_key_id=AKIA... secret_access_key=...
+
+# 3) dotfile 에서 raw secret 을 op:// reference 로 치환
+
+# 4) backup — reference 는 그대로 들어감
+anvyc backup
+
+# 5) 다른 머신에서 apply 후 1Password 로그인만 하면 동일 환경
+op signin           # 새 머신에서
+anvyc apply
+```
+
+**scanner 의 false-positive 강등**: 같은 라인에 `op://` 가 있으면 다른 secret 패턴 매칭이 `low` 로 강등된다 (placeholder 신호로 간주). 따라서 위 `.zshrc` 예시는 backup 시 차단되지 않는다.
+
+**doctor 의 reference 검증**: `anvyc doctor --only op-references-valid` 가 발견된 모든 `op://` URI 를 `op read` 로 resolve 시도한다. 실패 시 WARNING. `op` CLI 미설치/미인증 시 안전 skip.
+
+> v0.2 계획: encryption-at-rest 가 필요한 secret 은 [SOPS](https://github.com/getsops/sops) 통합으로 다룬다.
 
 ---
 
