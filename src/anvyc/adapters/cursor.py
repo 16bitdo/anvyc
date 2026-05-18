@@ -145,7 +145,7 @@ class CursorAdapter:
         )
         self._gs_allow = list(self.ide_cfg.get("global_storage_allowlist") or [])
         self._gs_always_excl_spec = PathSpec.from_lines(
-            "gitwildmatch", GLOBAL_STORAGE_ALWAYS_EXCLUDE
+            "gitignore", GLOBAL_STORAGE_ALWAYS_EXCLUDE
         )
 
     # ---------- public ----------
@@ -439,4 +439,4 @@ class CursorAdapter:
                     patterns.append(str(p.relative_to(root)))
                 except ValueError:
                     patterns.append(s)
-        return PathSpec.from_lines("gitwildmatch", patterns)
+        return PathSpec.from_lines("gitignore", patterns)

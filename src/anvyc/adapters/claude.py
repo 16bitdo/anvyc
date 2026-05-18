@@ -4,7 +4,7 @@ DESIGN.md §16 기반. 디렉터리 재귀 + pathspec gitignore-style exclude �
 sessions/tokens/cache/projects 등 민감 또는 휘발성 영역을 차단.
 
 INCLUDES 는 TOOL_ROOT (`~/.claude/`) 기준 상대 경로. 디렉터리면 재귀 수집.
-EXCLUDES 는 pathspec(gitwildmatch) 패턴, 같은 root 기준.
+EXCLUDES 는 pathspec(gitignore) 패턴, 같은 root 기준.
 """
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ class ClaudeAdapter:
             self._excludes = tuple(self._normalize(excludes)) + DEFAULT_EXCLUDES
         else:
             self._excludes = DEFAULT_EXCLUDES
-        self._spec = PathSpec.from_lines("gitwildmatch", self._excludes)
+        self._spec = PathSpec.from_lines("gitignore", self._excludes)
 
     def detect(self) -> bool:
         return TOOL_ROOT.exists()
