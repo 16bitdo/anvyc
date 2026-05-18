@@ -433,36 +433,158 @@ def list_(
 
 @app.command(name="scan-secrets")
 def scan_secrets(
-    target: Optional[Path] = typer.Argument(None, help="스캔 대상 경로. 미지정 시 현재 target."),
+    paths: Optional[list[Path]] = typer.Argument(None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."),
+    staged: bool = typer.Option(False, "--staged", help="현재 cwd 의 git 저장소에서 staged 파일만 스캔."),
+    root: Optional[Path] = typer.Option(None, "--root", help="--staged 의 git repo 경로 override."),
+    json_out: bool = typer.Option(False, "--json", help="JSON 출력."),
+    quiet: bool = typer.Option(False, "--quiet", help="발견 시에도 메시지 최소화 (pre-commit hook 용)."),
+    force: bool = typer.Option(False, "--force", help="medium 까지 허용 (비-block)."),
 ) -> None:
-    """secret 패턴을 스캔한다 (MVP TODO)."""
-    console.print(f"[yellow]TODO[/]: scan-secrets target={target}")
+    """secret 패턴을 스캔한다.
+
+    exit code:
+      0 — clean / 또는 force 로 medium 허용
+      1 — block (critical/high/medium 발견)
+    """
+    import subprocess as _sp
+    from anvyc.security.policy import evaluate
+    from anvyc.security.scanner import scan_paths
+
+    targets: list[Path] = []
+    if staged:
+        repo_root = (root or Path.cwd()).resolve()
+        try:
+            out = _sp.run(
+                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        except _sp.CalledProcessError as e:
+            console.print(f"[red]git diff --cached 실패: {e.stderr}[/]")
+            raise typer.Exit(code=2)
+        for rel in out.splitlines():
+            rel = rel.strip()
+            if not rel:
+                continue
+            targets.append(repo_root / rel)
+    elif paths:
+        targets = list(paths)
+    else:
+        console.print("[red]paths 또는 --staged 중 하나를 지정해야 합니다[/]")
+        raise typer.Exit(code=2)
+
+    findings = scan_paths([t for t in targets if t.exists()])
+    decision = evaluate(findings, force=force)
+
+    if json_out:
+        payload = {
+            "findings": [
+                {
+                    "path": str(f.path),
+                    "line": f.line_number,
+                    "pattern": f.pattern,
+                    "severity": f.severity,
+                    "excerpt": f.excerpt,
+                }
+                for f in findings
+            ],
+            "block": decision.block,
+            "reasons": decision.reasons,
+        }
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+    elif not quiet:
+        if not findings:
+            console.print("[green]scan-secrets: clean[/]")
+        else:
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("severity")
+            table.add_column("pattern")
+            table.add_column("location")
+            table.add_column("line", justify="right")
+            for f in findings:
+                style = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}.get(
+                    f.severity, "white"
+                )
+                table.add_row(
+                    f"[{style}]{f.severity}[/]",
+                    f.pattern,
+                    _short_path(f.path),
+                    str(f.line_number),
+                )
+            console.print(table)
+            if decision.block:
+                console.print(f"\n[red bold]차단됨 — reasons:[/]")
+                for r in decision.reasons[:5]:
+                    console.print(f"  • {r}")
+
+    raise typer.Exit(code=1 if decision.block else 0)
 
 
 @git_app.command("init")
-def git_init() -> None:
-    """.anvyc 영역을 Git 저장소로 초기화 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: git init")
+def git_init(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+) -> None:
+    """.anvyc 영역을 Git 저장소로 초기화. .gitignore + pre-commit hook 자동 설치."""
+    from anvyc.storage.git import GitError, init_repo
+    try:
+        init_repo(root.resolve())
+    except GitError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]git init OK[/] {_short_path(root.resolve())}")
+    console.print(f"  [dim]pre-commit hook 설치됨 — push 전 secret scan 자동 실행[/]")
 
 
 @git_app.command("status")
-def git_status() -> None:
-    """.anvyc 영역의 git status (MVP TODO)."""
-    console.print("[yellow]TODO[/]: git status")
+def git_status(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+) -> None:
+    """.anvyc 영역의 git status (--short)."""
+    from anvyc.storage.git import GitError, status
+    try:
+        out = status(root.resolve())
+    except GitError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1)
+    if out.strip():
+        typer.echo(out, nl=False)
+    else:
+        console.print("[green]clean[/]")
 
 
 @git_app.command("commit")
 def git_commit(
     message: str = typer.Option(..., "-m", "--message", help="커밋 메시지."),
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
 ) -> None:
-    """.anvyc 영역의 git commit (MVP TODO)."""
-    console.print(f"[yellow]TODO[/]: git commit -m {message!r}")
+    """.anvyc 영역의 git commit. pre-commit hook 이 secret scan 강제."""
+    from anvyc.storage.git import GitError, commit
+    try:
+        out = commit(root.resolve(), message)
+    except GitError as e:
+        console.print(f"[red]commit failed: {e}[/]")
+        raise typer.Exit(code=1)
+    if out:
+        typer.echo(out, nl=False)
 
 
 @git_app.command("push")
-def git_push() -> None:
-    """.anvyc 영역의 git push. pre-commit secret scan 통과 시에만 허용 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: git push")
+def git_push(
+    remote: str = typer.Option("origin", "--remote"),
+    branch: Optional[str] = typer.Option(None, "--branch"),
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+) -> None:
+    """.anvyc 영역의 git push."""
+    from anvyc.storage.git import GitError, push
+    try:
+        out = push(root.resolve(), remote=remote, branch=branch)
+    except GitError as e:
+        console.print(f"[red]push failed: {e}[/]")
+        raise typer.Exit(code=1)
+    if out:
+        typer.echo(out, nl=False)
 
 
 if __name__ == "__main__":
