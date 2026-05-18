@@ -20,6 +20,7 @@ class FileEntry:
     mode: str
     symlink_target: str | None = None
     encryption: str | None = None  # e.g. "sops/age" — apply 시 복호화 필요
+    plain_sha256: str | None = None  # SOPS entry 의 평문 sha256 (state_before 정합화용)
 
 
 @dataclass
@@ -80,6 +81,8 @@ def write_metadata(metadata: Metadata, target_dir: Path) -> Path:
             entry["symlinkTarget"] = f["symlink_target"]
         if f.get("encryption"):
             entry["encryption"] = f["encryption"]
+        if f.get("plain_sha256"):
+            entry["plainSha256"] = f["plain_sha256"]
         files_out.append(entry)
     payload["files"] = files_out
     target.write_text(json.dumps(payload, indent=2, ensure_ascii=False))

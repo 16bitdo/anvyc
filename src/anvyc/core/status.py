@@ -62,6 +62,8 @@ def compute_status(root: Path, backup_id: str | None = None) -> StatusReport:
         target_canonical = Path(str(entry.get("targetPath", "")))
         target_resolved = target_canonical.expanduser()
         expected = str(entry.get("sha256", ""))
+        plain_sha256 = entry.get("plainSha256")  # SOPS entry 의 평문 sha256
+        encryption = entry.get("encryption")
         source_path = backup_dir / str(entry.get("sourcePath", ""))
 
         actual: str | None
@@ -71,7 +73,9 @@ def compute_status(root: Path, backup_id: str | None = None) -> StatusReport:
         else:
             try:
                 actual = sha256_file(target_resolved)
-                state = "unchanged" if actual == expected else "modified"
+                # encrypted entry → target 은 평문이므로 plainSha256 과 비교
+                cmp = plain_sha256 if (encryption and plain_sha256) else expected
+                state = "unchanged" if actual == cmp else "modified"
             except OSError:
                 actual = None
                 state = "missing"

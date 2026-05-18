@@ -104,6 +104,7 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
         mode = _parse_mode(str(raw.get("mode", "0600")))
         symlink_target = raw.get("symlinkTarget")
         encryption = raw.get("encryption")
+        plain_sha256 = raw.get("plainSha256")
 
         state_before: str
         if symlink_target is not None:
@@ -121,7 +122,12 @@ def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileAp
         else:
             try:
                 actual = sha256_file(resolved)
-                state_before = "unchanged" if actual == expected else "modified"
+                if encryption and plain_sha256:
+                    # encrypted entry: target 은 평문, backup sha256 은 encrypted →
+                    # plainSha256 (encrypt 전 src 평문 hash) 와 비교
+                    state_before = "unchanged" if actual == plain_sha256 else "modified"
+                else:
+                    state_before = "unchanged" if actual == expected else "modified"
             except OSError:
                 state_before = "missing"
 
@@ -280,8 +286,8 @@ def run_apply(
 
     # Apply 본체
     for e in entries:
-        if e.state_before == "unchanged" and e.encryption is None:
-            # encryption entry 는 state_before 비교가 어려워 일단 항상 시도
+        if e.state_before == "unchanged":
+            # SOPS entry 도 plain_sha256 정합화 (v0.4.0) 후엔 정확히 비교 가능
             e.state_after = "skipped"
             continue
         try:

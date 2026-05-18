@@ -185,6 +185,8 @@ def run_backup(
                         )
                     )
                     continue
+                # 평문 sha256 도 함께 — status/apply 의 state_before 정합화용
+                plain_hash = sha256_file(src)
                 md.files.append(
                     FileEntry(
                         source_path=f"{tool_name}/{relpath}",
@@ -192,6 +194,7 @@ def run_backup(
                         sha256=sha256_file(dst),
                         mode=f"{src.stat().st_mode & 0o777:04o}",
                         encryption=encryption_tag,
+                        plain_sha256=plain_hash,
                     )
                 )
 

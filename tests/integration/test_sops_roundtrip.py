@@ -194,6 +194,44 @@ def test_sops_inplace_yaml_roundtrip(tmp_path, age_key) -> None:
     assert "user: edward" in restored
 
 
+def test_sops_status_unchanged_after_backup(tmp_path, age_key) -> None:
+    """v0.4.0: SOPS entry 가 backup 직후 status 에서 unchanged 로 표시되는지."""
+    from anvyc.core.status import compute_status
+
+    secret = tmp_path / "secret.env"
+    secret.write_text("DB_PASSWORD=val_42\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = _make_yaml(anvyc_dir, secret, age_key["public"], age_key["identity"])
+
+    run_backup(root=anvyc_dir, config_path=cfg)
+    report = compute_status(anvyc_dir)
+    counts = report.counts()
+    assert counts.get("unchanged", 0) >= 1, f"expected unchanged ≥ 1, got {counts}"
+    assert counts.get("modified", 0) == 0, f"expected 0 modified, got {counts}"
+
+
+def test_sops_status_modified_after_target_tamper(tmp_path, age_key) -> None:
+    """v0.4.0: target 평문 수정 시 status 가 modified 로 정확히 잡아야."""
+    from anvyc.core.status import compute_status
+
+    secret = tmp_path / "secret.env"
+    secret.write_text("DB_PASSWORD=original\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = _make_yaml(anvyc_dir, secret, age_key["public"], age_key["identity"])
+
+    run_backup(root=anvyc_dir, config_path=cfg)
+    # 평문 수정
+    secret.write_text("DB_PASSWORD=tampered\n")
+    report = compute_status(anvyc_dir)
+    assert report.counts().get("modified", 0) >= 1
+
+
 def test_scanner_skips_sops_encrypted(tmp_path, age_key) -> None:
     """sops 로 암호화된 파일은 secret scanner 가 통과시켜야 (false positive 차단)."""
     from anvyc.security.scanner import scan_file
