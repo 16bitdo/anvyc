@@ -43,6 +43,9 @@
 | 2026-05-18 | Shell adapter end-to-end backup PoC 완성 | DESIGN.md §12.1 절차를 실 동작으로 검증. shell → security scan → copy → hash → metadata.json → current symlink. 다른 adapter 추가 시 ADAPTERS 레지스트리에 등록만 하면 동일 파이프라인 |
 | 2026-05-18 | Backup 정책: secret scan 결과 critical/high 또는 medium(force 미지정)에서 차단 | DESIGN.md §13.2 정책 그대로. shell 파일은 통상 generic_secret 패턴에 걸리는 export 라인이 있을 수 있어 `--force` 안내가 UX 상 중요 |
 | 2026-05-18 | macOS venv 트랩 회피: `chflags -R nohidden .venv` 필수 | Python 3.13 site.py 가 UF_HIDDEN flag 있는 .pth 를 스킵. `.`-prefix 디렉터리는 macOS 에서 자동으로 hidden flag 가 붙어 editable install 의 .pth 가 무시됨 (https://github.com/python/cpython/issues/116727). README/doctor 가 안내해야 함 |
+| 2026-05-18 | v0.1.0 MVP 필수 경로 = Phase 1 + Phase 2 + Phase 6 | apply/restore → 어댑터 6개 → 테스트/패키징. Git sync / Doctor 보강 / encryption 은 v0.2 |
+| 2026-05-18 | Phase 1 (apply/restore) 가 Phase 2 의 선행 | apply 기본 구현이 있어야 새 어댑터가 즉시 backup+apply 양쪽 동작. 새 어댑터마다 별도 apply 구현 불필요 |
+| 2026-05-18 | 어댑터 추가 순서: aws → gh → pulumi → claude → iterm2 → cursor | 단순 단일 파일 → 디렉터리 재귀 → plist → 3-layer 순으로 복잡도 점증. claude 에서 디렉터리 재귀 수집 인벤토리 구조를 1회 검증 |
 
 ---
 
@@ -60,6 +63,10 @@
 | Layer C(projects) 활성화 UX | yaml 직접 편집 vs `anvyc cursor project add <path>` | 사용 빈도 보고 결정 |
 | Doctor `--fix` 모드 자동 정규화 범위 | SSH config의 `/Users/<alias>/` → `~/` 정규화만 / 전체 dotfile 일괄 정규화 | v0.2에서 결정. 1차는 SSH config만 후보 |
 | Cross-user alias auto-detect | `/Users/<x> → /Users/<y>` symlink를 자동 감지해 alias로 인정 vs 명시 선언만 인정 | 보수적으로 명시 선언만 인정 (오탐 가능성 차단) |
+| Phase 3 (Git sync) v0.1.0 포함 여부 | 포함 / v0.2 연기 | DESIGN.md §29.6 Q1. 사용 패턴 결정 |
+| iterm2 safe subset 키 목록 확정 시점 | DESIGN.md §14.2 그대로 / 실사용자 환경 기준 재조정 | DESIGN.md §29.6 Q2. P2.5 시작 전 결정 |
+| Cursor projects 모드 default roots 기본값 | empty 유지 / 자동 감지 후 제안 | DESIGN.md §29.6 Q3. P2.6 시작 전 결정 |
+| v0.1.0 secret encryption 제공 범위 | 없음 (수동 `~/.anvyc-secrets/` 가이드) / age 기본 통합 | DESIGN.md §29.6 Q4. Phase 5 일정 영향 |
 | CLI 진입점 이름 | `anvyc` (확정) | 단어 변경 없음 |
 
 ---

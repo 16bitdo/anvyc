@@ -1138,3 +1138,68 @@ anvyc doctor --skip cross-user     # 특정 check 제외
 ```
 
 MVP는 Python으로 빠르게 구현하고, 실제 Mac 2대에서 end-to-end 검증한 뒤 필요 시 Go 기반 단일 바이너리 배포로 전환을 검토한다.
+
+---
+
+## 29. Post-PoC 로드맵 (2026-05-18 기준)
+
+§21 의 1~3주차 원안은 일부 완료. 본 섹션이 v0.1.0 MVP 까지의 갱신된 작업 계획이다.
+
+### 29.1 완료된 영역
+
+| 영역 | 완료 내역 |
+|---|---|
+| CLI | doctor, init, backup, list, status, diff |
+| Adapter | shell, git |
+| Doctor checks | cross-user, venv-hidden-flag |
+| Core | backup orchestrator, secret scanner, status, diff |
+
+### 29.2 Phase 분류
+
+| Phase | 범위 | 우선순위 | 추정 |
+|---|---|---|---|
+| 1 | apply / restore (round-trip) | HIGH | 4~6h |
+| 2 | 어댑터 6개 (aws/gh/pulumi/claude/iterm2/cursor) | HIGH | 5~7h |
+| 3 | Git 동기화 (.anvyc → remote, pre-commit hook) | MEDIUM (v0.2 후보) | 3~4h |
+| 4 | Doctor 보강 (#17 iTerm2 plist, adapter validate 통합, --fix) | MEDIUM | 2~3h |
+| 5 | Encryption (~/.anvyc-secrets/, age, 1Password) | LOW (post-MVP) | 3~4h |
+| 6 | 테스트 + 패키징 + v0.1.0 릴리즈 | 필수 (MVP 직전) | 4~6h |
+
+### 29.3 의존성
+
+```
+P1 → P2 (apply 기본 구현이 있어야 새 어댑터가 즉시 backup+apply 양쪽 동작)
+P2 → P6
+P3, P4, P5 — P1 이후 어디서든 병렬
+```
+
+### 29.4 v0.1.0 MVP 최단 경로
+
+**필수**: Phase 1 + Phase 2 (cursor/claude/iterm2 포함) + Phase 6
+**v0.2 연기 가능**: Phase 3, 4, 5
+
+근거: `.anvyc/` 자체는 Dropbox/iCloud/수동 SCP 로도 이전 가능. secret 기본 제외 정책으로 encryption 없이도 안전성 확보. Doctor 추가 check 은 신뢰도용.
+
+**총 추정 (필수 경로)**: 13~19 시간 = 2~3일.
+
+### 29.5 권장 진행 순서
+
+```
+Day 1  P1.1 → P1.7  apply/restore 라운드 트립 완성
+Day 1  P2.1 ~ P2.3  aws/gh/pulumi
+Day 2  P2.4         claude
+Day 2  P2.5         iterm2 (plistlib)
+Day 2  P2.6         cursor (#6~#11)
+Day 3  P6.1 ~ P6.5  unit/integration test + pipx + v0.1.0 tag
+```
+
+각 phase 끝에 commit + push.
+
+### 29.6 열린 결정
+
+| # | 항목 | 후보 |
+|---|---|---|
+| Q1 | Phase 3 (Git sync) 를 v0.1.0 에 포함할지 | 포함 / v0.2 |
+| Q2 | iterm2 safe subset 키 목록 확정 시점 | §14.2 그대로 / 사용자 환경 기준 재조정 |
+| Q3 | Cursor projects 모드 default roots 기본값 | empty / 자동 감지 후 제안 |
+| Q4 | v0.1.0 에서 secret encryption 제공 범위 | 없음 / age 기본 통합 |
