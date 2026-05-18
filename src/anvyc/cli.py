@@ -53,9 +53,21 @@ def init(
 
 
 @app.command()
-def doctor() -> None:
-    """설치된 도구, 경로, 권한, 위험 경로를 진단한다 (MVP TODO)."""
-    console.print("[yellow]TODO[/]: doctor")
+def doctor(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="모든 finding 나열."),
+    strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+    only: list[str] = typer.Option(None, "--only", help="실행할 check 이름 (반복 가능)."),
+    skip: list[str] = typer.Option(None, "--skip", help="건너뛸 check 이름 (반복 가능)."),
+) -> None:
+    """설치된 도구, 경로, 권한, cross-user 경로 등을 read-only로 진단한다 (MVP TODO).
+
+    DESIGN.md §27 참고.
+    """
+    console.print(
+        f"[yellow]TODO[/]: doctor "
+        f"(verbose={verbose}, strict={strict}, json={json_out}, only={only}, skip={skip})"
+    )
 
 
 @app.command()

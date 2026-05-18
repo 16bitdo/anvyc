@@ -558,38 +558,126 @@ plistlib로 파싱 후 필요한 키만 직렬화
 
 ## 15. Cursor IDE Adapter 설계
 
-### 15.1 포함 대상
+Cursor IDE는 3개 layer의 설정을 가진다. anvyc는 layer별 정책을 분리한다.
 
-```text
-settings.json
-keybindings.json
-snippets/
-~/.cursor/rules/
-~/.cursor/skills/
-mcp.json
-cli-config.json
-```
+| Layer | 경로 | 역할 |
+|---|---|---|
+| A: User-global | `~/.cursor/` | rules / skills / mcp / plugins |
+| B: IDE user config | `~/Library/Application Support/Cursor/User/` | settings / keybindings / snippets / profiles |
+| C: Project-local (옵트인) | `<repo>/.cursor/`, `<repo>/.cursorrules` | 프로젝트별 rules |
 
-### 15.2 제외 대상
+### 15.1 Layer A — User-global (`~/.cursor/`)
 
-```text
-workspaceStorage/
-History/
-logs/
-cache/
-globalStorage 전체 (allowlist 외)
-machine-specific UI state
-```
+#### 포함 (Tier 1)
 
-### 15.3 globalStorage 정책
+| 경로 | 설명 |
+|---|---|
+| `~/.cursor/rules/` | 전역 cursor rules |
+| `~/.cursor/skills/` | 전역 skills |
+| `~/.cursor/skills-cursor/` | Cursor 특화 skills |
+| `~/.cursor/mcp.json` | MCP server 등록 (secret scan 필수) |
+| `~/.cursor/plugins/local/` | 로컬 플러그인 |
+| `~/.cursor/plans/` | plan 템플릿 (선택) |
 
-globalStorage는 확장 프로그램별 설정이 들어갈 수 있으므로 전체 동기화하지 않는다. 필요 시 allowlist 기반으로만 포함한다.
+#### 제외 (Tier 1)
+
+| 경로 | 이유 |
+|---|---|
+| `~/.cursor/cli-config.json` | 0600 perms, 토큰 가능성 (기존 v0.1에서 잘못 포함되어 있었음) |
+| `~/.cursor/argv.json` | 기기별 launch arg |
+| `~/.cursor/ide_state.json` | 기기별 UI state |
+| `~/.cursor/extensions/` | 용량 큼, IDE가 자동 재설치 가능 |
+| `~/.cursor/projects/` | 절대 경로 캐시, 기기/사용자별 |
+| `~/.cursor/workers/` | 런타임 캐시 |
+| `~/.cursor/ai-tracking/` | 세션/사용량 추적 |
+| `~/.cursor/chats/` | 대화 이력 (개인 정보) |
+| `~/.cursor/plugins/cache/` | 캐시 |
+| `~/.cursor/rules.bak-*` | 백업 사본, 동기화 대상 아님 |
+| `~/.cursor/prompt_history.json` | 사용자 입력 이력 (개인 정보) |
+
+#### Symlink 정책
+
+`~/.cursor/` 하위 일부 항목이 외부 repo로 symlink 되어 있을 수 있다 (예: `rules.bak-* → /Users/.../role-based-ruleset/.../rules`).
+
+- `follow_symlinks: false` 가 기본값이다.
+- symlink는 대상 경로만 `metadata.json`에 기록한다 (`{"path": ..., "symlinkTarget": "..."}`).
+- 적용 시 동일 symlink를 재생성한다. 대상 경로가 존재하지 않으면 경고 + skip.
+
+### 15.2 Layer B — IDE user config (`~/Library/Application Support/Cursor/User/`)
+
+#### 포함 (Tier 1)
+
+| 경로 | 설명 |
+|---|---|
+| `settings.json` | 사용자 설정 |
+| `keybindings.json` | 키바인딩 |
+| `snippets/` | 코드 스니펫 |
+| `profiles/<id>/{settings,keybindings,snippets}` | 다중 프로필 (캐시는 제외) |
+
+#### 제외 (Tier 1)
+
+| 경로 | 이유 |
+|---|---|
+| `History/` | 파일 변경 이력 (실측 ~23M) |
+| `workspaceStorage/` | 워크스페이스 캐시 (실측 ~1.4G) |
+| `globalStorage/state.vscdb*` | 통합 SQLite, 세션/토큰 가능성 |
+| `globalStorage/<ext>/` (allowlist 외) | 확장별 데이터, 일반적으로 동기화 부적합 |
+| `*.bak`, `*.49f*.bak` | 자동 백업 사본 |
+| `profiles/<id>/State/` 등 캐시 | 프로필 캐시 |
+
+#### globalStorage allowlist
 
 ```yaml
 cursor:
-  global_storage_allowlist:
-    - "publisher.extension-id"
+  ide:
+    global_storage_allowlist:
+      - "publisher.extension-id"
 ```
+
+명시된 extension의 globalStorage만 포함. 기본은 empty.
+
+### 15.3 Layer C — Project-local (`.cursor/`) 옵트인
+
+anvyc는 dotfile sync 도구이므로 **프로젝트 repo 내부의 `.cursor/`는 기본 대상이 아니다**. 활성화 시에만 지정된 root 디렉터리에서 수집한다.
+
+```yaml
+cursor:
+  projects:
+    enabled: false
+    roots:
+      - "~/Documents/anvyc"
+      - "~/Documents/another-project"
+    patterns:
+      - ".cursor/rules"
+      - ".cursor/skills"
+      - ".cursor/mcp.json"
+      - ".cursorrules"
+```
+
+저장 위치: `.anvyc/backups/<ts>/cursor-projects/<project-name>/`. 각 root는 사용자가 명시한 절대/`~` 확장 경로만 허용한다 (자동 스캔 X).
+
+### 15.4 보안 정책 (확장)
+
+| 파일 | 위험 | 정책 |
+|---|---|---|
+| `~/.cursor/cli-config.json` | 토큰 | 기본 제외, scan으로 토큰 잔존 확인 |
+| `~/.cursor/mcp.json` | OAuth/API 토큰 inline 가능 | 포함 + secret scan + 토큰 필드 자동 마스킹 옵션 (`mask_mcp_tokens: true`) |
+| `globalStorage/state.vscdb` | 통합 DB, 세션 포함 가능 | 항상 제외 |
+| `globalStorage/<ext>/` | extension별 secret 저장 가능 | allowlist 외 제외 |
+| Symlink 대상 외부 repo | 의도치 않은 외부 백업 | follow_symlinks=false, metadata만 |
+
+### 15.5 구현 단계
+
+| 단계 | 작업 | 시기 |
+|---|---|---|
+| 1 | exclude() 목록 확정 (이 문서 반영) | 즉시 |
+| 2 | collect() — Layer A 구현 | 1주차 PoC |
+| 3 | collect() — Layer B 구현 | 1주차 PoC |
+| 4 | symlink 처리 (metadata 보존) | 1주차 |
+| 5 | profiles/ 다중 프로필 처리 | 2주차 MVP |
+| 6 | globalStorage allowlist 처리 | 2주차 MVP |
+| 7 | mcp.json 토큰 마스킹 옵션 | 2주차 MVP |
+| 8 | Layer C (projects 모드) 옵트인 | 3주차 또는 v0.2 |
 
 ---
 
@@ -907,7 +995,133 @@ touch src/anvyc/cli.py
 
 ---
 
-## 27. 최종 의사결정
+## 27. Doctor 명령 설계
+
+`anvyc doctor`는 backup/apply 전에 환경을 read-only로 진단한다. 자동 수정은 하지 않는다.
+
+### 27.1 진단 카테고리
+
+| 카테고리 | 내용 |
+|---|---|
+| 도구 설치 | 각 adapter `detect()` |
+| 경로 권한 | 0600 파일이 읽기 가능한지, 쓰기 권한 |
+| Secret 잔존 | `scan-secrets` 일부 (configurable) |
+| Cross-user 경로 | 본 §27.3 |
+| iTerm2 plist 안전성 | window state / recent sessions 잔존 여부 |
+| Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
+
+### 27.2 모듈 구조
+
+```
+src/anvyc/
+├── checks/                  # 재사용 Check 컴포넌트
+│   ├── __init__.py
+│   ├── base.py              # Severity, CheckResult, CheckContext
+│   └── cross_user.py        # §27.3 구현
+└── core/
+    └── doctor.py            # check 등록/실행 orchestrator
+```
+
+`CheckResult`는 `(check_name, severity, message, location, line?, suggestion?)` 5~6필드 dataclass.
+Adapter `validate()`도 동일 `CheckResult`를 반환하도록 통합한다 → doctor가 adapter validate까지 묶어 단일 리포트.
+
+### 27.3 Cross-user audit (핵심)
+
+#### 27.3.1 배경
+
+macOS에서 사용자 이름을 바꾸거나 `/Users/<old> -> /Users/<new>` symlink로 호환성을 유지하는 경우, dotfile 내부에 `/Users/<old>/...` 절대 경로가 남는다. 같은 머신에서는 alias 덕에 동작하지만 다른 머신에 적용하면 dangling이 된다.
+
+#### 27.3.2 분류 (5단계)
+
+| Severity | 조건 | 의미 |
+|---|---|---|
+| Info | path username == `whoami` | 자기 자신 |
+| Info-aliased | path가 symlink로 현재 user home에 resolve | 현재 머신에서 동작, 타 머신에서 broken |
+| Warning-foreign | path username이 실재 다른 user (다른 UID) | 머신 간 이식 시 권한 충돌 가능 |
+| Warning-dangling | path 미존재 | 깨진 참조 |
+| Critical | secret 영역 파일 (SSH key/AWS profile 등) 안의 cross-user 경로 | 의도치 않은 sync 위험 |
+
+#### 27.3.3 탐지 범위
+
+| 카테고리 | 대상 | 탐지 방법 |
+|---|---|---|
+| 디렉터리 이름 prefix | `~/.cursor/projects/Users-*-*` | name decode |
+| Symlink target | `~/.cursor/**` (depth 3) | `readlink` |
+| 텍스트 content | `.zshrc`, `.zprofile`, `.gitconfig`, `~/.ssh/config{,.d/*}`, Cursor `settings.json`/`keybindings.json`, `~/.claude/{settings.json,CLAUDE.md}` | regex `/Users/([a-z][a-z0-9_.-]+)/` |
+| iTerm2 plist | profile working directory 키 (Phase 2) | plistlib + 동일 regex |
+
+#### 27.3.4 alias 선언
+
+```yaml
+doctor:
+  cross_user:
+    enabled: true
+    known_user_aliases:
+      aliasuser: edward
+    scan_targets:
+      - "~/.cursor/projects"
+      - "~/.zshrc"
+      - "~/.zprofile"
+      - "~/.gitconfig"
+      - "~/.ssh/config"
+      - "~/.ssh/config.d"
+      - "~/Library/Application Support/Cursor/User/settings.json"
+      - "~/Library/Application Support/Cursor/User/keybindings.json"
+      - "~/.claude/settings.json"
+      - "~/.claude/CLAUDE.md"
+    severity_overrides: {}    # path glob → severity
+```
+
+선언된 alias는 Warning-foreign → Info-aliased로 강등된다.
+
+#### 27.3.5 출력 예 (실측 환경 기반)
+
+```
+[cross-user audit]
+  Aliased users:
+    aliasuser → edward (declared)
+  Findings:
+    cursor/projects        13 entries reference /Users/aliasuser/...
+                           → Info (aliased, regenerable cache, 백업 대상 아님)
+    ssh/config.d/30-teleport.conf:3-5
+                           → Info-aliased, NOT portable
+                           → suggest: $HOME 또는 ~/ 형식으로 정규화
+    cursor/rules.bak-20260206-092948 → /Users/aliasuser/.../role-based-ruleset
+                           → Info (Layer A `rules.bak-*` 제외 정책에 의해 백업 대상 아님)
+  Summary: 0 critical, 0 warning, 20 info
+```
+
+### 27.4 CLI 옵션
+
+```bash
+anvyc doctor                       # 요약
+anvyc doctor --verbose             # 모든 finding 나열
+anvyc doctor --strict              # warning 이상 시 exit code 1
+anvyc doctor --json                # 기계 가독 JSON 출력
+anvyc doctor --only cross-user     # 특정 check만
+anvyc doctor --skip cross-user     # 특정 check 제외
+```
+
+### 27.5 안전 원칙
+
+- Doctor는 **read-only**. 어떤 파일도 수정하지 않는다.
+- Cross-user finding은 backup/apply에 영향을 주지 않는다 (정보 제공만).
+- `--fix` 모드는 v0.2 이후 별도 검토. 1차 후보: SSH config의 `/Users/<alias>/` → `$HOME` 또는 `~/` 정규화 제안.
+
+### 27.6 구현 단계
+
+| 단계 | 작업 | 시기 |
+|---|---|---|
+| 1 | `checks/base.py` — Severity/CheckResult/Context 정의 | 1주차 PoC |
+| 2 | `checks/cross_user.py` — regex + alias resolution + 분류 | 1주차 |
+| 3 | `core/doctor.py` — orchestrator + cli 옵션 | 1주차 |
+| 4 | iTerm2 plist 대응 (profile working directory) | 2주차 |
+| 5 | Adapter `validate()`를 CheckResult로 통합 | 2주차 |
+| 6 | `--fix` 모드 검토 | v0.2 이후 |
+
+---
+
+## 28. 최종 의사결정
 
 이 프로젝트는 chezmoi를 대체하는 범용 dotfiles manager가 아니라, chezmoi의 안전 원칙을 참고한 **개발환경 특화 config sync tool**로 개발한다.
 

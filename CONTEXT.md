@@ -33,6 +33,12 @@
 | 2026-05-17 | iTerm2 전체 plist 동기화 금지 | window state/recent sessions/local path 등 장비별 휘발 데이터 포함 |
 | 2026-05-17 | MVP target: macOS only | 1차 사용자는 Mac 개발자 |
 | 2026-05-18 | DESIGN.md v0.2 재작성 | v0.1의 일부 섹션 텍스트 손상으로 정합성 부족 |
+| 2026-05-18 | Cursor adapter 3-layer 모델 채택 (A: ~/.cursor, B: Library/User, C: project-local opt-in) | 실제 디렉터리 토폴로지 조사 결과 단일 평면 목록으로는 secret/캐시/symlink 처리 정책을 표현하기 부족 |
+| 2026-05-18 | `~/.cursor/cli-config.json` 기본 제외 | 0600 perms + 토큰 가능성 확인. v0.1 잘못된 include 정정 |
+| 2026-05-18 | Cursor symlink follow=false 기본, metadata만 기록 | 실측: `rules.bak-* → 외부 repo(role-based-ruleset)` 패턴 존재. 의도치 않은 외부 컨텐츠 백업 방지 |
+| 2026-05-18 | Doctor `cross-user` check 도입, 5단계 severity (info/info-aliased/warning-foreign/warning-dangling/critical) | 실측: `/Users/aliasuser → /Users/edward` symlink. `~/.cursor/projects/`의 13/20이 alias 경로, SSH config 6라인이 alias 경로. 같은 머신에서는 동작하지만 다른 머신에 적용하면 broken |
+| 2026-05-18 | Doctor는 read-only, `--fix` 모드는 v0.2 이후 | 자동 수정은 부작용이 크고 사용자 의도와 어긋날 수 있음. 1차는 진단/제안만 |
+| 2026-05-18 | `src/anvyc/checks/` 신규 패키지 도입 | Check 컴포넌트를 doctor·adapter validate·scan-secrets 등에서 재사용. 단일 CheckResult 타입으로 통합 보고 |
 
 ---
 
@@ -45,6 +51,11 @@
 | password manager 연동 | 1Password CLI(`op`) | MVP 이후 |
 | 다중 계정 처리 모델 | profile-per-host vs profile-per-account | 사용 사례 수집 후 결정 |
 | Cursor globalStorage allowlist 기본값 | empty vs 추천 extension 5종 | 사용자 피드백 수집 후 결정 |
+| Cursor `mcp.json` 토큰 처리 | 마스킹 후 별도 secret store / 항상 제외 / scan만 | 우선 마스킹 + secret store 방향(`mask_mcp_tokens: true` 기본) |
+| Cursor `plans/` 포함 여부 | 포함(기본) vs 제외 | 개인 plan에 민감 정보 포함 시 risk. 1차는 포함 + scan, 사용 후 재검토 |
+| Layer C(projects) 활성화 UX | yaml 직접 편집 vs `anvyc cursor project add <path>` | 사용 빈도 보고 결정 |
+| Doctor `--fix` 모드 자동 정규화 범위 | SSH config의 `/Users/<alias>/` → `~/` 정규화만 / 전체 dotfile 일괄 정규화 | v0.2에서 결정. 1차는 SSH config만 후보 |
+| Cross-user alias auto-detect | `/Users/<x> → /Users/<y>` symlink를 자동 감지해 alias로 인정 vs 명시 선언만 인정 | 보수적으로 명시 선언만 인정 (오탐 가능성 차단) |
 | CLI 진입점 이름 | `anvyc` (확정) | 단어 변경 없음 |
 
 ---
