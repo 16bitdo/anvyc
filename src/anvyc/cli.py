@@ -33,6 +33,9 @@ app = typer.Typer(
 git_app = typer.Typer(name="git", help=".anvyc 영역에 대한 Git 작업 wrapper.")
 app.add_typer(git_app, name="git")
 
+sops_app = typer.Typer(name="sops", help="SOPS 단독 명령 (encrypt/decrypt/rotate-keys).")
+app.add_typer(sops_app, name="sops")
+
 console = Console()
 
 
@@ -599,6 +602,168 @@ def git_push(
         raise typer.Exit(code=1)
     if out:
         typer.echo(out, nl=False)
+
+
+@sops_app.command("encrypt")
+def sops_encrypt(
+    src: Path = typer.Argument(..., help="암호화할 파일 (평문)."),
+    output: Optional[Path] = typer.Option(None, "-o", "--output", help="출력 경로. 미지정 시 자동."),
+    mode: Optional[str] = typer.Option(None, "--mode", help="binary | inplace. 미지정 시 yaml 의 format."),
+    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """파일을 SOPS 로 암호화. anvyc.yaml security.sops 의 recipients 사용."""
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.sops import SopsError
+    from anvyc.core.sops import encrypt as sops_encrypt_fn
+
+    cfg = load_anvyc_config(config)
+    recipients = cfg.security.sops.age_recipients
+    if not recipients:
+        console.print("[red]anvyc.yaml security.sops.age_recipients 가 비어 있습니다.[/]")
+        raise typer.Exit(code=2)
+    used_mode = mode or cfg.security.sops.format or "binary"
+    if output is None:
+        if used_mode == "inplace":
+            output = src.with_suffix(src.suffix + ".sops")
+        else:
+            output = src.with_suffix(src.suffix + ".sops.json")
+    try:
+        sops_encrypt_fn(src, output, recipients, mode=used_mode)
+    except SopsError as e:
+        console.print(f"[red]encrypt 실패: {e}[/]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]encrypted[/] {_short_path(src)} → {_short_path(output)}  ({used_mode})")
+
+
+@sops_app.command("decrypt")
+def sops_decrypt(
+    src: Path = typer.Argument(..., help="SOPS 암호화 파일."),
+    output: Optional[Path] = typer.Option(None, "-o", "--output", help="평문 출력 경로. 미지정 시 stdout."),
+    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """SOPS 파일을 복호화. anvyc.yaml security.sops.age_identity_file 사용.
+
+    src 의 파일명에 .sops.json 이 있으면 binary 모드, 아니면 inplace 모드로 자동 판정.
+    """
+    import tempfile
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.sops import SopsError
+    from anvyc.core.sops import decrypt as sops_decrypt_fn
+
+    cfg = load_anvyc_config(config)
+    identity = Path(cfg.security.sops.age_identity_file).expanduser()
+    identity_arg: Optional[Path] = identity if identity.is_file() else None
+
+    name = src.name.lower()
+    mode = "binary" if ".sops.json" in name else "inplace"
+
+    # output 미지정 시 stdout — temp 로 일단 받아서 출력
+    if output is None or str(output) == "-":
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
+            tmp = Path(tf.name)
+        try:
+            sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode)
+            typer.echo(tmp.read_text(), nl=False)
+        except SopsError as e:
+            console.print(f"[red]decrypt 실패: {e}[/]")
+            raise typer.Exit(code=1)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        return
+
+    try:
+        sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode)
+    except SopsError as e:
+        console.print(f"[red]decrypt 실패: {e}[/]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]decrypted[/] {_short_path(src)} → {_short_path(output)}  ({mode})")
+
+
+@sops_app.command("rotate-keys")
+def sops_rotate_keys(
+    root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
+    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="특정 backup 만. 미지정 시 모든 backup."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 없이 처리 대상만 출력."),
+    strict: bool = typer.Option(False, "--strict", help="1건 실패 시 즉시 exit 1 (default: continue)."),
+    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """모든 backup 의 SOPS 파일을 anvyc.yaml 의 현재 age_recipients 로 재암호화."""
+    import json as _jl
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.sops import SopsError, rotate_recipients
+
+    cfg = load_anvyc_config(config)
+    recipients = cfg.security.sops.age_recipients
+    if not recipients:
+        console.print("[red]anvyc.yaml security.sops.age_recipients 가 비어 있습니다.[/]")
+        raise typer.Exit(code=2)
+    identity = Path(cfg.security.sops.age_identity_file).expanduser()
+    identity_arg: Optional[Path] = identity if identity.is_file() else None
+
+    backups_root = root / "backups"
+    if not backups_root.is_dir():
+        console.print(f"[yellow]no backups under {_short_path(root)}/backups[/]")
+        raise typer.Exit(code=0)
+
+    if backup_id:
+        target_backups = [backups_root / backup_id]
+        if not target_backups[0].is_dir():
+            console.print(f"[red]backup not found: {backup_id}[/]")
+            raise typer.Exit(code=1)
+    else:
+        target_backups = sorted([d for d in backups_root.iterdir() if d.is_dir()])
+
+    rotated: list[Path] = []
+    skipped: list[Path] = []
+    failed: list[tuple[Path, str]] = []
+
+    for backup_dir in target_backups:
+        meta_path = backup_dir / "metadata.json"
+        if not meta_path.is_file():
+            continue
+        try:
+            meta = _jl.loads(meta_path.read_text())
+        except (OSError, ValueError):
+            continue
+        for entry in meta.get("files") or []:
+            enc = entry.get("encryption", "")
+            if not enc.startswith("sops/"):
+                continue
+            mode = "inplace" if enc.endswith("/inplace") else "binary"
+            sops_file = backup_dir / str(entry.get("sourcePath", ""))
+            if not sops_file.is_file():
+                skipped.append(sops_file)
+                continue
+            if dry_run:
+                rotated.append(sops_file)
+                continue
+            try:
+                rotate_recipients(sops_file, recipients, identity_file=identity_arg, mode=mode)
+                rotated.append(sops_file)
+            except SopsError as e:
+                failed.append((sops_file, str(e)))
+                if strict:
+                    console.print(f"[red bold]strict mode — abort: {sops_file} ({e})[/]")
+                    raise typer.Exit(code=1)
+
+    # 보고
+    label = "would-rotate" if dry_run else "rotated"
+    console.print(f"[green]{label}[/] {len(rotated)} files")
+    if skipped:
+        console.print(f"[dim]skipped (missing): {len(skipped)}[/]")
+    if failed:
+        console.print(f"[red]failed: {len(failed)}[/]")
+        for f, err in failed[:5]:
+            console.print(f"  • {_short_path(f)}: {err}")
+        if len(failed) > 5:
+            console.print(f"  ... and {len(failed) - 5} more")
+        if not strict:
+            raise typer.Exit(code=3)
 
 
 if __name__ == "__main__":

@@ -143,6 +143,49 @@ def decrypt(
         raise SopsError(f"sops decrypt 실패 (exit {result.returncode}): {result.stderr.strip()}")
 
 
+def rotate_recipients(
+    file: Path,
+    new_recipients: list[str],
+    identity_file: Path | None = None,
+    mode: str = "binary",
+) -> None:
+    """SOPS 파일의 recipient 를 new_recipients 로 교체. atomic.
+
+    동작:
+      1. tempfile 에 decrypt
+      2. tempfile → new_recipients 로 encrypt (목적지: 원본 파일 옆 .new 임시)
+      3. 성공 시 os.replace 로 원본 swap
+      4. tempfile (평문) 즉시 삭제
+
+    실패 시 원본은 그대로 보존되며 SopsError raise.
+    """
+    import os
+    import tempfile
+
+    if not file.is_file():
+        raise SopsError(f"파일 없음: {file}")
+    if not new_recipients:
+        raise SopsError("new_recipients 비어 있음")
+
+    # 1) decrypt → temp plain
+    with tempfile.NamedTemporaryFile(delete=False) as tf:
+        plain_tmp = Path(tf.name)
+    new_enc_tmp = file.parent / f".{file.name}.rotate-new"
+    try:
+        decrypt(file, plain_tmp, identity_file=identity_file, mode=mode)
+        # 2) encrypt → new temp
+        encrypt(plain_tmp, new_enc_tmp, new_recipients, mode=mode)
+        # 3) atomic replace
+        os.replace(new_enc_tmp, file)
+    finally:
+        # 4) 평문 tempfile 즉시 삭제 (성공/실패 무관)
+        for p in (plain_tmp, new_enc_tmp):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
 def is_sops_encrypted(path: Path) -> bool:
     """파일명 또는 내용 첫 4KB 로 SOPS metadata 존재 여부 추정."""
     try:

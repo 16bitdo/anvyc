@@ -63,6 +63,10 @@
 | 2026-05-18 | v0.2 SOPS 통합 V2 확정: 키 backend = age | clean slate (sops/age 모두 미설치) → 가장 단순한 cross-platform 옵션 |
 | 2026-05-18 | v0.2 SOPS 통합 V3 확정: mcp.json 자동 마스킹은 v0.2.1 분리 | SOPS 와 결이 다른 문제. v0.2 는 SOPS 단일 주제로 집중 |
 | 2026-05-18 | v0.2 SOPS 통합 V4 확정: 1Password Reference 와 양립 | 단일 raw secret → op:// , 다수 secret 묶음 (.env/.toml) → SOPS. scanner 가 양쪽 인식 |
+| 2026-05-18 | v0.5 sops CLI W1 확정: encrypt/decrypt default output = auto suffix file (stdout 은 `-o -` 옵트인) | shell 파이프 보다는 파일 자동 생성이 더 직관적 |
+| 2026-05-18 | v0.5 sops CLI W2 확정: rotate-keys 기본 범위 = 모든 backup, --backup-id 로 제한 가능 | dry-run 으로 사전 검증 가능 |
+| 2026-05-18 | v0.5 sops CLI W3 확정: rotate 구현 = anvyc 의 decrypt+encrypt+atomic-replace | sops updatekeys 는 .sops.yaml 의존, anvyc 의 단일 source of truth (anvyc.yaml) 와 충돌. 명시적 swap 채택 |
+| 2026-05-18 | v0.5 sops CLI W4 확정: rotate 실패는 continue + 요약 (default), --strict 로 fail-fast 옵트인 | 1건 실패가 전체 차단하지 않음, 부분 진행 가능 |
 
 ---
 
