@@ -53,12 +53,47 @@ class SecurityConfig:
 
 
 @dataclass
+class SecretFileSpec:
+    """secret_files 의 단일 항목 — yaml 의 string 또는 {path, format} dict 형식 정규화.
+
+    format=None 이면 tool/global 의 format chain 사용 (file > tool > global > default).
+    """
+
+    path: str
+    format: str | None = None
+
+
+def _normalize_secret_files(raw: object) -> list[SecretFileSpec]:
+    """yaml 의 secret_files 값 (list of str 또는 list of dict) 을 SecretFileSpec 리스트로."""
+    out: list[SecretFileSpec] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if isinstance(item, str):
+            out.append(SecretFileSpec(path=item))
+        elif isinstance(item, dict):
+            path_v = item.get("path")
+            if not path_v:
+                # invalid entry — silently skip
+                continue
+            fmt = item.get("format")
+            out.append(
+                SecretFileSpec(
+                    path=str(path_v),
+                    format=str(fmt) if fmt else None,
+                )
+            )
+        # 다른 타입은 무시
+    return out
+
+
+@dataclass
 class ToolConfig:
     enabled: bool = True
     files: list[str] = field(default_factory=list)
     include: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
-    secret_files: list[str] = field(default_factory=list)
+    secret_files: list[SecretFileSpec] = field(default_factory=list)
     sops_format: str | None = None   # None 이면 전역 security.sops.format 사용
     extra: dict = field(default_factory=dict)
 
@@ -150,7 +185,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
             files=list(body.get("files") or []),
             include=list(body.get("include") or []),
             exclude=list(body.get("exclude") or []),
-            secret_files=list(body.get("secret_files") or []),
+            secret_files=_normalize_secret_files(body.get("secret_files")),
             sops_format=str(sops_format_raw) if sops_format_raw else None,
             extra=extra,
         )

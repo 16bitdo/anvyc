@@ -152,7 +152,7 @@ def run_backup(
             )
         )
 
-    # SOPS secret_files 처리 — DESIGN.md §31 + v0.4.1 per-tool override
+    # SOPS secret_files 처리 — DESIGN.md §31 + v0.4.1 per-tool + v0.5.2 per-file override
     if cfg.security.sops.enabled and cfg.security.sops.age_recipients:
         global_mode = cfg.security.sops.format  # "binary" 또는 "inplace"
         only_set = set(only) if only else None
@@ -161,13 +161,16 @@ def run_backup(
                 continue
             if not tool_cfg.enabled or not tool_cfg.secret_files:
                 continue
-            # tool override 우선
-            sops_mode = tool_cfg.sops_format or global_mode
-            encryption_tag = "sops/age/inplace" if sops_mode == "inplace" else "sops/age"
-            for canonical_str in tool_cfg.secret_files:
-                src = Path(canonical_str).expanduser()
+            for spec in tool_cfg.secret_files:
+                src = Path(spec.path).expanduser()
                 if not src.is_file():
                     continue
+                # format chain: file > tool > global > default
+                sops_mode = spec.format or tool_cfg.sops_format or global_mode
+                if sops_mode not in ("binary", "inplace"):
+                    sops_mode = "binary"  # invalid 값은 binary 폴백
+                encryption_tag = "sops/age/inplace" if sops_mode == "inplace" else "sops/age"
+                canonical_str = spec.path
                 # inplace 모드는 원본 확장자 유지, binary 는 .sops.json suffix
                 if sops_mode == "inplace":
                     relpath = f"sops/{src.name}"

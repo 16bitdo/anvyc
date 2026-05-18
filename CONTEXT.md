@@ -70,6 +70,9 @@
 | 2026-05-18 | v0.5.1 iTerm2 status 정합화 X1 확정: 메서드 명 = `target_hash` | 간결, sha256_file 과 자연스러운 대구 |
 | 2026-05-18 | v0.5.1 X2 확정: NotImplementedError fallback dispatch | adapter.apply() 의 dispatch 패턴과 일관 |
 | 2026-05-18 | v0.5.1 X3 확정: iTerm2 만 override, 다른 adapter 는 default | YAGNI — cursor/claude 디렉터리 재귀는 file-level hash 가 자연스러움 |
+| 2026-05-18 | v0.5.2 Y1 확정: secret_files schema = mixed string/dict | string 형식 backward compat + dict 형식으로 file 단위 옵션 가능 |
+| 2026-05-18 | v0.5.2 Y2 확정: format chain = file > tool > global > default | 가장 구체적인 설정이 이긴다 — 일반 config 우선순위 패턴 |
+| 2026-05-18 | v0.5.2 Y3 확정: dict 의 추가 필드 = format 만 | per-file recipients/identity 는 보안 모델 복잡화. v0.6+ 검토 |
 
 ---
 

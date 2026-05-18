@@ -304,6 +304,168 @@ def test_sops_status_modified_after_target_tamper(tmp_path, age_key) -> None:
     assert report.counts().get("modified", 0) >= 1
 
 
+def test_sops_per_file_format_dict(tmp_path, age_key) -> None:
+    """v0.5.2: secret_files 의 dict 항목이 자체 format 으로 override."""
+    bin_src = tmp_path / "bin.txt"
+    bin_src.write_text("binary_payload\n")
+    yaml_src = tmp_path / "config.yaml"
+    yaml_src.write_text("api_key: yaml_payload\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = anvyc_dir / "anvyc.yaml"
+    # 전역 binary, tool override 없음 — file-level dict 로만 inplace 지정
+    cfg.write_text(
+        textwrap.dedent(
+            f"""\
+            version: 1
+            storage:
+              root: ".anvyc"
+            security:
+              secret_scan: false
+              sops:
+                enabled: true
+                format: "binary"
+                age_recipients: ["{age_key['public']}"]
+                age_identity_file: "{age_key['identity']}"
+            tools:
+              shell:
+                enabled: true
+                secret_files:
+                  - "{bin_src}"                                  # string → binary (global)
+                  - {{path: "{yaml_src}", format: "inplace"}}    # dict → inplace
+              git:    {{enabled: false}}
+              aws:    {{enabled: false}}
+              gh:     {{enabled: false}}
+              claude: {{enabled: false}}
+              iterm2: {{enabled: false}}
+              pulumi: {{enabled: false}}
+              cursor: {{enabled: false}}
+            """
+        )
+    )
+    result = run_backup(root=anvyc_dir, config_path=cfg)
+    bin_enc = result.backup_dir / "shell/sops/bin.txt.sops.json"
+    yaml_enc = result.backup_dir / "shell/sops/config.yaml"
+    assert bin_enc.is_file(), "binary entry should be .sops.json"
+    assert yaml_enc.is_file(), "inplace entry should keep .yaml extension"
+    assert "api_key:" in yaml_enc.read_text()
+    assert "yaml_payload" not in yaml_enc.read_text()
+
+    import json
+    meta = json.loads((result.backup_dir / "metadata.json").read_text())
+    by_target = {f["targetPath"]: f for f in meta["files"] if f.get("encryption", "").startswith("sops/")}
+    assert by_target[str(bin_src)]["encryption"] == "sops/age"
+    assert by_target[str(yaml_src)]["encryption"] == "sops/age/inplace"
+
+
+def test_sops_format_chain_file_over_tool_over_global(tmp_path, age_key) -> None:
+    """v0.5.2 chain: file format > tool format > global format > default."""
+    f_global = tmp_path / "global.yaml"       # 전역 inplace 만 명시
+    f_tool = tmp_path / "tool.yaml"           # tool sops_format=binary 가 적용
+    f_file = tmp_path / "file.yaml"           # file format=inplace 가 적용
+
+    for fp in (f_global, f_tool, f_file):
+        # SOPS inplace 모드는 valid yaml dict 필요
+        fp.write_text(f"key: contents_of_{fp.stem}\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = anvyc_dir / "anvyc.yaml"
+    cfg.write_text(
+        textwrap.dedent(
+            f"""\
+            version: 1
+            storage:
+              root: ".anvyc"
+            security:
+              secret_scan: false
+              sops:
+                enabled: true
+                format: "inplace"
+                age_recipients: ["{age_key['public']}"]
+                age_identity_file: "{age_key['identity']}"
+            tools:
+              shell:
+                enabled: true
+                secret_files:
+                  - "{f_global}"
+                  - {{path: "{f_file}", format: "inplace"}}
+              git:
+                enabled: true
+                sops_format: "binary"
+                secret_files:
+                  - "{f_tool}"
+              aws:    {{enabled: false}}
+              gh:     {{enabled: false}}
+              claude: {{enabled: false}}
+              iterm2: {{enabled: false}}
+              pulumi: {{enabled: false}}
+              cursor: {{enabled: false}}
+            """
+        )
+    )
+    result = run_backup(root=anvyc_dir, config_path=cfg)
+    import json
+    meta = json.loads((result.backup_dir / "metadata.json").read_text())
+    by_target = {f["targetPath"]: f for f in meta["files"] if f.get("encryption", "").startswith("sops/")}
+
+    # f_global: spec.format=None, tool=None → global="inplace"
+    assert by_target[str(f_global)]["encryption"] == "sops/age/inplace"
+    # f_tool: spec.format=None, tool="binary" → "binary"
+    assert by_target[str(f_tool)]["encryption"] == "sops/age"
+    # f_file: spec.format="inplace" 가 가장 구체적 → "inplace"
+    assert by_target[str(f_file)]["encryption"] == "sops/age/inplace"
+
+
+def test_sops_invalid_dict_entry_skipped(tmp_path, age_key) -> None:
+    """v0.5.2: dict 에 path 가 없으면 silently skip — 오타 entry 가 빌드를 깨지 않음."""
+    src = tmp_path / "good.txt"
+    src.write_text("ok\n")
+
+    anvyc_dir = tmp_path / ".anvyc"
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True)
+    cfg = anvyc_dir / "anvyc.yaml"
+    cfg.write_text(
+        textwrap.dedent(
+            f"""\
+            version: 1
+            storage:
+              root: ".anvyc"
+            security:
+              secret_scan: false
+              sops:
+                enabled: true
+                format: "binary"
+                age_recipients: ["{age_key['public']}"]
+                age_identity_file: "{age_key['identity']}"
+            tools:
+              shell:
+                enabled: true
+                secret_files:
+                  - "{src}"
+                  - {{typo_path: "/nope"}}    # path 키 없음 → skip
+                  - 12345                       # int → skip
+              git:    {{enabled: false}}
+              aws:    {{enabled: false}}
+              gh:     {{enabled: false}}
+              claude: {{enabled: false}}
+              iterm2: {{enabled: false}}
+              pulumi: {{enabled: false}}
+              cursor: {{enabled: false}}
+            """
+        )
+    )
+    result = run_backup(root=anvyc_dir, config_path=cfg)
+    import json
+    meta = json.loads((result.backup_dir / "metadata.json").read_text())
+    enc_entries = [f for f in meta["files"] if f.get("encryption", "").startswith("sops/")]
+    assert len(enc_entries) == 1, f"expected 1 sops entry (invalid 2 skipped), got {len(enc_entries)}"
+
+
 def test_scanner_skips_sops_encrypted(tmp_path, age_key) -> None:
     """sops 로 암호화된 파일은 secret scanner 가 통과시켜야 (false positive 차단)."""
     from anvyc.security.scanner import scan_file
