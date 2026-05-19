@@ -17,6 +17,7 @@ from anvyc.checks.multi_account_detected import MultiAccountDetectedCheck
 from anvyc.checks.op_references import OpReferencesCheck
 from anvyc.checks.project_aws_profile import ProjectAwsProfileMappingCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
+from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.core.config import build_check_context, load_config
 
@@ -46,6 +47,7 @@ _REGISTRY = {
     "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),
     "aws-profile-status": AwsProfileStatusCheck(),
     "multi-account-detected": MultiAccountDetectedCheck(),
+    "unused-aws-profiles": UnusedAwsProfilesCheck(),
 }
 
 

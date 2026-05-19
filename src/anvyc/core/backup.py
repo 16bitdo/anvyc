@@ -15,6 +15,7 @@ from anvyc.adapters.aws import AwsAdapter
 from anvyc.adapters.base import Adapter
 from anvyc.adapters.claude import ClaudeAdapter
 from anvyc.adapters.cursor import CursorAdapter
+from anvyc.adapters.dev_env import DevEnvAdapter
 from anvyc.adapters.gh import GhAdapter
 from anvyc.adapters.git import GitAdapter
 from anvyc.adapters.iterm2 import Iterm2Adapter
@@ -38,6 +39,7 @@ ADAPTERS: dict[str, type[Adapter]] = {
     "claude": ClaudeAdapter,
     "iterm2": Iterm2Adapter,
     "pulumi": PulumiAdapter,
+    "dev_env": DevEnvAdapter,
 }
 
 # 단순 파일 기반 adapter — 생성자가 files tuple 만 받는다.
@@ -99,6 +101,19 @@ def _select_adapters(cfg: AnvycConfig, only: list[str] | None = None) -> list[Ad
                     global_cfg=extra.get("global") or {},
                     ide_cfg=extra.get("ide") or {},
                     projects_cfg=extra.get("projects") or {},
+                )
+            )
+            continue
+        if name == "dev_env" and tool_cfg is not None:
+            extra = tool_cfg.extra
+            roots = tuple(extra.get("project_roots") or ())
+            patterns = tuple(extra.get("patterns") or ())
+            excludes = tuple(tool_cfg.exclude or ())
+            selected.append(
+                cls(  # type: ignore[call-arg]
+                    project_roots=roots or None,
+                    patterns=patterns or None,
+                    excludes=excludes or None,
                 )
             )
             continue

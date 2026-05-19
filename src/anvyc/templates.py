@@ -81,6 +81,24 @@ tools:
     exclude:
       - "~/.pulumi/credentials.json"
 
+  # dev_env adapter (v0.7.0+) — direnv/asdf/pyenv/nvm 등 프로젝트별 환경 파일 추적.
+  # default 로 enabled=false (사용자가 명시 enable 해야 안전 시작).
+  dev_env:
+    enabled: false
+    project_roots:
+      - "~/Documents"
+    patterns:
+      - ".envrc"
+      - ".tool-versions"
+      - ".python-version"
+      - ".nvmrc"
+    exclude:
+      - "**/node_modules/**"
+      - "**/.venv/**"
+      - "**/venv/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+
 doctor:
   cross_user:
     enabled: true
