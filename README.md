@@ -36,7 +36,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ---
 
-## 4. 지원 도구 (MVP)
+## 4. 지원 도구
 
 | 도구 | 기본 포함 | 기본 제외 |
 |---|---|---|
@@ -48,6 +48,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 | Claude Code | settings.json, hooks, plugins | sessions, tokens, cache, logs |
 | iTerm2 | profiles, key mappings, color presets | window state, recent sessions, local path |
 | Pulumi | `config.json` | `credentials.json` |
+| **dev_env** (v0.7.0+) | `.envrc`, `.tool-versions`, `.python-version`, `.nvmrc` (project root scan, default disabled) | `node_modules/`, `.venv/`, `.git/`, `__pycache__/` |
 
 ---
 
@@ -501,8 +502,9 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.6.1** ✓ — multi-account doctor checks (10 check 총합)
 - **v0.6.2** ✓ — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
 - **v0.6.3** ✓ — `anvyc config edit/show` + `anvyc tools list` + 영어 에러 메시지 표준화
-- **v0.6.4** (현재) — 호스트별 yaml overlay (§12)
-- **v0.7+** — dev_env 어댑터, 어댑터 추가 (vscode/helix/neovim)
+- **v0.6.4** ✓ — 호스트별 yaml overlay (§12)
+- **v0.7.0** (현재) — `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적) + `unused-aws-profiles` doctor check
+- **v0.7.x** — interactive init wizard, install.sh one-liner, vscode/helix/neovim 어댑터
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

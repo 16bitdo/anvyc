@@ -1,5 +1,99 @@
 # anvyc 릴리즈 노트
 
+## v0.7.0 — 2026-05-19 (dev_env adapter + AWS profile cleanup)
+
+[Wave 5 of docs/improvement-plan-ux-review.md §8.3 — dev_env 묶음]
+v0.6.0 부터 README §11 에 안내한 multi-AWS-profile 워크플로 (direnv + .envrc)
+를 실제 코드로 묶음. 사용자 환경 (direnv 2.37.1 설치) 에서 즉시 가치.
+
+### 신규 어댑터: `dev_env` (8 → 9 adapter)
+
+`~/Documents/**` 같은 project root 아래에서 다음 패턴 추적:
+
+| 패턴 | 도구 |
+|---|---|
+| `.envrc` | direnv (AWS_PROFILE / NODE_ENV / API_URL 등) |
+| `.tool-versions` | asdf |
+| `.python-version` | pyenv |
+| `.nvmrc` | nvm |
+
+기본 설정 (anvyc.yaml):
+
+```yaml
+tools:
+  dev_env:
+    enabled: false              # 안전 default — 사용자가 명시 enable
+    project_roots:
+      - "~/Documents"
+    patterns:
+      - ".envrc"
+      - ".tool-versions"
+      - ".python-version"
+      - ".nvmrc"
+    exclude:
+      - "**/node_modules/**"
+      - "**/.venv/**"
+      - "**/.git/**"
+```
+
+- depth ≤ 3 (project root 기준 — 성능 보호)
+- exclude pathspec (`gitignore` 형식)
+- secret 정책: 기존 scanner 가 `.envrc` 안의 raw token 차단
+
+사용 예:
+
+```bash
+$ anvyc backup --only dev_env
+backup .anvyc/backups/20260519-140000
+  dev_env  ~/Documents/proj-a/.envrc    a3f5b2c1...
+  dev_env  ~/Documents/proj-b/.envrc    9d8e7f6a...
+  dev_env  ~/Documents/proj-c/.tool-versions  4b2a1c8d...
+```
+
+### 신규 doctor check: `unused-aws-profiles` (10 → 11 check)
+
+`~/.aws/config` 에 정의됐지만 `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값으로
+사용되지 않는 profile 을 INFO 로 안내 (cleanup 용, 강제력 없음).
+
+`project-aws-profile-mapping` (v0.6.1) 의 reverse — A1 은 .envrc → config
+검증, 본 check 는 config → .envrc 사용량 검증.
+
+```bash
+$ anvyc doctor --only unused-aws-profiles
+info — 11 AWS profile(s) defined but not referenced in any .envrc:
+       pulumi-dev, company-agency, company-audit, company-demo, ws-dev, ... (+6)
+```
+
+`[default]` profile 은 fallback 으로 가정되어 unused 판정에서 제외.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/adapters/dev_env.py` — DevEnvAdapter
+- `src/anvyc/checks/unused_aws_profiles.py` — UnusedAwsProfilesCheck
+- `src/anvyc/core/backup.py` — ADAPTERS 등록 + `_select_adapters` dev_env 분기
+- `src/anvyc/core/doctor.py` — _REGISTRY 등록
+- `src/anvyc/templates.py` — dev_env 기본 yaml section (disabled by default)
+- `tests/unit/test_dev_env_adapter.py` (7 case)
+- `tests/integration/test_dev_env_backup.py` (2 case)
+- `tests/unit/test_unused_aws_profiles.py` (5 case)
+- README §4 (지원 도구 9), §13 로드맵
+
+### Backward compatibility
+
+- 신규 dev_env adapter 는 default `enabled: false` — 자동으로 사용자의 ~/Documents 를 스캔하지 않음 (안전)
+- unused-aws-profiles check 는 다른 check 처럼 `--only` / `--skip` 으로 선택 가능
+- 기존 어댑터 / check 동작 변경 없음
+
+### 통계
+
+- 2 commits (impl + docs/version-bump)
+- pytest 104 → 118 (+14: dev_env 9 + unused-aws 5)
+- adapters: 8 → 9
+- doctor checks: 10 → 11
+- uv build → `anvyc-0.7.0-py3-none-any.whl` 정상
+
+---
+
 ## v0.6.4 — 2026-05-19 (host overlay)
 
 [Wave 4 of docs/improvement-plan-ux-review.md §8.2 — multi-host overlay]
