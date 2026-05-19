@@ -140,6 +140,14 @@ mypy src                            # 타입 체크 (best-effort)
   안내에 따라 비공개 채널로 보고해 주세요.
 - 테스트 fixture 의 secret 은 모두 **명백한 합성값** (`AKIA1234567890ABCDEF` 등) 입니다.
   실제 token/credential 을 commit 에 포함하지 마세요.
+- 로컬 commit 시 secret 누출 방지를 위해 [pre-commit](https://pre-commit.com) +
+  [gitleaks](https://github.com/gitleaks/gitleaks) hook 을 설치합니다:
+  ```bash
+  brew install pre-commit gitleaks
+  pre-commit install
+  ```
+  `.pre-commit-config.yaml` + `.gitleaks.toml` (project allowlist) 는 저장소에
+  포함되어 있어 자동 적용됩니다.
 
 ## 7. 행동 강령
 
