@@ -106,7 +106,30 @@ anvyc apply
 
 `--from-git` 은 target `.anvyc/` 이 이미 있으면 fail-fast — 덮어쓰지 않는다.
 
-### 5.4 개발 설치 (contributor)
+### 5.5 MCP server (AI agent integration, v0.9.0+)
+
+Claude Code / Cursor 등 MCP 호환 agent 에서 anvyc 의 read-only 5 tool 호출:
+
+```bash
+uv tool install --upgrade 'anvyc[mcp]'
+```
+
+`~/.claude/mcp.json` (Claude Code) 또는 `~/.cursor/mcp.json` (Cursor):
+
+```json
+{
+  "mcpServers": {
+    "anvyc": {
+      "command": "anvyc",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}
+```
+
+상세 설정 + 사용 예: [docs/mcp-integration.md](./docs/mcp-integration.md).
+
+### 5.6 개발 설치 (contributor)
 
 ```bash
 git clone git@github.com:16bitdo/anvyc.git
@@ -191,6 +214,8 @@ anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
                                # cwd connection 정합성 5 check (v0.8.1+)
+
+anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
 
 anvyc git {init|status|commit|push}
 anvyc sops {encrypt|decrypt|rotate-keys}
@@ -531,8 +556,9 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.7.1** ✓ — `anvyc init --interactive` wizard + `install.sh` one-liner
 - **v0.7.2** ✓ — pydantic 의존 제거 (Homebrew install fix)
 - **v0.8.0** ✓ — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/improvement-plan-ai-agent.md))
-- **v0.8.1** (현재) — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
-- **v0.9.x** — MCP server, dev_env 확장, shell prompt 통합
+- **v0.8.1** ✓ — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
+- **v0.9.0** (현재) — MCP server (`anvyc serve --mcp`, Claude Code/Cursor 직접 호출)
+- **v0.9.x** — shell prompt 통합 (starship/p10k)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

@@ -1,5 +1,86 @@
 # anvyc 릴리즈 노트
 
+## v0.9.0 — 2026-05-19 (MCP server — AI agent direct integration)
+
+[Wave 9 of docs/improvement-plan-ai-agent.md §7.3 — AI Agent Integration]
+Claude Code / Cursor 가 anvyc 의 5 read-only tool 을 stdio Model Context
+Protocol 로 직접 호출. subprocess + stdout parse 우회.
+
+### 신규 명령: `anvyc serve --mcp` (P6)
+
+```bash
+# 설치 (optional extra):
+uv tool install --upgrade 'anvyc[mcp]'
+
+# Claude Code (~/.claude/mcp.json) 또는 Cursor (~/.cursor/mcp.json):
+{
+  "mcpServers": {
+    "anvyc": {"command": "anvyc", "args": ["serve", "--mcp"]}
+  }
+}
+```
+
+### 노출 tool (5 read-only, D21)
+
+| tool | 매핑 | 출력 |
+|---|---|---|
+| `anvyc_project_show` | `anvyc project show` | ProjectInfo (DESIGN §32) |
+| `anvyc_project_list` | `anvyc project list` | array of ProjectInfo |
+| `anvyc_project_doctor` | `anvyc project doctor` | `{path, results}` |
+| `anvyc_doctor` | `anvyc doctor --json` | `{results}` (12 check) |
+| `anvyc_tools_list` | `anvyc tools list --json` | array of tool entries |
+
+write 영역 (`backup`/`apply`/`restore`) 은 의도적 미포함 — agent 가
+destructive 실행 못 함.
+
+### 의존성 격리 — `[mcp]` optional extra (D20)
+
+| 설치 | 의존 |
+|---|---|
+| core anvyc (default) | typer / rich / pathspec / pyyaml (4) — 변경 없음 |
+| `anvyc[mcp]` | core + mcp + (pydantic, anyio, httpx, jsonschema, ...) |
+
+- Homebrew Formula 영향 **없음** (core 만 build)
+- MCP 사용자는 별도 `uv tool install 'anvyc[mcp]'`
+- mcp 미설치 환경에서 `anvyc serve --mcp` → clean error + install 안내
+
+### 보안 정책
+
+- D11c redaction default — secret 패턴 매칭 → `***REDACTED***`
+- `op://` 1Password reference 는 placeholder signal → redaction 면제
+- `reveal_secrets=true` 명시 시만 raw 값 노출 (agent/log 유출 주의)
+- raw secret 은 `project_doctor` 검증 시 메모리에만, message 에는 KEY 명만
+
+### 신규 / 수정 파일
+
+- `src/anvyc/mcp/__init__.py` (신규)
+- `src/anvyc/mcp/server.py` (신규, 5 tool dispatch + stdio entry)
+- `src/anvyc/cli.py` — `@app.command("serve")` 신규
+- `pyproject.toml` — `[project.optional-dependencies] mcp` 추가
+- `tests/integration/test_mcp_server.py` (9 case, importorskip)
+- `docs/mcp-integration.md` (신규, Claude/Cursor 설정 + 사용 예 + 트러블슈팅)
+- `DESIGN.md §34` (신규, MCP architecture)
+- `README.md §5.5` (MCP install) + `§8` (serve 명령) + `§13` 로드맵
+
+### Backward compatibility
+
+- 신규 명령만 추가 (`anvyc serve`), 기존 14 명령 동작 변경 없음
+- `[mcp]` extra 미설치 환경은 영향 없음 (default install 그대로)
+- `ProjectInfo` / `DoctorReport` schema 재사용
+
+### Schema 안정성
+
+DESIGN §34.9 — v0.9.0 부터 5 tool 의 input/output schema 는 **public API**.
+minor 변경 (key 추가) 만 backward-compat, breaking 은 v1.0+.
+
+### 통계
+
+- 4 commits (mcp extra + server + tests + docs/version-bump)
+- pytest 기존 ~176 + 신규 9 = ~185 (mcp 설치 환경, 미설치 시 skip)
+- core wheel `anvyc-0.9.0-py3-none-any.whl` size 변동 작음 (mcp 미포함)
+
+---
+
 ## v0.8.1 — 2026-05-19 (Cross-Project + Audit)
 
 [Wave 8 of docs/improvement-plan-ai-agent.md §7.2 — Cross-Project + Audit]

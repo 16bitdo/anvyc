@@ -1593,3 +1593,78 @@ INFO / INFO_ALIASED 는 strict 모드에서도 exit 0.
   메모리에서 사용 (secret 패턴 검증 위해).
 - raw secret 은 report 의 message 에 노출되지 않음 — KEY 명만 (`GITHUB_TOKEN`).
 - JSON 출력의 어떤 field 에도 raw secret 미포함.
+
+---
+
+## 34. MCP server architecture (v0.9.0, P6)
+
+### 34.1 배경
+
+[improvement-plan-ai-agent.md](./improvement-plan-ai-agent.md) Wave 9. AI agent
+(Claude Code / Cursor) 가 anvyc 의 5 read-only tool 을 Model Context Protocol
+(stdio transport) 로 직접 호출. subprocess 호출 + stdout parse 우회.
+
+### 34.2 격리 — optional extra (D20)
+
+MCP SDK 의 transitive dep (`pydantic-core` Rust extension 등) 이 무겁고
+Homebrew sandbox install 과 충돌 우려.
+
+| 설치 영역 | 의존 |
+|---|---|
+| core anvyc | typer / rich / pathspec / pyyaml (4) |
+| `anvyc[mcp]` | core + mcp (+ pydantic, anyio, httpx, jsonschema 등) |
+
+Homebrew Formula (`packaging/homebrew/Formula/anvyc.rb`) 는 core 만 build.
+MCP 사용자는 `uv tool install 'anvyc[mcp]'` 별도 path.
+
+### 34.3 모듈 구조
+
+```
+src/anvyc/
+├── mcp/
+│   ├── __init__.py        # 모듈 docstring
+│   └── server.py          # MCP server (5 tool dispatch + stdio)
+└── cli.py                 # @app.command("serve")
+```
+
+`anvyc serve --mcp` → `mcp.server.run()` → asyncio.run(_main()) → stdio_server.
+
+### 34.4 노출 tool 명세 (5 read-only, D21)
+
+| tool | dispatch target | input schema | output |
+|---|---|---|---|
+| `anvyc_project_show` | `core.project_info.collect_project_info` | `{path?, reveal_secrets?}` | ProjectInfo (§32) |
+| `anvyc_project_list` | `core.project_discovery.discover_projects` + collect | `{roots?, reveal_secrets?}` | array ProjectInfo (§33.1) |
+| `anvyc_project_doctor` | `core.project_doctor.run_project_doctor` | `{path?}` | `{path, results}` (§33.2) |
+| `anvyc_doctor` | `core.doctor.run_doctor` | `{only?, skip?}` | `{results}` |
+| `anvyc_tools_list` | `cli._collect_tools_rows` | `{}` | array `{tool, enabled, detected, files, secrets}` |
+
+### 34.5 write 영역 의도적 제외
+
+`backup` / `apply` / `restore` / `scan-secrets` 등 file system 을 변경하는
+명령은 tool 로 노출 안 함. AI agent 가 자율적으로 destructive 실행하면 위험
+— 사용자가 CLI 로 명시 실행 유지.
+
+### 34.6 redaction (D11c default 동일)
+
+- `anvyc_project_show` / `anvyc_project_list` 의 `reveal_secrets=False` default
+- `anvyc_project_doctor` 는 raw 검증 위해 내부 `redact_secrets=False` 사용
+  하지만 결과 message 에는 KEY 명만 (raw 미포함)
+
+### 34.7 error handling
+
+- `_dispatch` 의 `ValueError("unknown tool")` 은 caller 에 raise
+- `call_tool` wrapper 가 모든 Exception 잡아 `{"error": str}` TextContent 반환
+- 실패해도 server 는 살아있고 다음 tool 호출 가능
+
+### 34.8 stdio transport 의 한계
+
+- 단일 client (Claude Code 또는 Cursor 1개 process 만 connect)
+- 모든 통신은 단일 process 의 stdin/stdout (multi-client SSE 는 향후)
+- log 출력은 stderr (또는 file) — stdout 은 protocol 만
+
+### 34.9 schema 안정성
+
+- v0.9.0 부터 5 tool 의 `inputSchema` + 출력 schema 는 **public API**
+- minor 변경 (key 추가 / 새 tool 추가) 만 backward-compat
+- breaking 변경 (key 제거 / 타입 변경) 은 major (v1.0+) 에서만
