@@ -1,5 +1,78 @@
 # anvyc 릴리즈 노트
 
+## v0.6.4 — 2026-05-19 (host overlay)
+
+[Wave 4 of docs/improvement-plan-ux-review.md §8.2 — multi-host overlay]
+머신마다 다른 도구 enabled/files 설정을 별도 yaml 분기 없이 적용.
+
+### 신규 동작
+
+`.anvyc/anvyc.yaml` (base) 위에 같은 디렉터리의 `anvyc.<hostname>.yaml`
+overlay 가 존재하면 자동 deep-merge:
+
+| 타입 | 동작 |
+|---|---|
+| dict | recursive deep merge (overlay 우선) |
+| list | overlay 가 base 대체 (concat 아님 — 안전성/명시성) |
+| scalar | overlay 우선 |
+
+- hostname source: `socket.gethostname().split(".")[0]` (FQDN 안전)
+  - 예: `AliasMacmini-Macmini.local` → `anvyc.AliasMacmini-Macmini.yaml`
+- `ANVYC_HOSTNAME` env override (테스트/머신 이동 시)
+
+### 사용 예
+
+```yaml
+# .anvyc/anvyc.yaml (모든 머신 공통)
+tools:
+  shell:
+    enabled: true
+    files: ["~/.zshrc"]
+  git:
+    enabled: true
+```
+
+```yaml
+# .anvyc/anvyc.macOS-A.yaml (macOS-A 머신 한정)
+tools:
+  git:
+    enabled: false
+```
+
+merge 결과 확인:
+
+```bash
+anvyc config show --effective    # overlay 반영된 effective view
+anvyc tools list                 # git 의 enabled 컬럼이 ✗
+```
+
+### 신규 / 수정 파일
+
+- `src/anvyc/core/config.py` — `_hostname_short`, `_deep_merge`, `_resolve_overlay` 추가, `load_anvyc_config` 확장, `AnvycConfig.overlay_source` 신규 필드
+- `tests/unit/test_config_overlay.py` — 9 case (3 deep_merge unit + 6 integration)
+- README §12 신규 (host overlay 가이드)
+
+### Backward compatibility
+
+- overlay 부재 시 동작 v0.6.3 와 동일
+- `AnvycConfig.overlay_source` 는 신규 optional 필드 (additive)
+- 기존 yaml 형식 변경 없음
+
+### 안전 가드
+
+- list overlay 가 concat 이 아니라 대체 (사용자가 의도 명확히 표시 필요)
+- overlay yaml 파싱 실패 시 graceful skip (`_read_yaml` 의 fallback)
+- overlay 만 존재 (base 없음) 시 silent fail (기존 behavior — base 가 source 결정)
+- secret_scan 정책은 merged 결과에 그대로 적용 (overlay 안의 secret 도 동일 차단)
+
+### 통계
+
+- 2 commits (impl + docs/version-bump)
+- pytest 104 passed (기존 95 + 신규 9)
+- uv build → `anvyc-0.6.4-py3-none-any.whl` 정상
+
+---
+
 ## v0.6.3 — 2026-05-19 (Config UX 묶음)
 
 [Wave 3 of docs/improvement-plan-ux-review.md §8.2 — Config UX 묶음]

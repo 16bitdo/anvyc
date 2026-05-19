@@ -442,29 +442,81 @@ anvyc doctor --only multi-account-detected
 
 ---
 
-## 12. 로드맵
+## 12. 호스트별 overlay (v0.6.4+)
+
+머신마다 다른 도구 enabled/files 설정을 별도 yaml 분기 없이 적용할 수 있다.
+
+```
+.anvyc/
+├── anvyc.yaml                          # base — 공통 설정
+└── anvyc.<hostname>.yaml               # overlay — 머신별 설정 (선택)
+```
+
+- hostname = `socket.gethostname().split(".")[0]` (FQDN 안전)
+  - 예: `AliasMacmini-Macmini.local` → `anvyc.AliasMacmini-Macmini.yaml`
+- `ANVYC_HOSTNAME` env 로 override 가능 (테스트/머신 이동 시 유용)
+
+### 예: 공통 설정 + macOS-A 머신만 git 비활성화
+
+```yaml
+# .anvyc/anvyc.yaml (모든 머신 공통)
+tools:
+  shell:
+    enabled: true
+    files: ["~/.zshrc"]
+  git:
+    enabled: true
+```
+
+```yaml
+# .anvyc/anvyc.macOS-A.yaml (macOS-A 머신 한정 — 합쳐서 적용)
+tools:
+  git:
+    enabled: false
+```
+
+### Merge 규칙
+
+| 타입 | 동작 |
+|---|---|
+| dict | recursive deep merge (overlay 우선) |
+| list | overlay 가 base 대체 (concat 아님 — 안전성/명시성) |
+| scalar | overlay 우선 |
+
+### 확인
+
+```bash
+anvyc config show --effective    # merged result + overlay_source 표시
+anvyc tools list                 # overlay 반영된 enabled/files count
+```
+
+overlay 미존재 시 base 동작 그대로 — backward compatible.
+
+---
+
+## 13. 로드맵
 
 - **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
 - **v0.6.0** ✓ — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
 - **v0.6.1** ✓ — multi-account doctor checks (10 check 총합)
 - **v0.6.2** ✓ — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
-- **v0.6.3** (현재) — `anvyc config edit/show` + `anvyc tools list` + 영어 에러 메시지 표준화
-- **v0.6.x** — hostname overlay 등 잔여 UX 개선
-- **v0.7+** — dev_env 어댑터, 호스트별 yaml overlay, 어댑터 추가 (vscode/helix/neovim)
+- **v0.6.3** ✓ — `anvyc config edit/show` + `anvyc tools list` + 영어 에러 메시지 표준화
+- **v0.6.4** (현재) — 호스트별 yaml overlay (§12)
+- **v0.7+** — dev_env 어댑터, 어댑터 추가 (vscode/helix/neovim)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
 
 ---
 
-## 13. 기여
+## 14. 기여
 
 [CONTRIBUTING.md](./CONTRIBUTING.md) 참고.
 
-## 14. 보안
+## 15. 보안
 
 취약점 신고는 [SECURITY.md](./SECURITY.md) 의 비공개 채널로 부탁드립니다.
 
-## 15. 라이선스
+## 16. 라이선스
 
 [MIT License](./LICENSE) © 2026 edward (16bitdo)
