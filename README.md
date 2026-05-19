@@ -187,6 +187,10 @@ anvyc tools list [--json]      # 9 도구의 enabled / detect / file-count (v0.6
 
 anvyc project show [--path P] [--json] [--reveal-secrets]
                                # cwd 의 AWS/GitHub/Pulumi/dev_env 통합 view (v0.8.0+)
+anvyc project list [--root R...] [--json]
+                               # root 아래 모든 project matrix (v0.8.1+)
+anvyc project doctor [--path P] [--json] [--strict]
+                               # cwd connection 정합성 5 check (v0.8.1+)
 
 anvyc git {init|status|commit|push}
 anvyc sops {encrypt|decrypt|rotate-keys}
@@ -526,8 +530,9 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.7.0** ✓ — `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적) + `unused-aws-profiles` doctor check
 - **v0.7.1** ✓ — `anvyc init --interactive` wizard + `install.sh` one-liner
 - **v0.7.2** ✓ — pydantic 의존 제거 (Homebrew install fix)
-- **v0.8.0** (현재) — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/improvement-plan-ai-agent.md))
-- **v0.8.x** — `anvyc project list`, `anvyc project doctor`, MCP server
+- **v0.8.0** ✓ — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/improvement-plan-ai-agent.md))
+- **v0.8.1** (현재) — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
+- **v0.9.x** — MCP server, dev_env 확장, shell prompt 통합
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

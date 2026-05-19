@@ -1533,3 +1533,63 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 - v0.8.0 부터 본 schema 는 **public API** — 외부 도구 호환을 위해 minor 변경
   (key 추가) 만 허용, breaking 변경은 major (v1.0+) 에서만.
 - 신규 hoster / runtime / pattern 추가는 본 schema 의 enum 확장 (backward-compat).
+
+---
+
+## 33. project list / project doctor schema (v0.8.1)
+
+### 33.1 `project list` output
+
+`anvyc project list --json` — array of `ProjectInfo` (DESIGN §32 와 동일 schema).
+순서: path alphabetical. 발견 0건 시 빈 array `[]`.
+
+discovery 규칙:
+- root candidates: `--root` 반복 옵션 (default: `~/Documents`)
+- marker: `.git` 또는 `Pulumi.yaml` 보유 디렉터리 (depth ≤ 2)
+- symlink 디렉터리는 alias 가능성으로 skip
+- marker 발견 디렉터리의 sub-dir 은 별도 project 가 아니라 동일 project 의 일부
+
+### 33.2 `project doctor` output
+
+`anvyc project doctor --json`:
+
+```json
+{
+  "path": "/absolute/path",
+  "results": [
+    {"check_name": "...", "severity": "...", "message": "...",
+     "location": null, "line": null, "suggestion": null}
+  ]
+}
+```
+
+`results` 는 doctor `--json` 의 result entry 와 동일 6 field (check_name, severity,
+message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절대 경로.
+
+### 33.3 project doctor check 명세 (5 check)
+
+| check_name | trigger | severity (issue 시) |
+|---|---|---|
+| `aws_profile_defined` | `.envrc` 의 AWS_PROFILE 있을 때만 | WARNING |
+| `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
+| `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
+| `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
+| `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
+
+→ check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
+
+이 check 들은 기존 `anvyc doctor` 와 별개 — `project doctor` 는 path-aware.
+
+### 33.4 --strict 모드
+
+`--strict` 시 `report.has_blocking()` 이 True 면 exit 1. blocking severity:
+WARNING, WARNING_FOREIGN, WARNING_DANGLING, CRITICAL.
+
+INFO / INFO_ALIASED 는 strict 모드에서도 exit 0.
+
+### 33.5 secret 다루기
+
+- `project doctor` 는 `collect_project_info(redact_secrets=False)` 로 raw 값을
+  메모리에서 사용 (secret 패턴 검증 위해).
+- raw secret 은 report 의 message 에 노출되지 않음 — KEY 명만 (`GITHUB_TOKEN`).
+- JSON 출력의 어떤 field 에도 raw secret 미포함.

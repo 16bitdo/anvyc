@@ -1,5 +1,100 @@
 # anvyc 릴리즈 노트
 
+## v0.8.1 — 2026-05-19 (Cross-Project + Audit)
+
+[Wave 8 of docs/improvement-plan-ai-agent.md §7.2 — Cross-Project + Audit]
+Wave 7 의 `anvyc project show` (single project) 를 fan-out + audit 로 확장.
+
+### 신규 명령
+
+| 명령 | 동작 |
+|---|---|
+| `anvyc project list [--root R...] [--json]` | 입력 root 아래 모든 project 의 connection matrix |
+| `anvyc project doctor [--path P] [--json] [--strict]` | cwd connection 정합성 5 check |
+
+### `anvyc project list` (P2)
+
+```bash
+$ anvyc project list --json | jq 'map(select(.pulumi != null)) | length'
+4    # ~/Documents/ 의 Pulumi project 수
+
+$ anvyc project list --json | jq 'map({path, aws_profile, github: .github[0].owner})'
+[...]
+```
+
+- discovery rule (D12): `.git` 또는 `Pulumi.yaml` marker 보유 디렉터리 (depth ≤ 2)
+- 각 entry 는 `anvyc project show` 와 **동일 schema** (DESIGN §32 재사용)
+- D11c redaction 동일 적용 — `--reveal-secrets` opt-in
+- `--root` 반복 가능 (default: `~/Documents`)
+
+### `anvyc project doctor` (P7)
+
+```bash
+$ anvyc project doctor --json
+{
+  "path": "/.../proj",
+  "results": [
+    {"check_name": "aws_profile_defined", "severity": "info", ...},
+    {"check_name": "github_remote_parseable", "severity": "info", ...},
+    {"check_name": "pulumi_stacks_valid", "severity": "info", ...},
+    {"check_name": "dev_env_secret_safety", "severity": "info", ...},
+    {"check_name": "tool_versions_installed", "severity": "info", ...}
+  ]
+}
+```
+
+5 check (D14):
+
+| check | trigger | issue severity |
+|---|---|---|
+| `aws_profile_defined` | `.envrc` AWS_PROFILE 있을 때만 | WARNING |
+| `github_remote_parseable` | `.git/config` 있을 때만 | (parse 가능한 것만 INFO) |
+| `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
+| `dev_env_secret_safety` | `.envrc` 의 export 있을 때만 | **CRITICAL** (raw secret) |
+| `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
+
+- source 가 없으면 silent skip (bare path → `{"results": []}`)
+- `--strict` 시 warning 이상 발견 → exit 1
+- 기존 `anvyc doctor` (global) 와 별개 — `project doctor` 는 path-aware
+
+### DESIGN §33 신규 (schema 정식화)
+
+`project list` + `project doctor` 의 외부 호환 보장. `project list` 는 §32
+ProjectInfo schema 재사용, `project doctor` 는 doctor `--json` 의 result entry
+와 동일 6-field 형식.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/core/project_discovery.py` (신규) — discover_projects
+- `src/anvyc/core/project_doctor.py` (신규) — 5 check + ProjectDoctorReport
+- `src/anvyc/cli.py` — project_app:list + project_app:doctor
+- `tests/unit/test_project_discovery.py` (8 case)
+- `tests/integration/test_project_list.py` (5 case)
+- `tests/integration/test_project_doctor.py` (8 case)
+- `DESIGN.md §33` 신규
+- `README.md §8` 명령어 + `§13` 로드맵
+
+### 안전 가드
+
+- `project doctor` 가 raw secret 메모리 사용 — message 에는 KEY 명만 (raw 미포함)
+- discovery 가 marker 발견 디렉터리 하위는 더 안 들어감 (성능)
+- symlink 디렉터리는 alias 가능성으로 자동 skip
+- bare path / missing source → silent (noise 없음)
+
+### Backward compatibility
+
+- 신규 명령만 추가 (`project list`, `project doctor`)
+- 기존 13 명령 (project show 포함) 동작 변경 없음
+- `ProjectInfo` schema (DESIGN §32) 재사용 — `project list` 와 `project show` 가 동일 schema
+
+### 통계
+
+- 3 commits (project list + project doctor + docs/version-bump)
+- pytest 기존 ~155 + 신규 21 (8 + 5 + 8) = ~176
+- uv build → `anvyc-0.8.1-py3-none-any.whl` 정상
+
+---
+
 ## v0.8.0 — 2026-05-19 (Project-Centric View — AI agent integration)
 
 [Wave 7 of docs/improvement-plan-ai-agent.md §7.1 — Project-Centric View]
