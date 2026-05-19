@@ -5,6 +5,7 @@ MVP 단계에서는 명령어 시그니처와 흐름만 정의하고, 실제 동
 from __future__ import annotations
 
 import json as jsonlib
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -62,9 +63,51 @@ def main(
 def init(
     root: Path = typer.Option(Path.cwd(), "--root", help="anvyc 프로젝트 루트."),
     force: bool = typer.Option(False, "--force", help="기존 anvyc.yaml 이 있어도 덮어쓴다."),
+    from_git: Optional[str] = typer.Option(
+        None,
+        "--from-git",
+        help="git URL 에서 .anvyc/ 를 clone (apply 는 수동 실행 권장).",
+    ),
 ) -> None:
-    """`.anvyc/` 와 `anvyc.yaml` 초기화."""
+    """`.anvyc/` 와 `anvyc.yaml` 초기화.
+
+    `--from-git <url>` 사용 시 기존 `.anvyc/` 에 clone 하지 않고 fail-fast.
+    clone 후 `.anvyc/anvyc.yaml` 검증, next-step (doctor + apply --dry-run) 안내.
+    """
     anvyc_dir = root / ".anvyc"
+
+    if from_git:
+        if anvyc_dir.exists():
+            console.print(
+                f"[red]error[/] {anvyc_dir} 이미 존재 — 다른 --root 사용 또는 수동 제거"
+            )
+            raise typer.Exit(code=1)
+        try:
+            proc = subprocess.run(
+                ["git", "clone", from_git, str(anvyc_dir)],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            console.print("[red]error[/] git binary 미설치")
+            raise typer.Exit(code=1)
+        if proc.returncode != 0:
+            console.print(f"[red]error[/] git clone 실패\n{proc.stderr.strip()}")
+            raise typer.Exit(code=1)
+        config_path = anvyc_dir / "anvyc.yaml"
+        if not config_path.is_file():
+            console.print(
+                f"[red]error[/] clone 된 repo 에 anvyc.yaml 부재: {config_path}\n"
+                f"  ({anvyc_dir} 는 그대로 두니 직접 검증 후 제거하세요)"
+            )
+            raise typer.Exit(code=1)
+        console.print(f"[green]cloned[/] {from_git} → {anvyc_dir}")
+        console.print(
+            "[bold]next[/] "
+            "anvyc doctor  &&  anvyc apply --dry-run  &&  anvyc apply"
+        )
+        return
+
     config_path = anvyc_dir / "anvyc.yaml"
     for sub in ("backups", "local-backups", "reports"):
         (anvyc_dir / sub).mkdir(parents=True, exist_ok=True)
