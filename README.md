@@ -311,16 +311,115 @@ anvyc doctor --strict --json > /dev/null
 
 ---
 
-## 11. 로드맵
+## 11. 다수 AWS profile 관리 (multi-account workflow)
 
-- **1주차 PoC**: CLI skeleton + shell/git/aws adapter + secret scanner v0
-- **2주차 MVP**: cursor/claude/iterm2 adapter + diff/apply/restore + pre-commit hook
-- **3주차 정비**: 테스트 보강 + 실제 Mac 2대 검증 + pipx 패키징 + v0.1.0 릴리즈
+anvyc 는 **정적 설정 sync 도구**다. runtime profile switching 은 표준 도구
+([direnv](https://direnv.net/), [aws-vault](https://github.com/99designs/aws-vault)) 에 맡기고
+anvyc 는 그 설정을 백업·동기화하는 역할에 집중한다.
 
-자세한 내용은 [CONTEXT.md §5 Roadmap](./CONTEXT.md)를 참고한다.
+### 11.1 권장 패턴: direnv + .envrc (프로젝트별 1개 profile)
+
+```bash
+# 1) direnv 설치 + zsh hook
+brew install direnv
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+
+# 2) 프로젝트 디렉터리에 .envrc 작성
+cat > ~/Documents/my-dev-project/.envrc <<'EOF'
+export AWS_PROFILE=my-dev
+EOF
+
+# 3) 새 .envrc 신뢰 (보안)
+cd ~/Documents/my-dev-project
+direnv allow
+
+# 4) 이후로는 cd 시 AWS_PROFILE 자동 설정
+cd ~/Documents/my-dev-project   # → AWS_PROFILE=my-dev 자동 export
+cd ~/                            # → AWS_PROFILE 자동 unset
+```
+
+### 11.2 PR 별 임시 전환 (1~3 profile 교체)
+
+```bash
+# ~/.zshrc 에 helper function:
+awsp() { export AWS_PROFILE="$1"; aws sts get-caller-identity; }
+
+# PR 작업 중:
+awsp my-dev      # 개발
+awsp my-audit    # 로그 확인
+awsp my-prd      # 운영 readonly
+unset AWS_PROFILE  # 원복
+```
+
+또는 [aws-vault](https://github.com/99designs/aws-vault) (MFA 강제 + 격리):
+
+```bash
+aws-vault exec my-prd -- terraform plan
+```
+
+### 11.3 anvyc 가 추적하는 것
+
+```yaml
+# anvyc.yaml
+tools:
+  aws:
+    enabled: true
+    files: ["~/.aws/config"]        # 모든 profile 정의 백업
+    # ~/.aws/credentials 는 secret 으로 기본 제외
+    # SOPS 통합 시 secret_files 로:
+    # secret_files: ["~/.aws/credentials"]
+
+  # 향후 v0.7+ (dev_env 어댑터, 계획 중):
+  # dev_env:
+  #   project_roots: ["~/Documents"]
+  #   patterns: [".envrc", ".tool-versions", ".python-version", ".nvmrc"]
+```
+
+### 11.4 anvyc 의 scope (multi-account 영역)
+
+| anvyc 가 해야 할 | anvyc 가 안 해야 할 |
+|---|---|
+| ✓ `~/.aws/config` profile 정의 sync | ✗ runtime profile switching |
+| ✓ `.envrc` 파일 추적 (v0.7+ 계획) | ✗ credential 자체 관리 |
+| ✓ profile mapping 검증 (doctor check, v0.6.x 계획) | ✗ shell session state 추적 |
+| ✓ 변경 안전망 (local-backup) | ✗ AWS API 호출 자체 |
+
+direnv 와 aws-vault 가 더 잘 하는 영역에 anvyc 가 들어가면 도구 경계 모호.
+anvyc 는 **정적 설정 동기화 + 검증 + 권장 워크플로 가이드** 역할.
+
+### 11.5 향후 doctor check 계획 (v0.6.x)
+
+| Check | 동작 |
+|---|---|
+| `project-aws-profile-mapping` | `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 |
+| `aws-profile-status` | 현재 active `AWS_PROFILE` env var ↔ 정의 검증 |
+| `unused-aws-profiles` | `.aws/config` 에만 있고 어디서도 안 쓰는 profile (INFO) |
+| `multi-account-detected` | ssh / aws / gh 의 multi-account 환경 자동 안내 (INFO) |
+
+자세한 UX 개선 계획은 [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
 
 ---
 
-## 12. 라이선스
+## 12. 로드맵
 
-향후 결정. (후보: MIT, Apache-2.0)
+- **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
+- **v0.6.0** (현재) — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
+- **v0.6.x** — UX 개선 (init --from-git, config edit, multi-account doctor checks)
+- **v0.7+** — dev_env 어댑터, 호스트별 yaml overlay, 어댑터 추가 (vscode/helix/neovim)
+- **v1.0** — API stable, PyPI 배포
+
+자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
+
+---
+
+## 13. 기여
+
+[CONTRIBUTING.md](./CONTRIBUTING.md) 참고.
+
+## 14. 보안
+
+취약점 신고는 [SECURITY.md](./SECURITY.md) 의 비공개 채널로 부탁드립니다.
+
+## 15. 라이선스
+
+[MIT License](./LICENSE) © 2026 edward (16bitdo)
