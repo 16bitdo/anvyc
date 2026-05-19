@@ -4,25 +4,37 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anvyc"
-version = "0.1.0"
-description = "여러 장치에서 개발 도구 설정 정보와 인증 정보를 안전하게 백업/비교/복원/동기화하는 CLI"
+version = "0.6.0"
+description = "여러 장치에서 개발 도구 설정 정보와 인증 정보를 안전하게 백업/비교/복원/동기화하는 macOS CLI. 도구별 safe adapter + backup/rollback 안전망 + SOPS + 1Password Secret Reference 통합."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
   { name = "edward", email = "16bitdo@gmail.com" }
 ]
-keywords = ["dotfiles", "config", "sync", "macos", "claude-code", "cursor", "iterm2", "aws", "github-cli", "pulumi"]
+keywords = [
+  "dotfiles", "config-sync", "backup", "macos", "developer-tools",
+  "claude-code", "cursor", "iterm2", "aws", "github-cli", "pulumi",
+  "sops", "1password", "age-encryption", "secret-management",
+]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS",
+  "Operating System :: MacOS :: MacOS X",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: System :: Archiving :: Backup",
   "Topic :: System :: Systems Administration",
-  "Topic :: Utilities"
+  "Topic :: Utilities",
+  "Typing :: Typed",
 ]
 dependencies = [
   "typer>=0.12",
@@ -47,9 +59,13 @@ encryption = [
 anvyc = "anvyc.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/edward/anvyc"
-Documentation = "https://github.com/edward/anvyc/blob/main/DESIGN.md"
-Issues = "https://github.com/edward/anvyc/issues"
+Homepage = "https://github.com/16bitdo/anvyc"
+Repository = "https://github.com/16bitdo/anvyc"
+Documentation = "https://github.com/16bitdo/anvyc/blob/main/DESIGN.md"
+Issues = "https://github.com/16bitdo/anvyc/issues"
+Changelog = "https://github.com/16bitdo/anvyc/blob/main/RELEASE_NOTES.md"
+Contributing = "https://github.com/16bitdo/anvyc/blob/main/CONTRIBUTING.md"
+Security = "https://github.com/16bitdo/anvyc/blob/main/SECURITY.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/anvyc"]

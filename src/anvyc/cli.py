@@ -320,7 +320,12 @@ def apply(
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 적용 시나리오만 출력."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
 ) -> None:
-    """backup 의 설정을 현재 target 에 적용한다. 적용 전 local-backup 자동 생성."""
+    """backup 의 설정을 현재 target 에 적용한다. 적용 전 local-backup 자동 생성.
+
+    처음 사용 시 --dry-run 으로 변경 예정 사항을 먼저 확인 권장.
+    예) anvyc apply --dry-run
+        anvyc apply --only shell --dry-run
+    """
     try:
         report = run_apply(
             root=root,
@@ -393,7 +398,12 @@ def restore(
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 시나리오만 출력."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용."),
 ) -> None:
-    """특정 backup 으로 target 을 복원한다. apply 와 동일하나 backup_id 가 필수."""
+    """특정 backup 으로 target 을 복원한다. apply 와 동일하나 backup_id 가 필수.
+
+    backup_id 는 `anvyc list` 에서 확인 가능. 예시:
+        anvyc restore 20260518-130000
+        anvyc restore 20260518-130000 --dry-run
+    """
     try:
         report = run_restore(
             root=root,
