@@ -2,10 +2,16 @@
 
 전체 schema 검증은 후속 task (pydantic 모델). 현재는 backup/doctor 동작에 필요한 영역만.
 파일이 없거나 키가 없는 경우 안전한 기본값을 반환한다.
+
+v0.6.4: base `anvyc.yaml` 위에 같은 디렉터리의 `anvyc.<hostname>.yaml` overlay 가
+존재하면 deep-merge 후 parsing. hostname 은 `socket.gethostname().split(".")[0]`
+또는 `ANVYC_HOSTNAME` env 로 override.
 """
 from __future__ import annotations
 
 import getpass
+import os
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -112,7 +118,8 @@ class AnvycConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     tools: dict[str, ToolConfig] = field(default_factory=dict)
     doctor: DoctorConfig = field(default_factory=DoctorConfig)
-    source: Path | None = None  # 로드된 yaml 경로 (debug 용)
+    source: Path | None = None  # 로드된 base yaml 경로 (debug 용)
+    overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
 
 
 def _read_yaml(path: Path) -> dict:
@@ -139,15 +146,56 @@ def _candidate_paths(path: Path | None) -> list[Path]:
     return out
 
 
+def _hostname_short() -> str:
+    """ANVYC_HOSTNAME env override 또는 socket.gethostname() short part (FQDN 안전)."""
+    h = os.environ.get("ANVYC_HOSTNAME") or socket.gethostname()
+    return h.split(".")[0]
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """base 위에 overlay 적용 (recursive).
+
+    - dict + dict: recursive merge
+    - list: overlay 가 대체 (concat 아님 — 안전성/명시성)
+    - scalar: overlay 우선
+    """
+    out = dict(base)
+    for k, v in overlay.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _resolve_overlay(base: Path) -> Path | None:
+    """base 와 같은 디렉터리의 anvyc.<hostname>.yaml. 없으면 None."""
+    overlay = base.parent / f"anvyc.{_hostname_short()}.yaml"
+    return overlay if overlay.is_file() else None
+
+
 def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
-    """anvyc.yaml 전체를 읽어 AnvycConfig 로 반환. 없으면 기본값."""
+    """anvyc.yaml 전체를 읽어 AnvycConfig 로 반환. 없으면 기본값.
+
+    base 발견 시 같은 디렉터리의 `anvyc.<hostname>.yaml` overlay 가 있으면
+    deep-merge 후 parsing (v0.6.4).
+    """
     raw: dict = {}
     source: Path | None = None
+    overlay_source: Path | None = None
     for c in _candidate_paths(path):
         if c.exists() and c.is_file():
             raw = _read_yaml(c)
             source = c
             break
+
+    if source is not None:
+        overlay_path = _resolve_overlay(source)
+        if overlay_path is not None:
+            overlay_raw = _read_yaml(overlay_path)
+            if overlay_raw:
+                raw = _deep_merge(raw, overlay_raw)
+                overlay_source = overlay_path
 
     storage_raw = raw.get("storage") or {}
     storage = StorageConfig(
@@ -204,6 +252,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         tools=tools,
         doctor=doctor,
         source=source,
+        overlay_source=overlay_source,
     )
 
 
