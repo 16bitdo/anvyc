@@ -296,10 +296,9 @@ P6 가 핵심. P8/P9 는 UX 보강.
 
 | # | 항목 | 결정 |
 |---|---|---|
-| Q1 | Wave 7 진행 여부 | TBD (사용자 결정) |
-| Q2 | Wave 9 P6 (MCP server) 의 우선순위 | TBD — HIGH 로 유지 또는 Wave 7 에 흡수 |
-| Q3 | P1 의 output schema 정식화 시점 | v1.0 (API stable) 또는 Wave 7 즉시 |
-| Q4 | shell prompt 통합 (P9) 의 scope | starship + p10k 양쪽 / starship 만 / 보류 |
-| Q5 | anvyc 가 직접 처리할 dev_env 변수 범위 (P8) | 모든 export / allowlist / blocklist |
-
-본 문서는 결정 미동 상태로 시작. Wave 진행 시 결정 채움.
+| Q1 | Wave 7 진행 여부 | ✓ 진행 완료 (v0.8.0 tag) |
+| Q2 | Wave 9 P6 (MCP server) 의 우선순위 | HIGH 유지, Wave 9 (v0.9.0) 으로 |
+| Q3 | P1 의 output schema 정식화 시점 | ✓ v0.8.0 즉시 (DESIGN.md §32) |
+| Q4 | shell prompt 통합 (P9) 의 scope | TBD — Wave 9 진행 시 결정 |
+| Q5 | anvyc 가 직접 처리할 dev_env 변수 범위 (P8) | ✓ 모든 export (D9 적용, Wave 7 미리 반영) |
+| D11 | dev_env 의 secret 처리 (Wave 7 추가 결정) | ✓ D11c — PATTERNS 매칭 시 자동 ***REDACTED***, op:// 면제 |

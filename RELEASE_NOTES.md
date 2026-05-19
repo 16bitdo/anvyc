@@ -1,5 +1,103 @@
 # anvyc 릴리즈 노트
 
+## v0.8.0 — 2026-05-19 (Project-Centric View — AI agent integration)
+
+[Wave 7 of docs/improvement-plan-ai-agent.md §7.1 — Project-Centric View]
+AI agent (Claude Code / Cursor / ChatGPT) 가 cwd 의 모든 connection 정보
+(AWS profile / GitHub remote / Pulumi project / dev_env / tool versions) 를
+단일 JSON 으로 받기 위한 통합 view + machine-readable 확장.
+
+### 신규 명령: `anvyc project show` (P1)
+
+```bash
+$ anvyc project show --path ~/Documents/proj --json
+{
+  "path": "/Users/edward/Documents/proj",
+  "aws_profile": "company-dev",
+  "github": [
+    {
+      "name": "origin",
+      "url": "git@github.com-16bitdo:16bitdo/proj.git",
+      "host": "github.com-16bitdo",
+      "owner": "16bitdo",
+      "repo": "proj",
+      "ssh_alias": "16bitdo",
+      "protocol": "ssh"
+    }
+  ],
+  "pulumi": {
+    "project_name": "proj",
+    "runtime": "python",
+    "stacks": ["dev", "prd"],
+    "yaml_path": "/Users/edward/Documents/proj/Pulumi.yaml"
+  },
+  "dev_env": {
+    "AWS_PROFILE": "company-dev",
+    "NODE_ENV": "development",
+    "GITHUB_TOKEN": "***REDACTED***"
+  },
+  "tool_versions": {"python": "3.13", "node": "20.10.0"}
+}
+```
+
+- `--path P` 로 임의 path 지정 (default: cwd)
+- `--json` 으로 machine-readable JSON 출력 (없으면 human rendering)
+- **D11c**: dev_env 의 값에 anvyc `security.patterns.PATTERNS` 매칭 시
+  자동 `***REDACTED***` 마스킹
+- `op://` 1Password reference 는 placeholder signal 이므로 redaction 면제
+- `--reveal-secrets` 명시 시 raw 값 노출 (agent/log 유출 주의)
+
+### 신규 utility (P3 + P4)
+
+| 모듈 | 동작 |
+|---|---|
+| `src/anvyc/utils/pulumi_project.py` | `<project>/Pulumi.yaml` + `Pulumi.<stack>.yaml` 추출 (name/runtime/stacks) |
+| `src/anvyc/utils/git_remote.py` | `<project>/.git/config` 의 [remote "X"] 파싱 (SSH/HTTPS URL → owner/repo/ssh_alias) |
+| `src/anvyc/core/project_info.py` | 위 둘 + dev_env + tool_versions 통합 + redaction |
+
+backup 영역과 분리 — read-only utility, `anvyc project show` 의 backend.
+
+### 신규 JSON output (P5)
+
+- `anvyc tools list --json` — `[{tool, enabled, detected, files, secrets}]` 9 row
+- `anvyc config show --effective --json` — AnvycConfig dataclass dict (default 채워짐)
+
+기존 raw text 출력 backward compat — `--json` 미지정 시 동일.
+
+### DESIGN.md §32 신규 (schema 정식화)
+
+`anvyc project show --json` 의 외부 호환 보장. v0.8.0 부터 schema 는
+**public API** — minor 변경 (key 추가) 만 허용, breaking 변경은 v1.0+.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/utils/pulumi_project.py` (신규)
+- `src/anvyc/utils/git_remote.py` (신규)
+- `src/anvyc/core/project_info.py` (신규)
+- `src/anvyc/cli.py` (project_app subcommand + tools_list/config_show --json)
+- `tests/unit/test_pulumi_project_util.py` (8 case)
+- `tests/unit/test_git_remote_util.py` (8 case)
+- `tests/integration/test_project_show.py` (7 case)
+- `tests/integration/test_tools_list_json.py` (2 case)
+- `tests/integration/test_config_show_json.py` (2 case)
+- `DESIGN.md §32` 신규
+- `README.md §8` (명령어 요약) + `§13` 로드맵
+- `docs/improvement-plan-ai-agent.md §12` Q1=완료, Q3=v0.8.0 정식화
+
+### Backward compatibility
+
+- 신규 명령만 추가 (`project show`), 기존 9 명령 동작 변경 없음
+- `tools list` / `config show` 는 raw 출력 그대로, `--json` 만 신규 옵션
+- doctor `--json` schema 와 별개 (각각 독립 정식화)
+
+### 통계
+
+- 3 commits (impl utilities + project show + JSON outputs + docs/version-bump)
+- pytest 기존 ~128 + 신규 ~27 (8+8+7+2+2) = ~155
+- uv build → `anvyc-0.8.0-py3-none-any.whl` 정상
+
+---
+
 ## v0.7.2 — 2026-05-19 (dependency cleanup: pydantic removed)
 
 ### 배경

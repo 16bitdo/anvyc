@@ -1440,3 +1440,96 @@ tools:
 - key 부재 시 apply 는 **fail-safe**: 부분 적용 X, 에러 + 다음 entry 진행.
 - pre-commit hook 의 scan-secrets 는 SOPS 파일을 통과시킨다 — 이미 암호화되어 있어 raw secret 노출 위험 없음.
 - `~/.anvyc-secrets/` 영역은 v0.2 에서 도입하지 않는다 (V1 결정). SOPS-in-anvyc/ 단일 모델로 충분.
+
+---
+
+## 32. `project show` JSON schema (v0.8.0, AI agent integration)
+
+### 32.1 배경
+
+[improvement-plan-ai-agent.md](./improvement-plan-ai-agent.md) Wave 7. AI agent
+(Claude Code / Cursor / ChatGPT) 가 cwd 의 모든 connection 정보 (AWS profile /
+GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로 받기
+위한 정식 schema. `anvyc project show --json` 출력의 외부 호환 보장.
+
+### 32.2 Top-level
+
+| key | type | nullable | 설명 |
+|---|---|---|---|
+| `path` | string | no | 입력 path 의 resolve 된 절대 경로 |
+| `aws_profile` | string | yes | `.envrc` 의 `export AWS_PROFILE=X` 값 (편의 single-field) |
+| `github` | array | yes | parse 된 git remote 목록 (없으면 null) |
+| `pulumi` | object | yes | Pulumi project info (Pulumi.yaml 없으면 null) |
+| `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
+| `tool_versions` | object | no | python/node/asdf 종합 — 빈 객체 가능 |
+
+### 32.3 github 항목 (array of object)
+
+| key | type | 설명 |
+|---|---|---|
+| `name` | string | "origin", "upstream", ... |
+| `url` | string | raw URL (SSH 또는 HTTPS) |
+| `host` | string | `github.com`, `github.com-<alias>`, `gitlab.com`, ... |
+| `owner` | string | URL 의 owner segment |
+| `repo` | string | URL 의 repo segment (`.git` 제외) |
+| `ssh_alias` | string\|null | `github.com-<alias>` 의 alias suffix |
+| `protocol` | enum | `"ssh"` \| `"https"` |
+
+### 32.4 pulumi 객체
+
+| key | type | 설명 |
+|---|---|---|
+| `project_name` | string | Pulumi.yaml 의 `name` |
+| `runtime` | string\|null | `"python"`, `"nodejs"`, ... (dict 형식이면 `name` 만) |
+| `description` | string\|null | Pulumi.yaml 의 `description` |
+| `stacks` | array | `Pulumi.<stack>.yaml` 파일들의 stack 이름 (alphabetical) |
+| `yaml_path` | string | Pulumi.yaml 의 절대 경로 |
+
+### 32.5 dev_env redaction (D11c)
+
+- 각 (KEY, VALUE) 페어에 대해 가상 line `KEY=VALUE` 를 생성하고 anvyc 의
+  `security.patterns.PATTERNS` 의 어떤 regex 라도 매칭되면 VALUE 를
+  `***REDACTED***` 로 치환.
+- `op://<vault>/<item>/<field>` (1Password Secret Reference) 는 placeholder
+  signal 이므로 redaction 면제.
+- `--reveal-secrets` flag 지정 시 raw 값 노출. 단, agent / log 에 secret
+  유출 위험 — 사용자 책임 영역.
+
+### 32.6 사용 예 (AI agent JSON)
+
+```json
+{
+  "path": "/Users/edward/Documents/proj",
+  "aws_profile": "company-dev",
+  "github": [
+    {
+      "name": "origin",
+      "url": "git@github.com-16bitdo:16bitdo/proj.git",
+      "host": "github.com-16bitdo",
+      "owner": "16bitdo",
+      "repo": "proj",
+      "ssh_alias": "16bitdo",
+      "protocol": "ssh"
+    }
+  ],
+  "pulumi": {
+    "project_name": "proj",
+    "runtime": "python",
+    "description": null,
+    "stacks": ["dev", "prd"],
+    "yaml_path": "/Users/edward/Documents/proj/Pulumi.yaml"
+  },
+  "dev_env": {
+    "AWS_PROFILE": "company-dev",
+    "NODE_ENV": "development",
+    "GITHUB_TOKEN": "***REDACTED***"
+  },
+  "tool_versions": {"python": "3.13", "node": "20.10.0"}
+}
+```
+
+### 32.7 schema 안정성
+
+- v0.8.0 부터 본 schema 는 **public API** — 외부 도구 호환을 위해 minor 변경
+  (key 추가) 만 허용, breaking 변경은 major (v1.0+) 에서만.
+- 신규 hoster / runtime / pattern 추가는 본 schema 의 enum 확장 (backward-compat).
