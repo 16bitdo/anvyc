@@ -54,6 +54,22 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ## 5. 설치
 
+### 5.0 one-liner 설치 (v0.7.1+, public repo 한정)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
+
+# 특정 버전:
+ANVYC_VERSION=v0.7.1 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+
+# 설치 도구 강제 (uv | pipx | auto):
+ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+- GitHub Release wheel + `SHA256SUMS` 자동 검증
+- `uv tool` 또는 `pipx` 자동 감지 (없으면 명시 안내)
+- 현재 repo 는 private — public 전환 후 활성화 (Z4 follow-up)
+
 ### 5.1 Homebrew tap (v0.6.2+ 권장)
 
 ```bash
@@ -154,6 +170,7 @@ anvyc/
 
 ```bash
 anvyc init                     # 프로젝트/설정 초기화
+anvyc init --interactive       # 대화형 wizard (v0.7.1+)
 anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
 anvyc doctor                   # 환경 진단 (10 check)
 anvyc backup                   # 현재 환경 백업
@@ -503,8 +520,9 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.6.2** ✓ — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
 - **v0.6.3** ✓ — `anvyc config edit/show` + `anvyc tools list` + 영어 에러 메시지 표준화
 - **v0.6.4** ✓ — 호스트별 yaml overlay (§12)
-- **v0.7.0** (현재) — `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적) + `unused-aws-profiles` doctor check
-- **v0.7.x** — interactive init wizard, install.sh one-liner, vscode/helix/neovim 어댑터
+- **v0.7.0** ✓ — `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적) + `unused-aws-profiles` doctor check
+- **v0.7.1** (현재) — `anvyc init --interactive` wizard + `install.sh` one-liner
+- **v0.7.x** — vscode/helix/neovim 어댑터
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

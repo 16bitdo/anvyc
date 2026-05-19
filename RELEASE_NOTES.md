@@ -1,5 +1,87 @@
 # anvyc 릴리즈 노트
 
+## v0.7.1 — 2026-05-19 (onboarding wizard + install one-liner)
+
+[Wave 6 of docs/improvement-plan-ux-review.md §8.3 — onboarding]
+새 사용자가 9 도구 설정을 한 번에 끝낼 수 있는 대화형 wizard + 외부 설치
+스크립트.
+
+### 신규 명령: `anvyc init --interactive` (alias `-i`)
+
+```
+$ anvyc init -i
+anvyc init wizard — 9개 도구 설정
+
+Enable shell? [Y/n]:
+  files for shell [~/.zshrc, ~/.zprofile]:
+Enable git? [Y/n]:
+  files for git [~/.gitconfig, ~/.gitignore_global]:
+...
+Enable dev_env? [y/N]:           # ← default disabled (안전)
+  project_roots [~/Documents]:
+  patterns [.envrc, .tool-versions, .python-version, .nvmrc]:
+
+preview:
+  version: 1
+  storage: { root: .anvyc, keep_backups: 5 }
+  tools: { ... }
+
+Write to .anvyc/anvyc.yaml? [Y/n]:
+✓ wrote .anvyc/anvyc.yaml
+```
+
+- 9 도구 (8 default-enabled + dev_env default-disabled) prompt
+- file-based adapter (shell/git/aws/gh/pulumi) 는 file path 입력
+- dev_env 는 project_roots + patterns 입력
+- cursor/claude/iterm2 는 default 설정 (path prompt skip)
+- yaml preview 후 최종 확인 → 작성
+- `--from-git` 과 mutual exclusion (exit 1)
+
+### 신규 파일: `install.sh` (one-liner installer)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
+```
+
+- `set -euo pipefail` strict mode
+- GitHub Release wheel + `SHA256SUMS` 자동 검증
+- `uv tool` 또는 `pipx` 자동 감지 (없으면 명시 안내 + exit 1)
+- env 옵션:
+  - `ANVYC_VERSION=v0.7.1` (default: latest)
+  - `ANVYC_METHOD=uv|pipx|auto` (default: auto)
+- macOS (`shasum`) + Linux (`sha256sum`) 양쪽 호환
+- shellcheck 통과
+
+> **현재 repo 는 private 이라 raw URL 이 404.** Z4 (PUBLIC 전환) follow-up 후 활성화.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/cli.py` — init 함수에 `--interactive` 옵션 + `_run_init_wizard()` 헬퍼
+- `install.sh` — bash strict mode one-liner installer
+- `tests/integration/test_init_interactive.py` (4 case)
+- `tests/test_install_script.py` (6 case — syntax / strict / verify / shellcheck)
+
+### 안전 가드
+
+- wizard 가 기존 anvyc.yaml 위에 작성 시도 → fail-fast (`--force` 필요)
+- `--interactive --from-git` 동시 지정 → exit 1 (의미 충돌)
+- install.sh SHA256 mismatch → exit 1 + 명시 메시지
+- install.sh trap 으로 temp dir cleanup (실패 경로 포함)
+- install.sh 가 uv/pipx 둘 다 없으면 `pip install <wheel>` 안내 후 exit 1
+
+### Backward compatibility
+
+- `anvyc init` (no `--interactive`) 동작 v0.7.0 그대로
+- install.sh 는 본 repo 안의 새 파일 (다른 코드 영향 없음)
+
+### 통계
+
+- 3 commits (wizard + install.sh + docs/version-bump)
+- pytest 118 → 128 (+10: wizard 4 + install 6)
+- uv build → `anvyc-0.7.1-py3-none-any.whl` 정상
+
+---
+
 ## v0.7.0 — 2026-05-19 (dev_env adapter + AWS profile cleanup)
 
 [Wave 5 of docs/improvement-plan-ux-review.md §8.3 — dev_env 묶음]
