@@ -8,11 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.adapter_validate import AdapterValidationCheck
+from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.cursor_projects_suggest import CursorProjectsSuggestCheck
 from anvyc.checks.mcp_tokens import McpTokensWarnCheck
+from anvyc.checks.multi_account_detected import MultiAccountDetectedCheck
 from anvyc.checks.op_references import OpReferencesCheck
+from anvyc.checks.project_aws_profile import ProjectAwsProfileMappingCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.core.config import build_check_context, load_config
@@ -40,6 +43,9 @@ _REGISTRY = {
     "cursor-projects-suggest": CursorProjectsSuggestCheck(),
     "sops-keys-available": SopsKeysCheck(),
     "mcp-tokens-warn": McpTokensWarnCheck(),
+    "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),
+    "aws-profile-status": AwsProfileStatusCheck(),
+    "multi-account-detected": MultiAccountDetectedCheck(),
 }
 
 
