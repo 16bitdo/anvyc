@@ -54,7 +54,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ## 5. 설치
 
-### 5.0 one-liner 설치 (v0.7.1+, public repo 한정)
+### 5.0 one-liner 설치 (v0.7.1+)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
@@ -68,9 +68,8 @@ ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anv
 
 - GitHub Release wheel + `SHA256SUMS` 자동 검증
 - `uv tool` 또는 `pipx` 자동 감지 (없으면 명시 안내)
-- 현재 repo 는 private — public 전환 후 활성화 (Z4 follow-up)
 
-### 5.1 Homebrew tap (v0.6.2+ 권장)
+### 5.1 Homebrew tap (v0.7.1+)
 
 ```bash
 brew tap 16bitdo/anvyc
@@ -78,8 +77,9 @@ brew install anvyc
 anvyc --version
 ```
 
-> tap repo (`16bitdo/homebrew-anvyc`) 가 아직 생성되기 전이라면 5.2 로 설치.
-> Formula 갱신 절차는 [docs/homebrew-publishing.md](./docs/homebrew-publishing.md) 참조.
+Formula source-of-truth: [packaging/homebrew/Formula/anvyc.rb](./packaging/homebrew/Formula/anvyc.rb).
+Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc). 
+갱신 절차: [docs/homebrew-publishing.md](./docs/homebrew-publishing.md).
 
 ### 5.2 GitHub Release 의 wheel 직접 설치
 
