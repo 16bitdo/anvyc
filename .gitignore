@@ -15,14 +15,26 @@ build/
 .mypy_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 
-# IDE
+# IDE / 에디터
 .idea/
 .vscode/
 
+# Cursor IDE artifact — 로컬 작업 참조용 보존, 추적 차단
+.cursor/
+.cursorindexingignore
+.cursorindexingignore.bak-*
+
+# Claude Code artifact — 자동 생성, 로컬 참조용
+CLAUDE.md
+.claude/
+
 # OS
 .DS_Store
+*.swp
+*.swo
 
 # anvyc runtime state (사용자 환경)
 .anvyc/local-backups/
