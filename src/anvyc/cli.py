@@ -1241,6 +1241,32 @@ def project_show(
         console.print(f"[bold]tool_versions[/] {tv}")
 
 
+@app.command()
+def serve(
+    mcp: bool = typer.Option(
+        False, "--mcp", help="MCP server (stdio) 실행 — Claude Code/Cursor 호출 가능 (v0.9.0+)."
+    ),
+) -> None:
+    """외부 도구를 위한 server mode (v0.9.0+).
+
+    현재 지원: `--mcp` (stdio Model Context Protocol).
+    Claude Code / Cursor 등이 mcp.json 으로 anvyc 의 5 read-only tool 호출.
+
+    requires: `pip install 'anvyc[mcp]'` 또는 `uv tool install 'anvyc[mcp]'`.
+    상세: docs/mcp-integration.md
+    """
+    if not mcp:
+        console.print("[red]error[/] --mcp 옵션 필요 (현재 지원 transport).")
+        raise typer.Exit(code=1)
+    try:
+        from anvyc.mcp.server import run as mcp_run
+    except SystemExit as e:
+        # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — 그대로 표시
+        console.print(f"[red]error[/] {e}")
+        raise typer.Exit(code=1)
+    mcp_run()
+
+
 @project_app.command("doctor")
 def project_doctor(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
