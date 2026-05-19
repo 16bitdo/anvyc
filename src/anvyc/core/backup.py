@@ -48,9 +48,20 @@ _FILE_BASED_ADAPTERS = frozenset({"shell", "git", "aws", "gh", "pulumi"})
 class BackupBlocked(RuntimeError):
     """secret scan 결과 backup 중단."""
 
-    def __init__(self, reasons: list[str]):
+    def __init__(
+        self,
+        reasons: list[str],
+        *,
+        next_steps: list[str] | None = None,
+        allow_force: bool = True,
+    ):
         super().__init__("secret scan blocked backup")
         self.reasons = reasons
+        self.next_steps = next_steps or [
+            "anvyc doctor",
+            "anvyc scan-secrets <path>  # inspect a specific path",
+        ]
+        self.allow_force = allow_force
 
 
 @dataclass

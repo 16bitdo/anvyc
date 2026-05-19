@@ -28,9 +28,20 @@ from anvyc.utils.hashing import sha256_file
 class ApplyBlocked(RuntimeError):
     """secret scan 결과 apply 차단."""
 
-    def __init__(self, reasons: list[str]):
+    def __init__(
+        self,
+        reasons: list[str],
+        *,
+        next_steps: list[str] | None = None,
+        allow_force: bool = True,
+    ):
         super().__init__("secret scan blocked apply")
         self.reasons = reasons
+        self.next_steps = next_steps or [
+            "anvyc doctor",
+            "anvyc diff --backup-id <id>  # review changes before applying",
+        ]
+        self.allow_force = allow_force
 
 
 @dataclass
