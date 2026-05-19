@@ -1,5 +1,82 @@
 # anvyc 릴리즈 노트
 
+## v0.6.0 — 2026-05-19 (OSS 공개 준비)
+
+**OSS 공개 준비 완료**. LICENSE / CONTRIBUTING / SECURITY / pyproject metadata
+정비, README §11 multi-AWS-profile 워크플로 가이드 신설, Git history rewrite.
+
+### 신규 파일
+
+- `LICENSE` — MIT License (Copyright (c) 2026 edward (16bitdo))
+- `CONTRIBUTING.md` — 기여 가이드 (환경 셋업, 테스트, PR 가이드, Issue 가이드)
+- `SECURITY.md` — 보안 신고 절차 (GitHub Security Advisory 우선)
+- `docs/improvement-plan-ux-review.md` — UX 개선 계획 (설치/다중계정/설정)
+
+### README 갱신
+
+- `§9.3` doctor `--json` schema 정식화 (v0.5.3 추가분 통합)
+- **`§11` 신규** — multi-AWS-profile 워크플로 가이드:
+  - `§11.1` direnv + .envrc 프로젝트별 패턴
+  - `§11.2` PR 별 임시 전환 (shell function / aws-vault)
+  - `§11.3` anvyc 가 추적하는 것
+  - `§11.4` anvyc scope 경계
+  - `§11.5` 향후 doctor check 계획 (v0.6.x)
+- `§12` 로드맵 갱신 — v0.1.0~v0.5.3 ✓ / v0.6.0 현재 / v0.6.x / v0.7+ / v1.0
+- `§13` 기여 / `§14` 보안 / `§15` 라이선스 섹션 추가
+
+### pyproject.toml 갱신
+
+- version `0.1.0` → `0.6.0`
+- description 보강 (도구 차별점 명시)
+- keywords 보강 (`sops`, `1password`, `age-encryption`, `secret-management`)
+- classifiers — Development Status `3 Alpha → 4 Beta`, MIT License OSI,
+  macOS X 명시, Python 3.13, Topic Security, Typed
+- `[project.urls]` — Homepage / Repository / Documentation / Issues / Changelog
+  / Contributing / Security 7 URL
+
+### .gitignore 확장
+
+- IDE artifact (`.cursor/`, `.cursorindexingignore*`) — Z2 결정: 로컬 보존, 추적 차단
+- Claude Code artifact (`CLAUDE.md`, `.claude/`)
+- vim swap (`*.swp`, `*.swo`)
+- coverage.xml 추가
+
+### CLI docstring 보강
+
+- `apply` 에 `--dry-run` 권장 + 사용 예
+- `restore` 에 backup_id 예시
+
+### Git history rewrite (destructive — force-push)
+
+- Co-Authored-By: Claude 트레일러 제거 (K2 결정, 30 commits)
+- `<company>-*` 식별자 → `<company>-*` 익명화 (L1=c)
+- author identity → `16bitdo <16bitdo@gmail.com>` 단일 통합
+- 모든 tag (v0.1.0~v0.5.3) 새 commit hash 로 재발행
+- **기존 clone 사용자는 rebase 필요** — `git fetch && git reset --hard origin/main`
+
+### v0.6.x 예고
+
+- doctor checks: `project-aws-profile-mapping`, `aws-profile-status`,
+  `unused-aws-profiles`, `multi-account-detected`
+- `anvyc init --from-git <url>` (chezmoi-like 부트스트랩)
+- `anvyc config edit` + `anvyc tools list`
+- 호스트별 `anvyc.yaml.<hostname>` overlay
+- Homebrew tap
+
+### v0.7+ 예고
+
+- `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적)
+- 어댑터 추가 (vscode/helix/neovim)
+- 어댑터별 dev_env 통합
+
+### 통계
+
+- 5 commits (Phase A.3 + Phase B + Phase B')
+- pytest 64 passed (회귀 없음)
+- uv build → wheel `anvyc-0.6.0-py3-none-any.whl` 정상
+
+---
+
 ## v0.2.0 — 2026-05-18
 
 **SOPS encryption-at-rest 통합**. 1Password Secret Reference (v0.1.0) 와 보완 관계로, 다수 secret 묶음을 git-tracked SOPS 파일로 안전하게 백업/적용한다.
