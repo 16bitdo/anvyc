@@ -1,5 +1,40 @@
 # anvyc 릴리즈 노트
 
+## v0.7.2 — 2026-05-19 (dependency cleanup: pydantic removed)
+
+### 배경
+
+`brew install anvyc` 가 `pydantic-core 2.16.3` 의 Rust extension 빌드에서
+실패. Homebrew Python virtualenv 의 install 단계는:
+- `pip install --no-binary :all:` (wheel 금지)
+- 빌드 단계 네트워크 sandbox
+
+→ `pydantic-core` 의 build 의존성 `maturin` 다운로드 실패.
+
+### 발견
+
+`grep` 결과: anvyc 코드 어디에서도 `pydantic` 을 import 하지 않음.
+v0.1.0 의 초기 schema 계획 때 declare 됐지만 실제 구현은 `dataclass` 로 진행
+되어 잔존 의존성 (`pyproject.toml:dependencies` 만).
+
+### 변경
+
+- `pyproject.toml`: `pydantic>=2.6` dependency 제거
+- Homebrew Formula: `annotated-types`, `pydantic`, `pydantic-core` resource
+  3개 제거 (13 → 10 resources)
+
+### Backward compatibility
+
+- 코드/CLI 동작 변경 없음 (pydantic 미사용이라 영향 zero)
+- 기존 `pip install anvyc` / `uv tool install` 도 그대로 작동 (의존성 감소만)
+
+### 통계
+
+- 1 commit (impl: pyproject + version + RELEASE_NOTES, Formula 는 별도 commit)
+- pytest 영향 없음 (test suite 가 pydantic 미사용)
+
+---
+
 ## v0.7.1 — 2026-05-19 (onboarding wizard + install one-liner)
 
 [Wave 6 of docs/improvement-plan-ux-review.md §8.3 — onboarding]
