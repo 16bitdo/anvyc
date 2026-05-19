@@ -74,13 +74,33 @@ def init(
         "--from-git",
         help="git URL 에서 .anvyc/ 를 clone (apply 는 수동 실행 권장).",
     ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="대화형 wizard 로 anvyc.yaml 생성 (도구별 enable/path 입력).",
+    ),
 ) -> None:
     """`.anvyc/` 와 `anvyc.yaml` 초기화.
 
     `--from-git <url>` 사용 시 기존 `.anvyc/` 에 clone 하지 않고 fail-fast.
     clone 후 `.anvyc/anvyc.yaml` 검증, next-step (doctor + apply --dry-run) 안내.
+
+    `--interactive` 사용 시 9개 도구에 대해 enable 여부와 path 를 prompt.
+    `--from-git` 과 함께 사용 불가 (의미 충돌).
     """
+    if interactive and from_git:
+        console.print(
+            "[red]error[/] --interactive 와 --from-git 은 동시 사용 불가 "
+            "(의미 충돌 — wizard 로 생성 또는 git 에서 clone 중 하나만)"
+        )
+        raise typer.Exit(code=1)
+
     anvyc_dir = root / ".anvyc"
+
+    if interactive:
+        _run_init_wizard(anvyc_dir, force=force)
+        return
 
     if from_git:
         if anvyc_dir.exists():
@@ -122,6 +142,105 @@ def init(
     else:
         config_path.write_text(DEFAULT_ANVYC_YAML)
         console.print(f"[green]wrote[/] {config_path}")
+    console.print(f"[green]ready[/] {anvyc_dir}")
+
+
+# wizard 의 도구별 default 값 (file-based adapter 만 file path 입력 필요)
+_WIZARD_FILE_DEFAULTS: dict[str, list[str]] = {
+    "shell":  ["~/.zshrc", "~/.zprofile"],
+    "git":    ["~/.gitconfig", "~/.gitignore_global"],
+    "aws":    ["~/.aws/config"],
+    "gh":     ["~/.config/gh/config.yml"],
+    "pulumi": ["~/.pulumi/config.json"],
+}
+_WIZARD_DEV_ENV_DEFAULTS = {
+    "project_roots": ["~/Documents"],
+    "patterns": [".envrc", ".tool-versions", ".python-version", ".nvmrc"],
+}
+_WIZARD_TOOLS_ORDER = (
+    "shell", "git", "aws", "gh", "pulumi",
+    "cursor", "claude", "iterm2", "dev_env",
+)
+
+
+def _parse_csv(answer: str, default: list[str]) -> list[str]:
+    """comma-separated 입력을 list 로. 빈 입력 → default."""
+    a = answer.strip()
+    if not a:
+        return default
+    return [p.strip() for p in a.split(",") if p.strip()]
+
+
+def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
+    """대화형 wizard — 9 도구의 enable/path 를 prompt 한 후 yaml 작성."""
+    import yaml as _yaml
+    from rich.syntax import Syntax
+
+    config_path = anvyc_dir / "anvyc.yaml"
+    if config_path.exists() and not force:
+        console.print(
+            f"[red]error[/] {config_path} 이미 존재 — 다른 --root 사용 또는 --force"
+        )
+        raise typer.Exit(code=1)
+
+    console.print("[bold]anvyc init wizard[/] — 9개 도구 설정\n")
+
+    tools_cfg: dict[str, dict] = {}
+    for tool in _WIZARD_TOOLS_ORDER:
+        default_enabled = tool != "dev_env"  # dev_env 은 default disabled (안전)
+        enabled = typer.confirm(f"Enable {tool}?", default=default_enabled)
+        entry: dict = {"enabled": enabled}
+        if not enabled:
+            tools_cfg[tool] = entry
+            continue
+        if tool in _WIZARD_FILE_DEFAULTS:
+            default_files = _WIZARD_FILE_DEFAULTS[tool]
+            answer = typer.prompt(
+                f"  files for {tool}",
+                default=", ".join(default_files),
+            )
+            entry["files"] = _parse_csv(answer, default_files)
+        elif tool == "dev_env":
+            roots_ans = typer.prompt(
+                "  project_roots",
+                default=", ".join(_WIZARD_DEV_ENV_DEFAULTS["project_roots"]),
+            )
+            entry["project_roots"] = _parse_csv(
+                roots_ans, _WIZARD_DEV_ENV_DEFAULTS["project_roots"]
+            )
+            patterns_ans = typer.prompt(
+                "  patterns",
+                default=", ".join(_WIZARD_DEV_ENV_DEFAULTS["patterns"]),
+            )
+            entry["patterns"] = _parse_csv(
+                patterns_ans, _WIZARD_DEV_ENV_DEFAULTS["patterns"]
+            )
+        tools_cfg[tool] = entry
+
+    yaml_dict = {
+        "version": 1,
+        "storage": {"root": ".anvyc", "keep_backups": 5, "keep_local_backups": 5},
+        "security": {
+            "secret_scan": True,
+            "block_on_secret": True,
+            "allow_encrypted_secrets": True,
+        },
+        "tools": tools_cfg,
+    }
+    yaml_text = _yaml.safe_dump(yaml_dict, sort_keys=False, allow_unicode=True)
+
+    console.print("\n[bold]preview:[/]")
+    console.print(Syntax(yaml_text, "yaml", line_numbers=False))
+
+    confirm_write = typer.confirm(f"\nWrite to {config_path}?", default=True)
+    if not confirm_write:
+        console.print("[yellow]aborted — nothing written[/]")
+        raise typer.Exit(code=0)
+
+    for sub in ("backups", "local-backups", "reports"):
+        (anvyc_dir / sub).mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml_text)
+    console.print(f"[green]wrote[/] {config_path}")
     console.print(f"[green]ready[/] {anvyc_dir}")
 
 
