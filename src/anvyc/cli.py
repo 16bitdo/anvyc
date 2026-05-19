@@ -37,6 +37,12 @@ app.add_typer(git_app, name="git")
 sops_app = typer.Typer(name="sops", help="SOPS 단독 명령 (encrypt/decrypt/rotate-keys).")
 app.add_typer(sops_app, name="sops")
 
+config_app = typer.Typer(name="config", help="anvyc.yaml 편집/조회.")
+app.add_typer(config_app, name="config")
+
+tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
+app.add_typer(tools_app, name="tools")
+
 console = Console()
 
 
@@ -236,10 +242,15 @@ def backup(
     try:
         result = run_backup(root=root, config_path=config, only=only or None, force=force)
     except BackupBlocked as e:
-        console.print("[red bold]backup 중단: secret scan 차단[/]")
-        for r in e.reasons:
-            console.print(f"  • {r}")
-        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다 (critical/high 는 강제 불가).[/]")
+        from anvyc.utils.errors import print_blocked_error
+
+        print_blocked_error(
+            "backup",
+            e.reasons,
+            next_steps=e.next_steps,
+            allow_force=e.allow_force,
+            console=console,
+        )
         raise typer.Exit(code=2)
 
     console.print(f"[green]backup[/] {_short_path(result.backup_dir)}")
@@ -379,10 +390,15 @@ def apply(
             force=force,
         )
     except ApplyBlocked as e:
-        console.print("[red bold]apply 중단: secret scan 차단[/]")
-        for r in e.reasons:
-            console.print(f"  • {r}")
-        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다.[/]")
+        from anvyc.utils.errors import print_blocked_error
+
+        print_blocked_error(
+            "apply",
+            e.reasons,
+            next_steps=e.next_steps,
+            allow_force=e.allow_force,
+            console=console,
+        )
         raise typer.Exit(code=2)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
@@ -457,10 +473,15 @@ def restore(
             force=force,
         )
     except ApplyBlocked as e:
-        console.print("[red bold]restore 중단: secret scan 차단[/]")
-        for r in e.reasons:
-            console.print(f"  • {r}")
-        console.print("\n[dim]--force 로 medium 위험을 허용할 수 있습니다.[/]")
+        from anvyc.utils.errors import print_blocked_error
+
+        print_blocked_error(
+            "restore",
+            e.reasons,
+            next_steps=e.next_steps,
+            allow_force=e.allow_force,
+            console=console,
+        )
         raise typer.Exit(code=2)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
@@ -817,6 +838,176 @@ def sops_rotate_keys(
             console.print(f"  ... and {len(failed) - 5} more")
         if not strict:
             raise typer.Exit(code=3)
+
+
+# ============================================================================
+# config / tools subcommands (v0.6.3 — W3)
+# ============================================================================
+
+
+def _resolve_anvyc_yaml(explicit: Path | None) -> Path:
+    """anvyc.yaml 경로 결정. config.py 와 동일한 후보 순서."""
+    candidates: list[Path] = []
+    if explicit is not None:
+        candidates.append(explicit)
+    candidates.extend(
+        [
+            Path.cwd() / "anvyc.yaml",
+            Path.cwd() / ".anvyc" / "anvyc.yaml",
+            Path("~/.anvyc/anvyc.yaml").expanduser(),
+        ]
+    )
+    for c in candidates:
+        if c.is_file():
+            return c
+    return candidates[0]
+
+
+@config_app.command("edit")
+def config_edit(
+    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+) -> None:
+    """`$EDITOR` 로 `anvyc.yaml` 을 편집 후 schema 검증.
+
+    편집 전 자동으로 `.bak.<ts>` 백업 생성. invalid yaml 또는 schema 위반 시
+    원본 복구 + exit 1.
+    """
+    import os
+    import shlex
+    import shutil
+    import time
+
+    yaml_path = _resolve_anvyc_yaml(config)
+    if not yaml_path.is_file():
+        console.print(
+            f"[red]error[/] anvyc.yaml 부재: {yaml_path}\n"
+            f"  → anvyc init 으로 생성 후 다시 시도하세요."
+        )
+        raise typer.Exit(code=1)
+
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    bak_path = yaml_path.with_suffix(yaml_path.suffix + f".bak.{ts}")
+    shutil.copy2(yaml_path, bak_path)
+
+    editor = os.environ.get("EDITOR") or "vi"
+    try:
+        editor_argv = shlex.split(editor)
+    except ValueError as e:
+        console.print(f"[red]error[/] EDITOR 파싱 실패: {e}")
+        bak_path.unlink(missing_ok=True)
+        raise typer.Exit(code=1)
+    try:
+        proc = subprocess.run([*editor_argv, str(yaml_path)])
+    except FileNotFoundError:
+        console.print(f"[red]error[/] EDITOR 실행 실패: {editor}")
+        bak_path.unlink(missing_ok=True)
+        raise typer.Exit(code=1)
+    if proc.returncode != 0:
+        console.print(f"[yellow]editor exit {proc.returncode} — 변경 폐기[/]")
+        shutil.copy2(bak_path, yaml_path)
+        bak_path.unlink(missing_ok=True)
+        raise typer.Exit(code=proc.returncode)
+
+    # schema 검증
+    try:
+        import yaml as _yaml
+
+        with yaml_path.open("r", encoding="utf-8") as f:
+            _yaml.safe_load(f)
+        from anvyc.core.config import load_anvyc_config
+
+        load_anvyc_config(yaml_path)
+    except Exception as e:
+        console.print(f"[red]error[/] schema 검증 실패: {e}")
+        console.print(f"[dim]원본 복구: {bak_path} → {yaml_path}[/]")
+        shutil.copy2(bak_path, yaml_path)
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]ok[/] schema 검증 통과 ({yaml_path})")
+    console.print(f"[dim]backup: {bak_path}[/]")
+
+
+@config_app.command("show")
+def config_show(
+    effective: bool = typer.Option(
+        False,
+        "--effective",
+        help="default 값까지 채워진 effective yaml 출력 (default: raw).",
+    ),
+    config: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    """`anvyc.yaml` 을 raw 또는 effective view 로 출력."""
+    yaml_path = _resolve_anvyc_yaml(config)
+    if not yaml_path.is_file():
+        console.print(f"[red]error[/] anvyc.yaml 부재: {yaml_path}")
+        raise typer.Exit(code=1)
+
+    if not effective:
+        typer.echo(yaml_path.read_text(encoding="utf-8"))
+        return
+
+    import dataclasses
+    import yaml as _yaml
+    from anvyc.core.config import load_anvyc_config
+
+    cfg = load_anvyc_config(yaml_path)
+    payload = dataclasses.asdict(cfg)
+    payload.pop("source", None)  # internal field 노출 X
+    typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+
+
+@tools_app.command("list")
+def tools_list(
+    config: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
+    from anvyc.core.backup import ADAPTERS
+    from anvyc.core.config import load_anvyc_config
+
+    cfg = load_anvyc_config(config) if config else load_anvyc_config()
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("tool")
+    table.add_column("enabled")
+    table.add_column("detected")
+    table.add_column("files", justify="right")
+    table.add_column("secrets", justify="right")
+    table.add_column("notes", style="dim")
+
+    for name, cls in ADAPTERS.items():
+        tool_cfg = cfg.tools.get(name)
+        enabled = tool_cfg.enabled if tool_cfg else True
+        files_count = 0
+        secrets_count = 0
+        if tool_cfg is not None:
+            files_count = len(tool_cfg.files) + len(tool_cfg.include)
+            secrets_count = len(tool_cfg.secret_files)
+
+        # detect — 인스턴스화 후 호출. 단순 파일 기반은 기본 files 와 함께 생성.
+        try:
+            if name in {"shell", "git", "aws", "gh", "pulumi"}:
+                files_arg = tuple(tool_cfg.files) if tool_cfg and tool_cfg.files else ()
+                adapter = cls(files=files_arg)
+            else:
+                adapter = cls()
+            detected = adapter.detect()
+        except Exception:
+            detected = False
+
+        table.add_row(
+            name,
+            "[green]✓[/]" if enabled else "[dim]✗[/]",
+            "[green]✓[/]" if detected else "[yellow]✗[/]",
+            str(files_count),
+            str(secrets_count),
+            "",
+        )
+
+    console.print(table)
+    console.print(
+        "[dim]미지원 (v0.7+ 계획): vscode, helix, neovim — "
+        "docs/improvement-plan-ux-review.md 참조[/]"
+    )
 
 
 if __name__ == "__main__":
