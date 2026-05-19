@@ -51,28 +51,56 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ---
 
-## 5. 설치 (예정)
+## 5. 설치
 
-> v0.1.0 릴리즈 후 사용 가능. MVP 개발 중에는 로컬 editable 설치로 사용한다.
-
-### 5.1 사용자 설치 (예정)
+### 5.1 Homebrew tap (v0.6.2+ 권장)
 
 ```bash
-pipx install anvyc
-# 또는
-uv tool install anvyc
+brew tap 16bitdo/anvyc
+brew install anvyc
+anvyc --version
 ```
 
-### 5.2 개발 설치
+> tap repo (`16bitdo/homebrew-anvyc`) 가 아직 생성되기 전이라면 5.2 로 설치.
+> Formula 갱신 절차는 [docs/homebrew-publishing.md](./docs/homebrew-publishing.md) 참조.
+
+### 5.2 GitHub Release 의 wheel 직접 설치
 
 ```bash
-git clone <repo-url> anvyc
+# uv tool (권장)
+uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.6.2/anvyc-0.6.2-py3-none-any.whl
+
+# 또는 pipx
+pipx install https://github.com/16bitdo/anvyc/releases/download/v0.6.2/anvyc-0.6.2-py3-none-any.whl
+
+anvyc --version
+```
+
+### 5.3 git remote 에서 부트스트랩 (v0.6.2+)
+
+머신 A 에서 `.anvyc/` 를 private git repo 로 push 해두고, 새 머신 B 에서:
+
+```bash
+anvyc init --from-git git@github.com:<you>/anvyc-config.git
+anvyc doctor
+anvyc apply --dry-run
+anvyc apply
+```
+
+`--from-git` 은 target `.anvyc/` 이 이미 있으면 fail-fast — 덮어쓰지 않는다.
+
+### 5.4 개발 설치 (contributor)
+
+```bash
+git clone git@github.com:16bitdo/anvyc.git
 cd anvyc
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 anvyc --help
 ```
+
+상세 가이드: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ---
 
@@ -411,8 +439,9 @@ anvyc doctor --only multi-account-detected
 
 - **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
 - **v0.6.0** ✓ — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
-- **v0.6.1** (현재) — multi-account doctor checks (10 check 총합)
-- **v0.6.x** — UX 개선 (init --from-git, config edit, Homebrew tap, hostname overlay)
+- **v0.6.1** ✓ — multi-account doctor checks (10 check 총합)
+- **v0.6.2** (현재) — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
+- **v0.6.x** — UX 개선 (config edit, tools list, hostname overlay, 에러 메시지 일관성)
 - **v0.7+** — dev_env 어댑터, 호스트별 yaml overlay, 어댑터 추가 (vscode/helix/neovim)
 - **v1.0** — API stable, PyPI 배포
 

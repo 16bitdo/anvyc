@@ -1,5 +1,81 @@
 # anvyc 릴리즈 노트
 
+## v0.6.2 — 2026-05-19 (onboarding 묶음)
+
+[Wave 2 of docs/improvement-plan-ux-review.md §8.2 — Onboarding 묶음]
+새 사용자가 chezmoi 수준의 1-liner 부트스트랩을 사용할 수 있도록 다음 3가지
+경로 정비.
+
+### 새 기능: `anvyc init --from-git <url>`
+
+```bash
+anvyc init --from-git git@github.com:<you>/anvyc-config.git
+anvyc doctor
+anvyc apply --dry-run
+anvyc apply
+```
+
+- target `.anvyc/` 가 이미 있으면 **fail-fast** (덮어쓰기 X, 안전 우선)
+- `.anvyc/anvyc.yaml` 검증 실패 시 exit 1 (clone 디렉터리는 그대로 — 사용자 검증)
+- `--apply` 자동 실행은 의도적으로 지원 안 함 (destructive 행동 분리)
+
+### Homebrew Formula 초안
+
+- `packaging/homebrew/Formula/anvyc.rb` — Formula 초안 (placeholder sha256 포함)
+- 사용자가 별도 repo `16bitdo/homebrew-anvyc` 로 옮긴 후 사용
+- 설치 흐름: `brew tap 16bitdo/anvyc && brew install anvyc`
+- 갱신 절차: `docs/homebrew-publishing.md` 참조 (release 후 수동)
+
+### GitHub Release 자동화
+
+- `.github/workflows/release.yml` — `v*` tag push 시 자동 동작
+- 산출물: `anvyc-X.Y.Z-py3-none-any.whl` + `anvyc-X.Y.Z.tar.gz` + `SHA256SUMS`
+- runner: `macos-latest` + Python 3.13 + uv
+- token: 기본 `GITHUB_TOKEN` 으로 동작 (별도 PAT 불필요)
+
+### README §5 재작성
+
+기존 "v0.1.0 릴리즈 후 사용 가능" placeholder 를 실제 4-path 설치 가이드로
+교체:
+
+| § | 경로 | 시나리오 |
+|---|---|---|
+| 5.1 | Homebrew tap | 일반 사용자 (가장 권장) |
+| 5.2 | GitHub Release wheel + uv/pipx | tap 미사용/직접 설치 |
+| 5.3 | `init --from-git` | 머신 간 부트스트랩 |
+| 5.4 | 개발 설치 (`pip install -e`) | contributor |
+
+### 신규 파일
+
+- `src/anvyc/cli.py` (수정) — init 함수에 `--from-git` 옵션 추가
+- `dist/homebrew/Formula/anvyc.rb`
+- `.github/workflows/release.yml`
+- `docs/homebrew-publishing.md`
+- `tests/integration/test_init_from_git.py` (3 case)
+
+### 안전 가드
+
+- `--from-git` clone 실패 시 git stderr 그대로 출력 + exit code 전파
+- git binary 미설치 시 명시적 오류 (`FileNotFoundError` 잡음)
+- target 충돌 시 기존 `.anvyc/` 보존 — 실수로 사용자 백업 덮어쓰기 방지
+- Formula placeholder sha256 은 build-from-source 시도 시 정상적 mismatch 오류 발생 — release 후 갱신 필요
+
+### Follow-up (사용자가 별도 수행)
+
+1. `16bitdo/homebrew-anvyc` repo 생성 + Formula 초안 commit
+2. v0.6.2 tag push 후 release artifact 의 sha256 으로 Formula 갱신
+3. resource sha256 (typer/rich/pydantic/pathspec/pyyaml) 5종 PyPI 에서 산출
+
+`docs/homebrew-publishing.md` 의 step-by-step 절차 참조.
+
+### 통계
+
+- 3 commits (impl + Formula/release infra + docs/version-bump)
+- pytest 81 passed (기존 78 + 신규 3)
+- uv build → `anvyc-0.6.2-py3-none-any.whl` 정상
+
+---
+
 ## v0.6.1 — 2026-05-19 (multi-account doctor checks)
 
 [Wave 1 of docs/improvement-plan-ux-review.md §8.2 — multi-account 묶음]
