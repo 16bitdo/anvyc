@@ -43,6 +43,9 @@ app.add_typer(config_app, name="config")
 tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
 app.add_typer(tools_app, name="tools")
 
+project_app = typer.Typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
+app.add_typer(project_app, name="project")
+
 console = Console()
 
 
@@ -1051,17 +1054,32 @@ def config_show(
     effective: bool = typer.Option(
         False,
         "--effective",
-        help="default 값까지 채워진 effective yaml 출력 (default: raw).",
+        help="default 값까지 채워진 effective view (default: raw).",
+    ),
+    json_out: bool = typer.Option(
+        False, "--json", help="machine-readable JSON (--effective 와 함께 권장)."
     ),
     config: Optional[Path] = typer.Option(None, "--config"),
 ) -> None:
-    """`anvyc.yaml` 을 raw 또는 effective view 로 출력."""
+    """`anvyc.yaml` 을 raw 또는 effective view 로 출력 (yaml / json).
+
+    조합:
+      (no flag)               → raw yaml
+      --effective             → effective yaml (default 채워짐)
+      --json                  → raw → 무의미, --effective 와 함께 사용
+      --effective --json      → effective dict JSON
+    """
     yaml_path = _resolve_anvyc_yaml(config)
     if not yaml_path.is_file():
         console.print(f"[red]error[/] anvyc.yaml 부재: {yaml_path}")
         raise typer.Exit(code=1)
 
     if not effective:
+        if json_out:
+            console.print(
+                "[yellow]warning[/] --json 은 --effective 와 함께 사용 권장 "
+                "(raw yaml 그대로 출력)"
+            )
         typer.echo(yaml_path.read_text(encoding="utf-8"))
         return
 
@@ -1071,28 +1089,22 @@ def config_show(
 
     cfg = load_anvyc_config(yaml_path)
     payload = dataclasses.asdict(cfg)
-    payload.pop("source", None)  # internal field 노출 X
-    typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+    payload.pop("source", None)
+    payload.pop("overlay_source", None)
+
+    if json_out:
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    else:
+        typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
 
 
-@tools_app.command("list")
-def tools_list(
-    config: Optional[Path] = typer.Option(None, "--config"),
-) -> None:
-    """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
+def _collect_tools_rows(config: Optional[Path]) -> list[dict]:
+    """tools list 의 row 데이터 수집 (renderer 와 분리)."""
     from anvyc.core.backup import ADAPTERS
     from anvyc.core.config import load_anvyc_config
 
     cfg = load_anvyc_config(config) if config else load_anvyc_config()
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("tool")
-    table.add_column("enabled")
-    table.add_column("detected")
-    table.add_column("files", justify="right")
-    table.add_column("secrets", justify="right")
-    table.add_column("notes", style="dim")
-
+    rows: list[dict] = []
     for name, cls in ADAPTERS.items():
         tool_cfg = cfg.tools.get(name)
         enabled = tool_cfg.enabled if tool_cfg else True
@@ -1101,8 +1113,6 @@ def tools_list(
         if tool_cfg is not None:
             files_count = len(tool_cfg.files) + len(tool_cfg.include)
             secrets_count = len(tool_cfg.secret_files)
-
-        # detect — 인스턴스화 후 호출. 단순 파일 기반은 기본 files 와 함께 생성.
         try:
             if name in {"shell", "git", "aws", "gh", "pulumi"}:
                 files_arg = tuple(tool_cfg.files) if tool_cfg and tool_cfg.files else ()
@@ -1112,13 +1122,43 @@ def tools_list(
             detected = adapter.detect()
         except Exception:
             detected = False
+        rows.append({
+            "tool": name,
+            "enabled": enabled,
+            "detected": detected,
+            "files": files_count,
+            "secrets": secrets_count,
+        })
+    return rows
 
+
+@tools_app.command("list")
+def tools_list(
+    config: Optional[Path] = typer.Option(None, "--config"),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+) -> None:
+    """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
+    rows = _collect_tools_rows(config)
+
+    if json_out:
+        typer.echo(jsonlib.dumps(rows, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("tool")
+    table.add_column("enabled")
+    table.add_column("detected")
+    table.add_column("files", justify="right")
+    table.add_column("secrets", justify="right")
+    table.add_column("notes", style="dim")
+
+    for r in rows:
         table.add_row(
-            name,
-            "[green]✓[/]" if enabled else "[dim]✗[/]",
-            "[green]✓[/]" if detected else "[yellow]✗[/]",
-            str(files_count),
-            str(secrets_count),
+            r["tool"],
+            "[green]✓[/]" if r["enabled"] else "[dim]✗[/]",
+            "[green]✓[/]" if r["detected"] else "[yellow]✗[/]",
+            str(r["files"]),
+            str(r["secrets"]),
             "",
         )
 
@@ -1127,6 +1167,78 @@ def tools_list(
         "[dim]미지원 (v0.7+ 계획): vscode, helix, neovim — "
         "docs/improvement-plan-ux-review.md 참조[/]"
     )
+
+
+# ============================================================================
+# project subcommand (v0.8.0 — W7.3)
+# ============================================================================
+
+
+@project_app.command("show")
+def project_show(
+    path: Path = typer.Option(
+        Path.cwd(), "--path", help="대상 project root (default: cwd)."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+    reveal_secrets: bool = typer.Option(
+        False,
+        "--reveal-secrets",
+        help="dev_env 의 secret 패턴 매칭 값을 raw 로 노출 (default: ***REDACTED***).",
+    ),
+) -> None:
+    """cwd (또는 --path) 의 AWS / GitHub / Pulumi / dev_env 통합 view.
+
+    D11c: dev_env 의 값에 anvyc secret PATTERNS 매칭 시 자동 ***REDACTED***.
+    op:// 1Password reference 는 placeholder 이므로 redaction 면제.
+    `--reveal-secrets` 지정 시 raw 값 출력 (위험 — agent/log 에 노출 주의).
+    """
+    if not path.exists():
+        console.print(f"[red]error[/] path not found: {path}")
+        raise typer.Exit(code=1)
+    from anvyc.core.project_info import collect_project_info, to_dict
+
+    info = collect_project_info(path, redact_secrets=not reveal_secrets)
+    payload = to_dict(info)
+
+    if json_out:
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    # human rendering
+    console.print(f"[bold]path[/] {payload['path']}")
+    console.print(
+        f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}"
+    )
+    gh = payload.get("github") or []
+    if gh:
+        console.print("[bold]github[/]")
+        for r in gh:
+            console.print(
+                f"  • {r['name']}: {r['owner']}/{r['repo']}"
+                + (f"  (ssh alias: {r['ssh_alias']})" if r["ssh_alias"] else "")
+                + f"  [{r['protocol']}]"
+            )
+    else:
+        console.print("[bold]github[/] [dim](no remote)[/]")
+    pul = payload.get("pulumi")
+    if pul:
+        stacks = ", ".join(pul["stacks"]) or "[dim](no stack)[/]"
+        console.print(
+            f"[bold]pulumi[/] {pul['project_name']} "
+            f"(runtime={pul['runtime'] or '-'}, stacks={stacks})"
+        )
+    else:
+        console.print("[bold]pulumi[/] [dim](no Pulumi.yaml)[/]")
+    de = payload.get("dev_env") or {}
+    if de:
+        console.print(f"[bold]dev_env[/] ({len(de)} export(s))")
+        for k, v in de.items():
+            console.print(f"  {k}={v}")
+    else:
+        console.print("[bold]dev_env[/] [dim](no .envrc)[/]")
+    tv = payload.get("tool_versions") or {}
+    if tv:
+        console.print(f"[bold]tool_versions[/] {tv}")
 
 
 if __name__ == "__main__":
