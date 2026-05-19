@@ -153,7 +153,8 @@ anvyc/
 
 ```bash
 anvyc init                     # 프로젝트/설정 초기화
-anvyc doctor                   # 환경 진단
+anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
+anvyc doctor                   # 환경 진단 (10 check)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력
@@ -161,7 +162,13 @@ anvyc apply [--dry-run]        # source 설정 적용 (전 local backup 자동)
 anvyc restore <backup-id>      # 특정 backup으로 복원
 anvyc list                     # 백업 목록
 anvyc scan-secrets             # secret 패턴 스캔
+
+anvyc config edit              # $EDITOR 로 anvyc.yaml 편집 + schema 검증 (v0.6.3+)
+anvyc config show [--effective]  # raw 또는 default 적용된 yaml 출력 (v0.6.3+)
+anvyc tools list               # 8 도구의 enabled / detect / file-count (v0.6.3+)
+
 anvyc git {init|status|commit|push}
+anvyc sops {encrypt|decrypt|rotate-keys}
 ```
 
 ---
@@ -440,8 +447,9 @@ anvyc doctor --only multi-account-detected
 - **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
 - **v0.6.0** ✓ — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
 - **v0.6.1** ✓ — multi-account doctor checks (10 check 총합)
-- **v0.6.2** (현재) — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
-- **v0.6.x** — UX 개선 (config edit, tools list, hostname overlay, 에러 메시지 일관성)
+- **v0.6.2** ✓ — `anvyc init --from-git` + Homebrew Formula 초안 + GitHub Release 자동화
+- **v0.6.3** (현재) — `anvyc config edit/show` + `anvyc tools list` + 영어 에러 메시지 표준화
+- **v0.6.x** — hostname overlay 등 잔여 UX 개선
 - **v0.7+** — dev_env 어댑터, 호스트별 yaml overlay, 어댑터 추가 (vscode/helix/neovim)
 - **v1.0** — API stable, PyPI 배포
 

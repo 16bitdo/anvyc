@@ -1,5 +1,101 @@
 # anvyc 릴리즈 노트
 
+## v0.6.3 — 2026-05-19 (Config UX 묶음)
+
+[Wave 3 of docs/improvement-plan-ux-review.md §8.2 — Config UX 묶음]
+chezmoi 의 `edit-config` / `managed` 와 대등한 일상 워크플로 + 모든 *Blocked
+예외의 사용자 facing 메시지를 영어로 표준화.
+
+### 새 명령
+
+| 명령 | 동작 |
+|---|---|
+| `anvyc config edit` | `$EDITOR` 로 anvyc.yaml 편집, 종료 후 schema 검증. 편집 전 자동 `.bak.<ts>` 백업. invalid yaml 시 원본 복구 + exit 1. |
+| `anvyc config show` | raw anvyc.yaml 출력 (사용자 코멘트 보존) |
+| `anvyc config show --effective` | default 값 적용된 effective view (dataclass dump) |
+| `anvyc tools list` | 8 도구의 enabled / detected / files / secrets count + 미지원 도구 안내 |
+
+### 사용 예
+
+```bash
+$ EDITOR=vim anvyc config edit
+# (vim 종료 후 schema 검증)
+ok schema 검증 통과 (.anvyc/anvyc.yaml)
+backup: .anvyc/anvyc.yaml.bak.20260519-121530
+
+$ anvyc config show --effective | head -10
+storage:
+  root: .anvyc
+  keep_backups: 5
+  keep_local_backups: 5
+security:
+  secret_scan: true
+  block_on_secret: true
+  ...
+
+$ anvyc tools list
+┏━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+┃ tool   ┃ enabled ┃ detected ┃ files ┃ secrets ┃
+┡━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+│ shell  │ ✓       │ ✓        │     2 │       0 │
+│ git    │ ✓       │ ✓        │     2 │       0 │
+...
+└────────┴─────────┴──────────┴───────┴─────────┘
+미지원 (v0.7+ 계획): vscode, helix, neovim
+```
+
+### 에러 메시지 표준화 — 영어 (E6 결정)
+
+`BackupBlocked` / `ApplyBlocked` 등 secret-scan 차단 시점의 사용자 메시지를
+`src/anvyc/utils/errors.py:print_blocked_error()` 헬퍼로 통일:
+
+```
+backup blocked: secret scan rejected the operation
+  • a critical secret was found at ~/.aws/credentials
+  • a high-severity finding remains
+Next steps:
+  - anvyc doctor
+  - anvyc scan-secrets <path>  # inspect a specific path
+  - --force allowed for medium-severity findings (critical/high cannot be forced)
+```
+
+기존 한국어 메시지 ("backup 중단: secret scan 차단" 등) 는 영어로 교체.
+non-error 일반 출력 (cloned, ready, schema 검증 통과 등) 은 한국어 유지.
+
+backward compat:
+- `BackupBlocked(reasons)` 형식은 그대로 작동 (additive 추가)
+- 신규 keyword args: `next_steps`, `allow_force` 모두 optional
+
+### 신규 파일
+
+- `src/anvyc/utils/errors.py` — `print_blocked_error()` 헬퍼
+- `tests/integration/test_config_edit.py` (4 case)
+- `tests/integration/test_tools_list.py` (2 case)
+- `tests/integration/test_config_show.py` (2 case)
+- `tests/unit/test_error_messages.py` (6 case)
+
+### 수정 파일
+
+- `src/anvyc/cli.py` — config_app / tools_app subcommand group + 3 catch site refactor
+- `src/anvyc/core/backup.py` — BackupBlocked.next_steps / allow_force
+- `src/anvyc/core/apply.py` — ApplyBlocked.next_steps / allow_force
+
+### 안전 가드
+
+- `config edit` 의 EDITOR exit code 가 비-0 이면 변경 폐기 + 원본 복구
+- invalid yaml 시 `.bak.<ts>` 로부터 자동 복구
+- `EDITOR` 파싱은 `shlex.split` (quoted argument 안전)
+- `tools list` 의 adapter detect() 는 read-only — side-effect 없음
+- `config show --effective` 는 internal field (`source: Path`) 노출 안 함
+
+### 통계
+
+- 3 commits (feat config/tools + refactor errors + docs/version-bump)
+- pytest 95 passed (기존 81 + 신규 14)
+- uv build → `anvyc-0.6.3-py3-none-any.whl` 정상
+
+---
+
 ## v0.6.2 — 2026-05-19 (onboarding 묶음)
 
 [Wave 2 of docs/improvement-plan-ux-review.md §8.2 — Onboarding 묶음]
