@@ -5,11 +5,11 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
   {"mcpServers": {"anvyc": {"command": "anvyc", "args": ["serve", "--mcp"]}}}
 
 5 read-only tool 노출 (D21):
-  anvyc_project_show       cwd 의 단일 project connection
-  anvyc_project_list       root 아래 모든 project matrix
-  anvyc_project_doctor     cwd 의 정합성 5 check
-  anvyc_doctor             anvyc 환경 진단 (12 check)
-  anvyc_tools_list         9 도구 enabled / detect
+  project_show       cwd 의 단일 project connection
+  project_list       root 아래 모든 project matrix
+  project_doctor     cwd 의 정합성 5 check
+  doctor             anvyc 환경 진단 (12 check)
+  tools_list         9 도구 enabled / detect
 
 write 영역 (backup/apply/restore) 은 의도적 미포함 — agent 가 destructive
 실행 못 함. 사용자가 CLI 로 명시 실행.
@@ -40,7 +40,7 @@ server: Server = Server("anvyc")
 def _tool_defs() -> list[Tool]:
     return [
         Tool(
-            name="anvyc_project_show",
+            name="project_show",
             description=(
                 "cwd (또는 명시 path) 의 단일 project connection 정보 "
                 "(AWS profile / GitHub remote / Pulumi project / dev_env "
@@ -65,7 +65,7 @@ def _tool_defs() -> list[Tool]:
             },
         ),
         Tool(
-            name="anvyc_project_list",
+            name="project_list",
             description=(
                 "입력 root 아래 모든 project 의 connection matrix. "
                 "각 entry 는 project_show 와 동일 schema. DESIGN §33.1."
@@ -86,7 +86,7 @@ def _tool_defs() -> list[Tool]:
             },
         ),
         Tool(
-            name="anvyc_project_doctor",
+            name="project_doctor",
             description=(
                 "cwd (또는 명시 path) 의 connection 정합성 5 check. "
                 "DESIGN §33.2/§33.3."
@@ -102,7 +102,7 @@ def _tool_defs() -> list[Tool]:
             },
         ),
         Tool(
-            name="anvyc_doctor",
+            name="doctor",
             description=(
                 "anvyc 환경 진단 (global, 12 check). "
                 "cross-user / venv-hidden / op-references / sops / mcp-tokens / "
@@ -118,7 +118,7 @@ def _tool_defs() -> list[Tool]:
             },
         ),
         Tool(
-            name="anvyc_tools_list",
+            name="tools_list",
             description=(
                 "anvyc 가 관리하는 9 도구의 enabled / detect / file-count. "
                 "shell / git / aws / gh / cursor / claude / iterm2 / pulumi "
@@ -145,7 +145,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
     """
     args = arguments or {}
 
-    if name == "anvyc_project_show":
+    if name == "project_show":
         from anvyc.core.project_info import collect_project_info, to_dict
 
         p = Path(args.get("path") or ".")
@@ -154,7 +154,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         )
         return to_dict(info)
 
-    if name == "anvyc_project_list":
+    if name == "project_list":
         from anvyc.core.project_discovery import DEFAULT_ROOTS, discover_projects
         from anvyc.core.project_info import collect_project_info, to_dict
 
@@ -166,7 +166,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
             for p in projs
         ]
 
-    if name == "anvyc_project_doctor":
+    if name == "project_doctor":
         from anvyc.core.project_doctor import run_project_doctor
 
         p = Path(args.get("path") or ".")
@@ -176,7 +176,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
             "results": [r.to_dict() for r in report.results],
         }
 
-    if name == "anvyc_doctor":
+    if name == "doctor":
         from anvyc.core.doctor import run_doctor
 
         only = args.get("only") or None
@@ -184,7 +184,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         report = run_doctor(only=only, skip=skip)
         return {"results": [r.to_dict() for r in report.results]}
 
-    if name == "anvyc_tools_list":
+    if name == "tools_list":
         from anvyc.cli import _collect_tools_rows
 
         return _collect_tools_rows(None)

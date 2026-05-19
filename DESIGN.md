@@ -1633,11 +1633,11 @@ src/anvyc/
 
 | tool | dispatch target | input schema | output |
 |---|---|---|---|
-| `anvyc_project_show` | `core.project_info.collect_project_info` | `{path?, reveal_secrets?}` | ProjectInfo (§32) |
-| `anvyc_project_list` | `core.project_discovery.discover_projects` + collect | `{roots?, reveal_secrets?}` | array ProjectInfo (§33.1) |
-| `anvyc_project_doctor` | `core.project_doctor.run_project_doctor` | `{path?}` | `{path, results}` (§33.2) |
-| `anvyc_doctor` | `core.doctor.run_doctor` | `{only?, skip?}` | `{results}` |
-| `anvyc_tools_list` | `cli._collect_tools_rows` | `{}` | array `{tool, enabled, detected, files, secrets}` |
+| `project_show` | `core.project_info.collect_project_info` | `{path?, reveal_secrets?}` | ProjectInfo (§32) |
+| `project_list` | `core.project_discovery.discover_projects` + collect | `{roots?, reveal_secrets?}` | array ProjectInfo (§33.1) |
+| `project_doctor` | `core.project_doctor.run_project_doctor` | `{path?}` | `{path, results}` (§33.2) |
+| `doctor` | `core.doctor.run_doctor` | `{only?, skip?}` | `{results}` |
+| `tools_list` | `cli._collect_tools_rows` | `{}` | array `{tool, enabled, detected, files, secrets}` |
 
 ### 34.5 write 영역 의도적 제외
 
@@ -1647,8 +1647,8 @@ src/anvyc/
 
 ### 34.6 redaction (D11c default 동일)
 
-- `anvyc_project_show` / `anvyc_project_list` 의 `reveal_secrets=False` default
-- `anvyc_project_doctor` 는 raw 검증 위해 내부 `redact_secrets=False` 사용
+- `project_show` / `project_list` 의 `reveal_secrets=False` default
+- `project_doctor` 는 raw 검증 위해 내부 `redact_secrets=False` 사용
   하지만 결과 message 에는 KEY 명만 (raw 미포함)
 
 ### 34.7 error handling
@@ -1665,6 +1665,7 @@ src/anvyc/
 
 ### 34.9 schema 안정성
 
-- v0.9.0 부터 5 tool 의 `inputSchema` + 출력 schema 는 **public API**
+- v0.10.0 부터 5 tool 의 이름 + `inputSchema` + 출력 schema 는 **public API**
+  - v0.9.0 의 `anvyc_*` prefix 는 cleanup deferred 였음 (v0.10.0 에서 제거)
 - minor 변경 (key 추가 / 새 tool 추가) 만 backward-compat
-- breaking 변경 (key 제거 / 타입 변경) 은 major (v1.0+) 에서만
+- breaking 변경 (key 제거 / 이름 변경 / 타입 변경) 은 major (v1.0+) 에서만

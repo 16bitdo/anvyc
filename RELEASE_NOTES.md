@@ -1,5 +1,57 @@
 # anvyc 릴리즈 노트
 
+## v0.10.0 — 2026-05-19 (MCP tool naming cleanup — breaking)
+
+[follow-up of v0.9.0 회귀 테스트 — `mcp__anvyc__anvyc_*` 의 redundant prefix
+관찰됨. tool 이름에서 `anvyc_` prefix 제거]
+
+### Breaking change — MCP tool 이름
+
+| v0.9.0 | v0.10.0 |
+|---|---|
+| `anvyc_project_show` | `project_show` |
+| `anvyc_project_list` | `project_list` |
+| `anvyc_project_doctor` | `project_doctor` |
+| `anvyc_doctor` | `doctor` |
+| `anvyc_tools_list` | `tools_list` |
+
+agent 가 호출하는 실제 이름은 server name 까지 포함되어 `mcp__anvyc__*`
+→ v0.10.0 에서는 `mcp__anvyc__project_show` (이전: `mcp__anvyc__anvyc_project_show`).
+
+### Migration
+
+- agent / IDE 가 tool 이름을 직접 하드코딩한 경우만 영향.
+- Claude Code / Cursor 의 mcp.json 자체는 변경 불필요 (server name `anvyc` 유지).
+- v0.10.0 wheel 재설치만으로 새 이름 자동 노출 — agent 가 다시 tool 목록 fetch.
+- 검증: `printf '...initialize+tools/list...' | anvyc serve --mcp` →
+  `tools[].name` 이 `project_show` 등 5개.
+
+### Schema 안정성 정정
+
+DESIGN §34.9 — v0.9.0 첫 MCP release 의 tool 이름은 cleanup deferred 였음.
+v0.10.0 부터 5 tool 이름 + input/output schema 는 **public API**. minor 변경
+(key 추가) 만 backward-compat, breaking 은 v1.0+ 까지 보류.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/mcp/server.py` — 5 tool name + dispatch 분기 + docstring
+- `tests/integration/test_mcp_server.py` — _dispatch 인자
+- `docs/mcp-integration.md`, `DESIGN.md §34`, `docs/improvement-plan-ai-agent.md`
+- `pyproject.toml`, `src/anvyc/__init__.py` — version 0.9.0 → 0.10.0
+
+### Backward compatibility
+
+- 기존 14 CLI 명령 동작 변경 없음.
+- 이전 v0.9.0 tool 이름은 **invalid** — `_dispatch("anvyc_project_show", ...)` 호출 시
+  `ValueError: unknown tool`.
+
+### 통계
+
+- 1 commit (server + 5 docs + version + RELEASE_NOTES)
+- pytest 영향 없음 (테스트 _dispatch 인자도 새 이름)
+
+---
+
 ## v0.9.0 — 2026-05-19 (MCP server — AI agent direct integration)
 
 [Wave 9 of docs/improvement-plan-ai-agent.md §7.3 — AI Agent Integration]
@@ -24,11 +76,11 @@ uv tool install --upgrade 'anvyc[mcp]'
 
 | tool | 매핑 | 출력 |
 |---|---|---|
-| `anvyc_project_show` | `anvyc project show` | ProjectInfo (DESIGN §32) |
-| `anvyc_project_list` | `anvyc project list` | array of ProjectInfo |
-| `anvyc_project_doctor` | `anvyc project doctor` | `{path, results}` |
-| `anvyc_doctor` | `anvyc doctor --json` | `{results}` (12 check) |
-| `anvyc_tools_list` | `anvyc tools list --json` | array of tool entries |
+| `project_show` | `anvyc project show` | ProjectInfo (DESIGN §32) |
+| `project_list` | `anvyc project list` | array of ProjectInfo |
+| `project_doctor` | `anvyc project doctor` | `{path, results}` |
+| `doctor` | `anvyc doctor --json` | `{results}` (12 check) |
+| `tools_list` | `anvyc tools list --json` | array of tool entries |
 
 write 영역 (`backup`/`apply`/`restore`) 은 의도적 미포함 — agent 가
 destructive 실행 못 함.

@@ -129,9 +129,9 @@ definition 으로 직접 호출 가능. 예시:
 ```yaml
 # Claude Code .mcp/anvyc.json
 tools:
-  - name: anvyc_project_show
+  - name: project_show
     description: "현재 project 의 모든 connection 정보"
-  - name: anvyc_project_doctor
+  - name: project_doctor
     description: "현재 project 의 connection 정합성 검증"
 ```
 
@@ -239,12 +239,12 @@ P6 가 핵심. P8/P9 는 UX 보강.
      }
 
 4. AI agent (Claude Code MCP) 가 직접 호출:
-   tool: anvyc_project_show
+   tool: project_show
    args: { path: "." }
    → 위 JSON 반환
 
 5. AI agent 가 작업 전 정합성 검증:
-   tool: anvyc_project_doctor
+   tool: project_doctor
    args: { path: "." }
    → {
        "aws_profile_defined": true,

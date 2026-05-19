@@ -29,7 +29,7 @@ def test_dispatch_project_show(tmp_path: Path) -> None:
         '[remote "origin"]\n    url = git@github.com:o/r.git\n',
     )
 
-    result = _dispatch("anvyc_project_show", {"path": str(proj)})
+    result = _dispatch("project_show", {"path": str(proj)})
 
     assert result["aws_profile"] == "test-profile"
     assert result["github"][0]["owner"] == "o"
@@ -45,7 +45,7 @@ def test_dispatch_project_show_default_redaction(tmp_path: Path) -> None:
         "export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
     )
 
-    result = _dispatch("anvyc_project_show", {"path": str(proj)})
+    result = _dispatch("project_show", {"path": str(proj)})
     assert result["dev_env"]["GITHUB_TOKEN"] == "***REDACTED***"
 
 
@@ -60,7 +60,7 @@ def test_dispatch_project_show_reveal_secrets(tmp_path: Path) -> None:
     )
 
     result = _dispatch(
-        "anvyc_project_show", {"path": str(proj), "reveal_secrets": True}
+        "project_show", {"path": str(proj), "reveal_secrets": True}
     )
     assert result["dev_env"]["GITHUB_TOKEN"].startswith("ghp_")
 
@@ -73,7 +73,7 @@ def test_dispatch_project_list(tmp_path: Path) -> None:
     _write(docs / "a" / ".git" / "config", "")
     _write(docs / "b" / "Pulumi.yaml", "name: b\nruntime: python\n")
 
-    result = _dispatch("anvyc_project_list", {"roots": [str(docs)]})
+    result = _dispatch("project_list", {"roots": [str(docs)]})
     assert isinstance(result, list)
     assert len(result) == 2
 
@@ -84,7 +84,7 @@ def test_dispatch_project_doctor(tmp_path: Path) -> None:
     proj = tmp_path / "p"
     _write(proj / "Pulumi.yaml", "name: p\nruntime: python\n")
 
-    result = _dispatch("anvyc_project_doctor", {"path": str(proj)})
+    result = _dispatch("project_doctor", {"path": str(proj)})
     assert result["path"].endswith("/p")
     assert any(r["check_name"] == "pulumi_stacks_valid" for r in result["results"])
 
@@ -93,7 +93,7 @@ def test_dispatch_doctor() -> None:
     """global doctor — 적어도 results array 반환."""
     from anvyc.mcp.server import _dispatch
 
-    result = _dispatch("anvyc_doctor", {"only": ["venv-hidden-flag"]})
+    result = _dispatch("doctor", {"only": ["venv-hidden-flag"]})
     assert "results" in result
     assert isinstance(result["results"], list)
 
@@ -101,7 +101,7 @@ def test_dispatch_doctor() -> None:
 def test_dispatch_tools_list() -> None:
     from anvyc.mcp.server import _dispatch
 
-    result = _dispatch("anvyc_tools_list", {})
+    result = _dispatch("tools_list", {})
     assert isinstance(result, list)
     # 9 adapter (shell/git/aws/gh/cursor/claude/iterm2/pulumi/dev_env)
     assert len(result) >= 9
@@ -124,9 +124,9 @@ def test_tool_defs_advertises_5_tools() -> None:
     assert len(defs) == 5
     names = {t.name for t in defs}
     assert names == {
-        "anvyc_project_show",
-        "anvyc_project_list",
-        "anvyc_project_doctor",
-        "anvyc_doctor",
-        "anvyc_tools_list",
+        "project_show",
+        "project_list",
+        "project_doctor",
+        "doctor",
+        "tools_list",
     }

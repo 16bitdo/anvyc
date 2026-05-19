@@ -61,11 +61,11 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 
 ```
 > 이 프로젝트의 AWS profile 알려줘
-[Claude → anvyc_project_show(path=".") → ProjectInfo JSON]
+[Claude → project_show(path=".") → ProjectInfo JSON]
 → AWS_PROFILE=company-dev
 
 > ~/Documents 의 모든 Pulumi project 알려줘
-[anvyc_project_list(roots=["~/Documents"]) → filter pulumi != null]
+[project_list(roots=["~/Documents"]) → filter pulumi != null]
 → workspace, pulumi-cloudflare-zt, ...
 ```
 
@@ -94,11 +94,11 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 
 | tool name | 매핑 anvyc 명령 | 입력 | 출력 schema |
 |---|---|---|---|
-| `anvyc_project_show` | `anvyc project show` | `{path?, reveal_secrets?}` | ProjectInfo (DESIGN §32) |
-| `anvyc_project_list` | `anvyc project list` | `{roots?, reveal_secrets?}` | array of ProjectInfo (DESIGN §33.1) |
-| `anvyc_project_doctor` | `anvyc project doctor` | `{path?}` | `{path, results}` (DESIGN §33.2) |
-| `anvyc_doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (12 check) |
-| `anvyc_tools_list` | `anvyc tools list --json` | `{}` | array of `{tool, enabled, detected, files, secrets}` |
+| `project_show` | `anvyc project show` | `{path?, reveal_secrets?}` | ProjectInfo (DESIGN §32) |
+| `project_list` | `anvyc project list` | `{roots?, reveal_secrets?}` | array of ProjectInfo (DESIGN §33.1) |
+| `project_doctor` | `anvyc project doctor` | `{path?}` | `{path, results}` (DESIGN §33.2) |
+| `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (12 check) |
+| `tools_list` | `anvyc tools list --json` | `{}` | array of `{tool, enabled, detected, files, secrets}` |
 
 ### 4.1 의도적 미포함 (write 영역)
 
@@ -155,7 +155,7 @@ output: dev_env.GITHUB_TOKEN = "op://Personal/GitHub/token"  (그대로)
 ```
 사용자: 어떤 project 들이 company-dev profile 을 쓰는지 알려줘.
 
-Claude: [anvyc_project_list(roots=["~/Documents"]) 호출]
+Claude: [project_list(roots=["~/Documents"]) 호출]
        [JSON 응답 받음 — 32 projects]
        [filter: aws_profile == "company-dev"]
        → 3 projects: proj-a, proj-b, proj-c
@@ -165,7 +165,7 @@ Claude: [anvyc_project_list(roots=["~/Documents"]) 호출]
 
 ```
 사용자가 cd ~/Documents/new-proj.
-Cursor: [현재 file 변경 시 anvyc_project_doctor(path=".") 자동 호출]
+Cursor: [현재 file 변경 시 project_doctor(path=".") 자동 호출]
        → CRITICAL: dev_env raw secret (GITHUB_TOKEN)
        → 사용자에게 1Password 사용 권장 alert
 ```
@@ -175,8 +175,8 @@ Cursor: [현재 file 변경 시 anvyc_project_doctor(path=".") 자동 호출]
 ```
 사용자: 이 프로젝트의 .envrc 가 다른 머신에 sync 되어 있는지 봐.
 
-Claude: [anvyc_project_show(path=".") → dev_env 확인]
-       [anvyc_doctor(only=["project-aws-profile-mapping"]) → 정의 정합성]
+Claude: [project_show(path=".") → dev_env 확인]
+       [doctor(only=["project-aws-profile-mapping"]) → 정의 정합성]
        → "AWS_PROFILE=ws-dev 가 ~/.aws/config 에 정의 안 됨. 다음 명령으로
           backup 후 다른 머신에서 apply 권장: anvyc backup"
        (Claude 는 backup 을 직접 실행 안 함 — 사용자 명시 실행 권장)
@@ -220,7 +220,7 @@ source build 가 필요한 환경은 `pip install maturin` 선행 후 재시도.
 
 ## 8. 한계 / Roadmap
 
-### 8.1 현재 (v0.9.0)
+### 8.1 현재 (v0.10.0)
 
 - read-only 5 tool
 - stdio transport 만
