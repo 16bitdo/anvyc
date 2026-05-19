@@ -387,14 +387,21 @@ tools:
 direnv 와 aws-vault 가 더 잘 하는 영역에 anvyc 가 들어가면 도구 경계 모호.
 anvyc 는 **정적 설정 동기화 + 검증 + 권장 워크플로 가이드** 역할.
 
-### 11.5 향후 doctor check 계획 (v0.6.x)
+### 11.5 multi-account doctor checks (v0.6.1 구현됨)
 
-| Check | 동작 |
-|---|---|
-| `project-aws-profile-mapping` | `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 |
-| `aws-profile-status` | 현재 active `AWS_PROFILE` env var ↔ 정의 검증 |
-| `unused-aws-profiles` | `.aws/config` 에만 있고 어디서도 안 쓰는 profile (INFO) |
-| `multi-account-detected` | ssh / aws / gh 의 multi-account 환경 자동 안내 (INFO) |
+| Check | 동작 | 상태 |
+|---|---|---|
+| `project-aws-profile-mapping` | `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 | ✓ v0.6.1 |
+| `aws-profile-status` | 현재 active `AWS_PROFILE` env var ↔ 정의 검증 | ✓ v0.6.1 |
+| `multi-account-detected` | ssh / aws / cursor alias 의 multi-account 환경 자동 안내 (INFO) | ✓ v0.6.1 |
+| `unused-aws-profiles` | `.aws/config` 에만 있고 어디서도 안 쓰는 profile (INFO) | v0.7+ 계획 |
+
+```bash
+# 개별 실행
+anvyc doctor --only project-aws-profile-mapping
+anvyc doctor --only aws-profile-status
+anvyc doctor --only multi-account-detected
+```
 
 자세한 UX 개선 계획은 [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
 
@@ -403,8 +410,9 @@ anvyc 는 **정적 설정 동기화 + 검증 + 권장 워크플로 가이드** �
 ## 12. 로드맵
 
 - **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
-- **v0.6.0** (현재) — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
-- **v0.6.x** — UX 개선 (init --from-git, config edit, multi-account doctor checks)
+- **v0.6.0** ✓ — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
+- **v0.6.1** (현재) — multi-account doctor checks (10 check 총합)
+- **v0.6.x** — UX 개선 (init --from-git, config edit, Homebrew tap, hostname overlay)
 - **v0.7+** — dev_env 어댑터, 호스트별 yaml overlay, 어댑터 추가 (vscode/helix/neovim)
 - **v1.0** — API stable, PyPI 배포
 

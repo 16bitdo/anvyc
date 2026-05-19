@@ -1022,6 +1022,22 @@ touch src/anvyc/cli.py
 | Cross-user 경로 | 본 §27.3 |
 | iTerm2 plist 안전성 | window state / recent sessions 잔존 여부 |
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
+| Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
+
+#### 27.1.1 등록된 check 목록 (10종, v0.6.1)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `cross-user` | 경로 username 분류 (§27.3) | v0.1.0 |
+| `venv-hidden-flag` | macOS UF_HIDDEN trap (`.venv`) | v0.1.0 |
+| `op-references-valid` | `op://` reference 검증 | v0.1.0 |
+| `adapter-validate` | adapter 자체 validate wrap | v0.1.0 |
+| `cursor-projects-suggest` | candidate root 의 `.cursor/` 발견 안내 | v0.1.0 |
+| `sops-keys-available` | sops/age binary + age identity | v0.2.0 |
+| `mcp-tokens-warn` | mcp.json 의 raw token 패턴 | v0.2.1 |
+| `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
+| `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
+| `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias | v0.6.1 |
 
 ### 27.2 모듈 구조
 

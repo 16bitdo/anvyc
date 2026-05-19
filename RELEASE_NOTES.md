@@ -1,5 +1,62 @@
 # anvyc 릴리즈 노트
 
+## v0.6.1 — 2026-05-19 (multi-account doctor checks)
+
+[Wave 1 of docs/improvement-plan-ux-review.md §8.2 — multi-account 묶음]
+3종의 doctor check 추가로 사용자의 multi-account 환경 (12 AWS profile,
+다중 GitHub ssh alias, Cursor user alias) 을 즉시 진단/안내.
+
+### 신규 doctor check (7 → 10)
+
+| Check | 동작 | 발행 severity |
+|---|---|---|
+| `project-aws-profile-mapping` | `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 (depth 3 한정) | INFO (모두 정의됨) / WARNING (누락) |
+| `aws-profile-status` | 현재 shell 의 `AWS_PROFILE` env var 와 `~/.aws/config` 정의 정합성 | INFO (미설정 / 정의됨) / WARNING (정의 안 됨) |
+| `multi-account-detected` | AWS profile ≥ 2 + GitHub ssh alias (`Host github.com-*`) + Cursor user alias symlink | INFO (영역별 1건씩) |
+
+### 사용 예
+
+```bash
+anvyc doctor --only project-aws-profile-mapping
+anvyc doctor --only aws-profile-status
+anvyc doctor --only multi-account-detected
+
+# 새 check 만 모아서
+anvyc doctor --only project-aws-profile-mapping \
+             --only aws-profile-status \
+             --only multi-account-detected
+```
+
+### 신규 파일
+
+- `src/anvyc/utils/aws_config.py` — shared helper, `~/.aws/config` profile 이름 추출
+- `src/anvyc/checks/project_aws_profile.py`
+- `src/anvyc/checks/aws_profile_status.py`
+- `src/anvyc/checks/multi_account_detected.py`
+- `tests/unit/test_project_aws_profile.py` (5 case)
+- `tests/unit/test_aws_profile_status.py` (3 case)
+- `tests/unit/test_multi_account_detected.py` (6 case)
+
+### 안전 가드
+
+- `~/.aws/config` 부재 → graceful (모든 mapping 을 missing 처리)
+- `~/Documents` 부재 → silent skip
+- `[sso-session *]` 같은 다른 section 은 profile 로 인식 안 함 (`default` + `profile *` 만)
+- doctor JSON schema 변경 없음 (6 필드 유지) — 외부 도구 호환
+
+### 회귀
+
+- `tests/unit/test_smoke.py` 의 `__version__` assertion 을 0.6.1 로 동기화 (v0.6.0 에서 누락된 회귀 함께 수정)
+- 기존 7 check 동작/출력 변경 없음 — `--skip` 옵션으로 새 check 비활성화 가능
+
+### 통계
+
+- 2 commits (impl + docs/version-bump)
+- pytest 78 passed (기존 64 + 신규 14, smoke 회귀 1 fix)
+- uv build → `anvyc-0.6.1-py3-none-any.whl` 정상
+
+---
+
 ## v0.6.0 — 2026-05-19 (OSS 공개 준비)
 
 **OSS 공개 준비 완료**. LICENSE / CONTRIBUTING / SECURITY / pyproject metadata
