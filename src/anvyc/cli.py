@@ -1241,5 +1241,122 @@ def project_show(
         console.print(f"[bold]tool_versions[/] {tv}")
 
 
+@project_app.command("doctor")
+def project_doctor(
+    path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON."),
+    strict: bool = typer.Option(
+        False, "--strict", help="warning 이상 발견 시 exit 1."
+    ),
+) -> None:
+    """cwd (또는 --path) 의 connection 정합성 5 check.
+
+    1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
+    2. github_remote_parseable    origin URL parse
+    3. pulumi_stacks_valid        stack 이름 형식
+    4. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
+    5. tool_versions_installed    python/node binary PATH 존재
+    """
+    if not path.exists():
+        console.print(f"[red]error[/] path not found: {path}")
+        raise typer.Exit(code=1)
+    from anvyc.core.project_doctor import run_project_doctor
+
+    report = run_project_doctor(path)
+
+    if json_out:
+        payload = {
+            "path": str(report.path),
+            "results": [r.to_dict() for r in report.results],
+        }
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        console.print(f"[bold]project doctor[/] {report.path}")
+        if not report.results:
+            console.print("[dim]no checks applicable (no .envrc / .git / Pulumi.yaml / tool_versions)[/]")
+        else:
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("severity")
+            table.add_column("check")
+            table.add_column("message")
+            for r in report.results:
+                style = _severity_style(r.severity)
+                table.add_row(
+                    f"[{style}]{r.severity.value}[/]",
+                    r.check_name,
+                    r.message,
+                )
+            console.print(table)
+            # suggestion 출력 (blocking 만)
+            for r in report.results:
+                if r.severity.is_blocking and r.suggestion:
+                    console.print(f"  [dim]→ {r.suggestion}[/]")
+
+    if strict and report.has_blocking():
+        raise typer.Exit(code=1)
+
+
+@project_app.command("list")
+def project_list(
+    roots: Optional[list[str]] = typer.Option(
+        None, "--root",
+        help="scan root (반복 가능, default: ~/Documents).",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+    reveal_secrets: bool = typer.Option(
+        False, "--reveal-secrets",
+        help="dev_env secret 패턴 매칭 값을 raw 노출 (default: ***REDACTED***).",
+    ),
+) -> None:
+    """입력 root(들) 의 모든 project 의 connection matrix.
+
+    각 entry 는 `anvyc project show` 와 동일 schema (DESIGN §32).
+    D11c redaction 동일 적용 — `--reveal-secrets` 명시 시 raw 값.
+    """
+    from anvyc.core.project_discovery import DEFAULT_ROOTS, discover_projects
+    from anvyc.core.project_info import collect_project_info, to_dict
+
+    roots_arg = roots if roots else list(DEFAULT_ROOTS)
+    projects = discover_projects(roots_arg)
+    infos = [
+        collect_project_info(p, redact_secrets=not reveal_secrets)
+        for p in projects
+    ]
+    payload = [to_dict(i) for i in infos]
+
+    if json_out:
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if not payload:
+        console.print(f"[dim]no projects found under: {', '.join(roots_arg)}[/]")
+        return
+
+    console.print(f"[bold]{len(payload)} project(s) found[/]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("path", style="cyan")
+    table.add_column("aws_profile")
+    table.add_column("github")
+    table.add_column("pulumi")
+    table.add_column("dev_env", justify="right")
+    for entry in payload:
+        gh_summary = "—"
+        if entry["github"]:
+            owners = sorted({r["owner"] for r in entry["github"]})
+            gh_summary = ", ".join(owners)
+        pul_summary = "—"
+        if entry["pulumi"]:
+            stacks = ",".join(entry["pulumi"]["stacks"]) or "(no stack)"
+            pul_summary = f"{entry['pulumi']['project_name']} [{stacks}]"
+        table.add_row(
+            _short_path(Path(entry["path"])),
+            entry["aws_profile"] or "—",
+            gh_summary,
+            pul_summary,
+            str(len(entry["dev_env"])),
+        )
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()
