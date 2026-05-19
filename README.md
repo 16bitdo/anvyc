@@ -471,7 +471,7 @@ anvyc doctor --only multi-account-detected
 ```
 
 - hostname = `socket.gethostname().split(".")[0]` (FQDN 안전)
-  - 예: `AliasMacmini-Macmini.local` → `anvyc.AliasMacmini-Macmini.yaml`
+  - 예: `host-a.local` → `anvyc.host-a.yaml`
 - `ANVYC_HOSTNAME` env 로 override 가능 (테스트/머신 이동 시 유용)
 
 ### 예: 공통 설정 + macOS-A 머신만 git 비활성화

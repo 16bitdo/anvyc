@@ -228,7 +228,7 @@ overlay 가 존재하면 자동 deep-merge:
 | scalar | overlay 우선 |
 
 - hostname source: `socket.gethostname().split(".")[0]` (FQDN 안전)
-  - 예: `AliasMacmini-Macmini.local` → `anvyc.AliasMacmini-Macmini.yaml`
+  - 예: `host-a.local` → `anvyc.host-a.yaml`
 - `ANVYC_HOSTNAME` env override (테스트/머신 이동 시)
 
 ### 사용 예

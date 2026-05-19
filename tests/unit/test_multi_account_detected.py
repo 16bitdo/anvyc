@@ -78,7 +78,7 @@ def test_github_ssh_alias_yields_info(patched_sources: dict) -> None:
 
         Host github.com-secondary
             HostName github.com
-            IdentityFile ~/.ssh/id_ed25519_heisgone
+            IdentityFile ~/.ssh/id_ed25519_secondary
         """)
     )
     res = MultiAccountDetectedCheck().run(CheckContext())
