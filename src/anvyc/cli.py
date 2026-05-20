@@ -1211,6 +1211,9 @@ def project_show(
     console.print(
         f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}"
     )
+    console.print(
+        f"[bold]gh_account[/] {payload['gh_account'] or '[dim](unset)[/]'}"
+    )
     gh = payload.get("github") or []
     if gh:
         console.print("[bold]github[/]")
@@ -1277,13 +1280,14 @@ def project_doctor(
         False, "--strict", help="warning 이상 발견 시 exit 1."
     ),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 5 check.
+    """cwd (또는 --path) 의 connection 정합성 6 check.
 
     1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
     2. github_remote_parseable    origin URL parse
-    3. pulumi_stacks_valid        stack 이름 형식
-    4. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
-    5. tool_versions_installed    python/node binary PATH 존재
+    3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
+    4. pulumi_stacks_valid        stack 이름 형식
+    5. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
+    6. tool_versions_installed    python/node binary PATH 존재
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")
@@ -1364,6 +1368,7 @@ def project_list(
     table = Table(show_header=True, header_style="bold")
     table.add_column("path", style="cyan")
     table.add_column("aws_profile")
+    table.add_column("gh_account")
     table.add_column("github")
     table.add_column("pulumi")
     table.add_column("dev_env", justify="right")
@@ -1379,6 +1384,7 @@ def project_list(
         table.add_row(
             _short_path(Path(entry["path"])),
             entry["aws_profile"] or "—",
+            entry["gh_account"] or "—",
             gh_summary,
             pul_summary,
             str(len(entry["dev_env"])),

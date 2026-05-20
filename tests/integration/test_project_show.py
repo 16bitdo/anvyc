@@ -19,7 +19,12 @@ def _write(p: Path, body: str) -> None:
 def test_full_project_json(tmp_path: Path) -> None:
     """.envrc + .git + Pulumi.yaml + Pulumi.<stack>.yaml + .python-version → 모든 필드 채워짐."""
     proj = tmp_path / "proj"
-    _write(proj / ".envrc", "export AWS_PROFILE=company-dev\nexport NODE_ENV=development\n")
+    _write(
+        proj / ".envrc",
+        "export AWS_PROFILE=company-dev\n"
+        'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n'
+        "export NODE_ENV=development\n",
+    )
     _write(
         proj / ".git" / "config",
         """\
@@ -35,6 +40,8 @@ def test_full_project_json(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr or proc.stdout
     data = json.loads(proc.stdout)
     assert data["aws_profile"] == "company-dev"
+    # GH_CONFIG_DIR 경로 값 → gh 계정 (basename 의 gh- prefix 제거)
+    assert data["gh_account"] == "16bitdo"
     assert data["dev_env"]["NODE_ENV"] == "development"
     assert len(data["github"]) == 1
     assert data["github"][0]["owner"] == "16bitdo"
@@ -53,6 +60,7 @@ def test_bare_project_all_null(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     data = json.loads(proc.stdout)
     assert data["aws_profile"] is None
+    assert data["gh_account"] is None
     assert data["github"] is None
     assert data["pulumi"] is None
     assert data["dev_env"] == {}
@@ -108,6 +116,19 @@ def test_op_reference_not_redacted(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     data = json.loads(proc.stdout)
     assert data["dev_env"]["GITHUB_TOKEN"] == "op://Personal/GitHub/token"
+
+
+def test_gh_account_non_convention_dir_is_null(tmp_path: Path) -> None:
+    """GH_CONFIG_DIR basename 이 `gh-<name>` 형식이 아니면 gh_account 는 null."""
+    proj = tmp_path / "ghx"
+    _write(proj / ".envrc", 'export GH_CONFIG_DIR="$HOME/.config/gh"\n')
+
+    proc = _anvyc("project", "show", "--path", str(proj), "--json")
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["gh_account"] is None
+    # 경로 값 자체는 dev_env 에 그대로 남음 (secret 아님)
+    assert data["dev_env"]["GH_CONFIG_DIR"] == "$HOME/.config/gh"
 
 
 def test_missing_path_fails(tmp_path: Path) -> None:

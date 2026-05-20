@@ -1024,7 +1024,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (10종, v0.6.1)
+#### 27.1.1 등록된 check 목록 (12종, v0.11.0)
 
 | check_name | 영역 | 추가 |
 |---|---|---|
@@ -1038,6 +1038,8 @@ touch src/anvyc/cli.py
 | `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
 | `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
 | `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias | v0.6.1 |
+| `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
+| `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ GitHub origin ssh alias | v0.11.0 |
 
 ### 27.2 모듈 구조
 
@@ -1458,6 +1460,7 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 |---|---|---|---|
 | `path` | string | no | 입력 path 의 resolve 된 절대 경로 |
 | `aws_profile` | string | yes | `.envrc` 의 `export AWS_PROFILE=X` 값 (편의 single-field) |
+| `gh_account` | string | yes | `.envrc` 의 `export GH_CONFIG_DIR=X` 경로에서 도출한 gh 계정 (§32.4a) |
 | `github` | array | yes | parse 된 git remote 목록 (없으면 null) |
 | `pulumi` | object | yes | Pulumi project info (Pulumi.yaml 없으면 null) |
 | `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
@@ -1485,6 +1488,22 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `stacks` | array | `Pulumi.<stack>.yaml` 파일들의 stack 이름 (alphabetical) |
 | `yaml_path` | string | Pulumi.yaml 의 절대 경로 |
 
+### 32.4a gh_account 도출 (v0.11.0)
+
+per-project gh routing convention: `.envrc` 가
+`export GH_CONFIG_DIR="$HOME/.config/gh-<account>"` 를 export 하면 `gh` CLI 가
+project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global active account
+우회). `gh_account` 는 이 routing 의 계정 이름이다.
+
+- 도출: `GH_CONFIG_DIR` 경로 값의 basename 에서 `gh-` prefix 제거.
+  - `$HOME/.config/gh-16bitdo` → `16bitdo`
+  - `$HOME/.config/gh-heisgone` → `heisgone`
+- `AWS_PROFILE` 은 값 자체가 식별자라 그대로 쓰지만, `GH_CONFIG_DIR` 은 경로
+  값이므로 basename 추출 한 단계를 더 거친다.
+- `GH_CONFIG_DIR` 부재 / basename 이 `gh-<name>` 형식 아님 → `null`.
+- 경로 값 자체는 secret 이 아니므로 `dev_env` 에 그대로 남고, 편의 single-field
+  `gh_account` 는 도출된 계정만 노출 (`aws_profile` 과 동일 패턴).
+
 ### 32.5 dev_env redaction (D11c)
 
 - 각 (KEY, VALUE) 페어에 대해 가상 line `KEY=VALUE` 를 생성하고 anvyc 의
@@ -1501,6 +1520,7 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 {
   "path": "/Users/edward/Documents/proj",
   "aws_profile": "company-dev",
+  "gh_account": "16bitdo",
   "github": [
     {
       "name": "origin",
@@ -1566,17 +1586,24 @@ discovery 규칙:
 `results` 는 doctor `--json` 의 result entry 와 동일 6 field (check_name, severity,
 message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절대 경로.
 
-### 33.3 project doctor check 명세 (5 check)
+### 33.3 project doctor check 명세 (6 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
 | `aws_profile_defined` | `.envrc` 의 AWS_PROFILE 있을 때만 | WARNING |
 | `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
+| `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
 | `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
 
 → check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
+
+`gh_account_routing` (v0.11.0): origin remote URL 이 `github.com-<alias>` ssh
+alias 를 쓰면, `.envrc` 의 `GH_CONFIG_DIR` 에서 도출한 gh 계정 (§32.4a) 이
+그 alias 와 일치하는지 검증. `GH_CONFIG_DIR` 부재 / 계정 불일치 → WARNING,
+일치 → INFO. plain `github.com` origin (alias 없음) 은 검증 대상 아님 (silent).
+global `project-gh-account-mapping` check (§27.1.1) 의 path-aware 버전.
 
 이 check 들은 기존 `anvyc doctor` 와 별개 — `project doctor` 는 path-aware.
 

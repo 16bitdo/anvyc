@@ -74,6 +74,7 @@
 | 2026-05-18 | v0.5.2 Y2 확정: format chain = file > tool > global > default | 가장 구체적인 설정이 이긴다 — 일반 config 우선순위 패턴 |
 | 2026-05-18 | v0.5.2 Y3 확정: dict 의 추가 필드 = format 만 | per-file recipients/identity 는 보안 모델 복잡화. v0.6+ 검토 |
 | 2026-05-19 | macOS UF_HIDDEN 이슈 README 안내 완료, self-heal wrapper 패턴 권장 | 2026-05-18 결정의 후속 — `chflags -R nohidden` 1회로는 영구 fix 불가 (백그라운드가 주기적 재적용). `~/.local/bin/anvyc` wrapper 가 매 호출 시 `chflags nohidden $PTH` + exec 으로 self-heal. docs/troubleshooting-macos.md 신설, README §5.6 cross-link. doctor 자동 안내는 미구현 |
+| 2026-05-20 | v0.11.0 per-project gh 계정 라우팅 인식 — `project_show.gh_account` 필드 + doctor 검사 `project-gh-account-mapping` (+ `project_doctor` cwd 단위 검사) | `gh` 의 single global active account 가 16bitdo/whatap 계정 전환 시 whack-a-mole 유발. `.envrc` 의 `GH_CONFIG_DIR`(`~/.config/gh-<account>`) 라우팅을 anvyc 가 인식·검증. `aws_profile` 패턴의 GitHub 아날로그 |
 
 ---
 

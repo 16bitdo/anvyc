@@ -7,6 +7,8 @@ __pycache__/
 venv/
 .env
 .env.*
+.envrc
+.direnv/
 dist/
 build/
 

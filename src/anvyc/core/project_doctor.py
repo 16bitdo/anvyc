@@ -6,9 +6,10 @@
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
 2. github_remote_parseable    origin URL parse 가능 여부
-3. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
-4. dev_env_secret_safety      .envrc 안 raw secret without op://
-5. tool_versions_installed    python/node binary 의 PATH 존재
+3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
+4. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
+5. dev_env_secret_safety      .envrc 안 raw secret without op://
+6. tool_versions_installed    python/node binary 의 PATH 존재
 """
 from __future__ import annotations
 
@@ -77,6 +78,69 @@ def _check_github_remote_parseable(info: ProjectInfo) -> list[CheckResult]:
             check_name="github_remote_parseable",
             severity=Severity.INFO,
             message=f"GitHub remote {len(info.github)}개 parse OK",
+        )
+    ]
+
+
+def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
+    """origin remote 의 ssh alias ↔ `.envrc` 의 GH_CONFIG_DIR gh 계정 정합성.
+
+    per-project gh routing: `.envrc` 가 `export GH_CONFIG_DIR="$HOME/.config/gh-<account>"`
+    를 선언하면 `gh` CLI 가 project 별 올바른 계정을 사용 (global active account 우회).
+
+    - origin 이 GitHub ssh alias 를 안 씀 → 검증 대상 X (silent, 0 결과)
+    - ssh alias 있는데 GH_CONFIG_DIR 없음 → WARNING
+    - gh 계정 ≠ ssh alias → WARNING
+    - 일치 → INFO
+    """
+    if not info.github:
+        return []
+    alias: str | None = None
+    for remote in info.github:
+        if remote["name"] != "origin":
+            continue
+        host = remote["host"] or ""
+        if host.startswith("github.com"):
+            alias = remote["ssh_alias"]
+        break
+    # origin 이 GitHub ssh alias 를 안 쓰면 routing 검증 불필요
+    if not alias:
+        return []
+    if info.gh_account is None:
+        return [
+            CheckResult(
+                check_name="gh_account_routing",
+                severity=Severity.WARNING,
+                message=(
+                    f"GitHub origin 이 ssh alias '{alias}' 를 쓰지만 "
+                    f".envrc 에 GH_CONFIG_DIR 라우팅 선언 없음"
+                ),
+                suggestion=(
+                    f'.envrc 에 export GH_CONFIG_DIR="$HOME/.config/gh-{alias}" '
+                    f"추가 후 direnv allow"
+                ),
+            )
+        ]
+    if info.gh_account != alias:
+        return [
+            CheckResult(
+                check_name="gh_account_routing",
+                severity=Severity.WARNING,
+                message=(
+                    f".envrc GH_CONFIG_DIR gh 계정 '{info.gh_account}' 가 "
+                    f"GitHub origin ssh alias '{alias}' 와 불일치"
+                ),
+                suggestion=(
+                    f'export GH_CONFIG_DIR="$HOME/.config/gh-{alias}" 로 수정 '
+                    f"(ssh alias 와 일치)"
+                ),
+            )
+        ]
+    return [
+        CheckResult(
+            check_name="gh_account_routing",
+            severity=Severity.INFO,
+            message=f"gh 계정 라우팅 OK (GH_CONFIG_DIR → '{info.gh_account}' == origin ssh alias)",
         )
     ]
 
@@ -173,11 +237,12 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """5 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """6 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
     report.results.extend(_check_github_remote_parseable(info))
+    report.results.extend(_check_gh_account_routing(info))
     report.results.extend(_check_pulumi_stacks_valid(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))

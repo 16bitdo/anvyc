@@ -219,7 +219,7 @@ anvyc project show [--path P] [--json] [--reveal-secrets]
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
-                               # cwd connection 정합성 5 check (v0.8.1+)
+                               # cwd connection 정합성 6 check (v0.8.1+)
 
 anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
 
@@ -495,6 +495,51 @@ anvyc doctor --only multi-account-detected
 ```
 
 자세한 UX 개선 계획은 [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
+
+### 11.6 다수 GitHub 계정 관리 (per-project gh routing, v0.11.0+)
+
+AWS profile 과 같은 문제가 GitHub 계정에도 있다. `gh` CLI 는 **single global
+active account** 만 가지므로, 여러 계정 (개인 / org 별 봇 계정 등) 을 오가면
+잘못된 계정으로 동작하거나 false warning 이 발생한다. AWS 의 `.envrc` +
+`AWS_PROFILE` 패턴과 동일하게, project 별 `.envrc` 에 `GH_CONFIG_DIR` 을
+선언해 direnv 가 계정을 라우팅하게 한다.
+
+```bash
+# 1) 계정별 gh config 디렉터리 준비 (convention: ~/.config/gh-<account>)
+GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"  gh auth login   # 개인 계정
+GH_CONFIG_DIR="$HOME/.config/gh-heisgone" gh auth login   # org 봇 계정
+
+# 2) 프로젝트 .envrc 에 라우팅 선언 (origin ssh alias 와 일치시킬 것)
+cat >> ~/Documents/my-personal-repo/.envrc <<'EOF'
+export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"
+EOF
+
+# 3) 새 .envrc 신뢰
+cd ~/Documents/my-personal-repo
+direnv allow
+
+# 4) 이후 cd 시 gh 가 올바른 계정 자동 사용
+cd ~/Documents/my-personal-repo   # → gh 가 gh-16bitdo config 사용
+```
+
+권장: `GH_CONFIG_DIR` 의 계정 이름을 git `origin` 의 ssh alias
+(`git@github.com-<alias>:...`) 와 동일하게 맞춘다. anvyc 의 doctor check 가
+이 일치를 검증한다.
+
+| Check | 동작 | 상태 |
+|---|---|---|
+| `project-gh-account-mapping` | `~/Documents/**/.envrc` 의 `GH_CONFIG_DIR` gh 계정 ↔ GitHub `origin` ssh alias 정합성 검증 (global) | ✓ v0.11.0 |
+| `gh_account_routing` | cwd 의 `GH_CONFIG_DIR` ↔ origin ssh alias 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.11.0 |
+
+```bash
+# 개별 실행
+anvyc doctor --only project-gh-account-mapping
+anvyc project doctor              # cwd 에 gh_account_routing 포함 6 check
+```
+
+`anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을
+machine-readable 하게 확인할 수 있다 (DESIGN §32.4a). AWS 와 마찬가지로
+anvyc 는 **정적 설정 동기화 + 검증** 역할이며, 계정 인증 자체는 `gh` 가 관리한다.
 
 ---
 
