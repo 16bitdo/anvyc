@@ -230,6 +230,9 @@ class CursorAdapter:
     def diff(self, source: Path, target: Path) -> DiffResult:
         raise NotImplementedError
 
+    def target_hash(self, target: Path) -> str:
+        raise NotImplementedError
+
     def apply(self, source: Path, target: Path) -> ApplyResult:
         # default copy 로 충분 — Layer A/B/C 파일은 모두 평면 복사. symlink 는
         # apply.py 의 _apply_symlink 가 처리하므로 여기에 도달하지 않는다.

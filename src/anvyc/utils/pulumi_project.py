@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml as _yaml
 
@@ -71,7 +72,7 @@ def detect_pulumi_project(path: Path) -> PulumiProjectInfo | None:
     )
 
 
-def to_dict(info: PulumiProjectInfo | None) -> dict | None:
+def to_dict(info: PulumiProjectInfo | None) -> dict[str, Any] | None:
     if info is None:
         return None
     return {

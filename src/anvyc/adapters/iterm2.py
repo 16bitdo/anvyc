@@ -11,6 +11,7 @@ import contextlib
 import plistlib
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from anvyc.adapters.base import ApplyResult
 from anvyc.checks.base import CheckResult
@@ -82,12 +83,12 @@ SAFE_KEYS_EXCLUDE_EXACT: frozenset[str] = frozenset({
 })
 
 
-def _extract_safe(data: dict) -> dict:
+def _extract_safe(data: dict[str, Any]) -> dict[str, Any]:
     """raw plist dict → 안전 subset dict."""
     return {k: v for k, v in data.items() if k in SAFE_KEYS_INCLUDE}
 
 
-def _deep_merge(base: dict, overlay: dict) -> dict:
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """overlay 의 키만 base 위에 덮어쓴다 (재귀 X — top-level 키 단위 교체).
 
     DESIGN.md §14.4 의 deep-merge 의도는 "기존 plist 의 다른 키는 건드리지 않는다"

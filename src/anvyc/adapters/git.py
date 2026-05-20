@@ -56,5 +56,8 @@ class GitAdapter:
     def diff(self, source: Path, target: Path) -> DiffResult:
         raise NotImplementedError
 
+    def target_hash(self, target: Path) -> str:
+        raise NotImplementedError
+
     def apply(self, source: Path, target: Path) -> ApplyResult:
         raise NotImplementedError

@@ -8,6 +8,7 @@ import contextlib
 import json as jsonlib
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -188,11 +189,11 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
 
     console.print("[bold]anvyc init wizard[/] — 9개 도구 설정\n")
 
-    tools_cfg: dict[str, dict] = {}
+    tools_cfg: dict[str, dict[str, Any]] = {}
     for tool in _WIZARD_TOOLS_ORDER:
         default_enabled = tool != "dev_env"  # dev_env 은 default disabled (안전)
         enabled = typer.confirm(f"Enable {tool}?", default=default_enabled)
-        entry: dict = {"enabled": enabled}
+        entry: dict[str, Any] = {"enabled": enabled}
         if not enabled:
             tools_cfg[tool] = entry
             continue
@@ -434,13 +435,13 @@ def status(
     table.add_column("tool")
     table.add_column("target")
     table.add_column("sha256 (target)")
-    for e in report.entries:
-        style = {"unchanged": "dim", "modified": "yellow", "missing": "red"}[e.state]
+    for entry in report.entries:
+        style = {"unchanged": "dim", "modified": "yellow", "missing": "red"}[entry.state]
         table.add_row(
-            f"[{style}]{e.state}[/]",
-            e.tool,
-            _short_path(e.target_path),
-            (e.actual_sha256 or "—")[:12],
+            f"[{style}]{entry.state}[/]",
+            entry.tool,
+            _short_path(entry.target_path),
+            (entry.actual_sha256 or "—")[:12],
         )
     console.print(table)
 
@@ -459,17 +460,17 @@ def diff(
         raise typer.Exit(code=1) from e
 
     printed = 0
-    for e in report.entries:
-        if only_changed and e.state == "unchanged":
+    for entry in report.entries:
+        if only_changed and entry.state == "unchanged":
             continue
-        target = e.target_resolved
+        target = entry.target_resolved
         d = compute_diff(
-            e.source_path,
+            entry.source_path,
             target,
-            label_source=f"backup:{e.source_path.name}",
-            label_target=f"target:{_short_path(e.target_path)}",
+            label_source=f"backup:{entry.source_path.name}",
+            label_target=f"target:{_short_path(entry.target_path)}",
         )
-        console.print(f"\n[bold]── {_short_path(e.target_path)} ({e.state})[/]")
+        console.print(f"\n[bold]── {_short_path(entry.target_path)} ({entry.state})[/]")
         if not d.unified:
             console.print("  (no diff)")
             continue
@@ -1099,13 +1100,13 @@ def config_show(
         typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
 
 
-def _collect_tools_rows(config: Path | None) -> list[dict]:
+def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
     """tools list 의 row 데이터 수집 (renderer 와 분리)."""
     from anvyc.core.backup import ADAPTERS
     from anvyc.core.config import load_anvyc_config
 
     cfg = load_anvyc_config(config) if config else load_anvyc_config()
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for name, cls in ADAPTERS.items():
         tool_cfg = cfg.tools.get(name)
         enabled = tool_cfg.enabled if tool_cfg else True
@@ -1117,7 +1118,7 @@ def _collect_tools_rows(config: Path | None) -> list[dict]:
         try:
             if name in {"shell", "git", "aws", "gh", "pulumi"}:
                 files_arg = tuple(tool_cfg.files) if tool_cfg and tool_cfg.files else ()
-                adapter = cls(files=files_arg)
+                adapter = cls(files=files_arg)  # type: ignore[call-arg]
             else:
                 adapter = cls()
             detected = adapter.detect()

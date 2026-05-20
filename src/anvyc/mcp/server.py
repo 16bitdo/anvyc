@@ -129,7 +129,7 @@ def _tool_defs() -> list[Tool]:
     ]
 
 
-@server.list_tools()
+@server.list_tools()  # type: ignore
 async def list_tools() -> list[Tool]:  # pragma: no cover - thin wrapper
     return _tool_defs()
 
@@ -181,8 +181,8 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
 
         only = args.get("only") or None
         skip = args.get("skip") or None
-        report = run_doctor(only=only, skip=skip)
-        return {"results": [r.to_dict() for r in report.results]}
+        doctor_report = run_doctor(only=only, skip=skip)
+        return {"results": [r.to_dict() for r in doctor_report.results]}
 
     if name == "tools_list":
         from anvyc.cli import _collect_tools_rows
@@ -192,7 +192,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
     raise ValueError(f"unknown tool: {name}")
 
 
-@server.call_tool()
+@server.call_tool()  # type: ignore
 async def call_tool(  # pragma: no cover - thin wrapper
     name: str, arguments: dict[str, Any]
 ) -> list[TextContent]:

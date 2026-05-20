@@ -17,6 +17,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from anvyc.core.config import load_anvyc_config
 from anvyc.core.status import pick_backup
@@ -90,11 +91,12 @@ def _parse_mode(s: str) -> int:
             return 0o600
 
 
-def _load_metadata(backup_dir: Path) -> dict:
+def _load_metadata(backup_dir: Path) -> dict[str, Any]:
     meta_path = backup_dir / "metadata.json"
     if not meta_path.is_file():
         raise FileNotFoundError(f"metadata.json missing in {backup_dir}")
-    return json.loads(meta_path.read_text())
+    data: dict[str, Any] = json.loads(meta_path.read_text())
+    return data
 
 
 def _build_entries(backup_dir: Path, only_tools: set[str] | None) -> list[FileApplyEntry]:
@@ -183,6 +185,7 @@ def _apply_symlink(entry: FileApplyEntry) -> None:
     if target.is_symlink() or target.exists():
         target.unlink()
     target.parent.mkdir(parents=True, exist_ok=True)
+    assert entry.symlink_target is not None
     os.symlink(entry.symlink_target, target)
 
 

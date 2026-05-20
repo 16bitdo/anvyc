@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
@@ -52,7 +53,7 @@ def _op_resolves(uri: str) -> bool:
         return False
 
 
-def _iter_scan_files(target: Path):
+def _iter_scan_files(target: Path) -> Iterator[Path]:
     """scan_target 가 파일이면 자체, 디렉터리면 1단계 텍스트류 파일."""
     if target.is_file():
         yield target

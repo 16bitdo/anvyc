@@ -12,6 +12,7 @@ import configparser
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _SSH_RE = re.compile(
     r"^git@(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?$"
@@ -86,7 +87,7 @@ def parse_git_config(git_dir: Path) -> list[GitRemoteInfo]:
     return sorted(out, key=lambda r: r.name)
 
 
-def to_dict(info: GitRemoteInfo) -> dict:
+def to_dict(info: GitRemoteInfo) -> dict[str, Any]:
     return {
         "name": info.name,
         "url": info.url,

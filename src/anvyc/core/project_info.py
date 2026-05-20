@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 from anvyc.utils.git_remote import GitRemoteInfo, parse_git_config
@@ -30,8 +31,8 @@ REDACTED_MARKER = "***REDACTED***"
 class ProjectInfo:
     path: str
     aws_profile: str | None
-    github: list[dict] | None
-    pulumi: dict | None
+    github: list[dict[str, Any]] | None
+    pulumi: dict[str, Any] | None
     dev_env: dict[str, str] = field(default_factory=dict)
     tool_versions: dict[str, str] = field(default_factory=dict)
 
@@ -115,5 +116,5 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
     )
 
 
-def to_dict(info: ProjectInfo) -> dict:
+def to_dict(info: ProjectInfo) -> dict[str, Any]:
     return asdict(info)

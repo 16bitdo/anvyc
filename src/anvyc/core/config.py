@@ -14,6 +14,7 @@ import os
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -101,7 +102,7 @@ class ToolConfig:
     exclude: list[str] = field(default_factory=list)
     secret_files: list[SecretFileSpec] = field(default_factory=list)
     sops_format: str | None = None   # None 이면 전역 security.sops.format 사용
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -122,7 +123,7 @@ class AnvycConfig:
     overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
 
 
-def _read_yaml(path: Path) -> dict:
+def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists() or not path.is_file():
         return {}
     try:
@@ -152,7 +153,7 @@ def _hostname_short() -> str:
     return h.split(".")[0]
 
 
-def _deep_merge(base: dict, overlay: dict) -> dict:
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """base 위에 overlay 적용 (recursive).
 
     - dict + dict: recursive merge
@@ -180,7 +181,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
     base 발견 시 같은 디렉터리의 `anvyc.<hostname>.yaml` overlay 가 있으면
     deep-merge 후 parsing (v0.6.4).
     """
-    raw: dict = {}
+    raw: dict[str, Any] = {}
     source: Path | None = None
     overlay_source: Path | None = None
     for c in _candidate_paths(path):

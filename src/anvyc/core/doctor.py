@@ -9,7 +9,7 @@ from pathlib import Path
 
 from anvyc.checks.adapter_validate import AdapterValidationCheck
 from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
-from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.checks.base import Check, CheckContext, CheckResult, Severity
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.cursor_projects_suggest import CursorProjectsSuggestCheck
 from anvyc.checks.mcp_tokens import McpTokensWarnCheck
@@ -36,7 +36,7 @@ class DoctorReport:
         return any(r.severity.is_blocking for r in self.results)
 
 
-_REGISTRY = {
+_REGISTRY: dict[str, Check] = {
     "cross-user": CrossUserCheck(),
     "venv-hidden-flag": VenvHiddenFlagCheck(),
     "op-references-valid": OpReferencesCheck(),
