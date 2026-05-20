@@ -41,6 +41,7 @@ tools:
     enabled: true
 
     # Layer A — ~/.cursor (user-global rules/skills/mcp/plugins)
+    # include 키 생략 → DEFAULT 수집 / "include: []" → 이 Layer backup 비활성.
     global:
       include:
         - "~/.cursor/rules"
@@ -65,6 +66,7 @@ tools:
       mask_mcp_tokens: true
 
     # Layer B — Cursor IDE user config (settings/keybindings/snippets/profiles)
+    # include 키 생략 → DEFAULT 수집 / "include: []" → 이 Layer backup 비활성.
     ide:
       include:
         - "~/Library/Application Support/Cursor/User/settings.json"
