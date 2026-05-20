@@ -11,6 +11,7 @@ Adapter.apply() 가 NotImplementedError 인 경우 orchestrator 가 기본 동�
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -25,7 +26,7 @@ from anvyc.storage.local import new_local_backup_dir
 from anvyc.utils.hashing import sha256_file
 
 
-class ApplyBlocked(RuntimeError):
+class ApplyBlockedError(RuntimeError):
     """secret scan 결과 apply 차단."""
 
     def __init__(
@@ -166,11 +167,9 @@ def _default_apply(entry: FileApplyEntry) -> None:
     """기본 apply 동작: source → target 복사, mode 보정, sha256 검증."""
     entry.target_resolved.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(entry.source_path, entry.target_resolved)
-    try:
+    # 일부 파일시스템은 chmod 가 의미 없거나 권한 부족 — 무시
+    with contextlib.suppress(OSError):
         entry.target_resolved.chmod(entry.mode)
-    except OSError:
-        # 일부 파일시스템은 chmod 가 의미 없거나 권한 부족 — 무시
-        pass
     actual = sha256_file(entry.target_resolved)
     if actual != entry.expected_sha256:
         raise RuntimeError(
@@ -198,10 +197,8 @@ def _apply_sops(entry: FileApplyEntry, identity_file: Path | None) -> None:
     target = entry.target_resolved
     target.parent.mkdir(parents=True, exist_ok=True)
     sops_decrypt(entry.source_path, target, identity_file=identity_file, mode=mode)
-    try:
+    with contextlib.suppress(OSError):
         target.chmod(entry.mode)
-    except OSError:
-        pass
 
 
 def _apply_entry(entry: FileApplyEntry, identity_file: Path | None = None) -> None:
@@ -257,7 +254,7 @@ def run_apply(
         findings = scan_paths([e.source_path for e in entries if e.source_path.is_file()])
         decision = evaluate(findings, force=force)
         if decision.block and cfg.security.block_on_secret:
-            raise ApplyBlocked(decision.reasons)
+            raise ApplyBlockedError(decision.reasons)
 
     if dry_run:
         for e in entries:
@@ -284,11 +281,9 @@ def run_apply(
             continue
         dest = local_backup_dir / e.tool / e.relpath
         dest.parent.mkdir(parents=True, exist_ok=True)
-        try:
+        # 읽기 권한 없음 등 — skip but continue
+        with contextlib.suppress(OSError):
             shutil.copy2(e.target_resolved, dest)
-        except OSError:
-            # 읽기 권한 없음 등 — skip but continue
-            pass
 
     # SOPS identity file 결정 (apply 시점에 복호화 필요)
     sops_identity: Path | None = None

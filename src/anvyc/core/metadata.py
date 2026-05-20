@@ -8,7 +8,7 @@ import json
 import platform
 import socket
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -44,7 +44,7 @@ def build_metadata(
 ) -> Metadata:
     """현재 환경 기준 metadata 를 생성한다 (files 는 호출측에서 채운다)."""
     return Metadata(
-        generated_at_utc=datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        generated_at_utc=datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         hostname=socket.gethostname(),
         os=platform.system(),
         os_version=platform.mac_ver()[0] or platform.version(),

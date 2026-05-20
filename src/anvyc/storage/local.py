@@ -4,13 +4,13 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def new_backup_dir(root: Path) -> Path:
     """`.anvyc/backups/<timestamp>/` 경로를 생성하고 반환한다."""
-    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     target = root / "backups" / ts
     target.mkdir(parents=True, exist_ok=False)
     return target
@@ -18,7 +18,7 @@ def new_backup_dir(root: Path) -> Path:
 
 def new_local_backup_dir(root: Path) -> Path:
     """apply/restore 전 자동 backup 디렉터리."""
-    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     target = root / "local-backups" / ts
     target.mkdir(parents=True, exist_ok=False)
     return target

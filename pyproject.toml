@@ -80,6 +80,10 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer 의 Option/Argument, Path 는 default-arg 로 안전 (immutable).
+extend-immutable-calls = ["typer.Option", "typer.Argument", "pathlib.Path"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

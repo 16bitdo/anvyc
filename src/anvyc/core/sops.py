@@ -16,6 +16,7 @@ DESIGN.md §31. sops binary 가 모든 cryptographic 작업을 담당하며 anvy
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -68,11 +69,8 @@ def encrypt(
     dst.parent.mkdir(parents=True, exist_ok=True)
     if mode == "inplace":
         itype = guess_inplace_type(src)
-        if itype == "binary":
-            # 확장자 인식 실패 → binary 동작과 동일
-            otype = "json"
-        else:
-            otype = itype
+        # 확장자 인식 실패(binary) → json, 그 외는 itype 그대로
+        otype = "json" if itype == "binary" else itype
     else:  # binary
         itype = "binary"
         otype = "json"
@@ -180,10 +178,8 @@ def rotate_recipients(
     finally:
         # 4) 평문 tempfile 즉시 삭제 (성공/실패 무관)
         for p in (plain_tmp, new_enc_tmp):
-            try:
+            with contextlib.suppress(OSError):
                 p.unlink()
-            except OSError:
-                pass
 
 
 def is_sops_encrypted(path: Path) -> bool:

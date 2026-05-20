@@ -5,12 +5,12 @@ DESIGN.md §27.2 참고.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     INFO = "info"
     INFO_ALIASED = "info-aliased"
     WARNING = "warning"  # generic warning (cross-user 외 다른 check 용)

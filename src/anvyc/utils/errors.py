@@ -1,6 +1,6 @@
 """Standardized CLI error message helpers (v0.6.3).
 
-All user-facing error output from blocked operations (BackupBlocked, ApplyBlocked,
+All user-facing error output from blocked operations (BackupBlockedError, ApplyBlockedError,
 etc.) flows through `print_blocked_error()` to produce a consistent format:
 
     <action> blocked: <cause>

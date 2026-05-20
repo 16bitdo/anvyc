@@ -4,10 +4,10 @@ MVP 단계에서는 명령어 시그니처와 흐름만 정의하고, 실제 동
 """
 from __future__ import annotations
 
+import contextlib
 import json as jsonlib
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -15,12 +15,12 @@ from rich.table import Table
 
 from anvyc import __version__
 from anvyc.checks.base import Severity
-from anvyc.core.apply import ApplyBlocked, ApplyReport, run_apply
-from anvyc.core.restore import run_restore
-from anvyc.core.backup import BackupBlocked, run_backup
+from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
+from anvyc.core.backup import BackupBlockedError, run_backup
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
 from anvyc.core.list import list_backups
+from anvyc.core.restore import run_restore
 from anvyc.core.status import compute_status
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
@@ -72,7 +72,7 @@ def main(
 def init(
     root: Path = typer.Option(Path.cwd(), "--root", help="anvyc 프로젝트 루트."),
     force: bool = typer.Option(False, "--force", help="기존 anvyc.yaml 이 있어도 덮어쓴다."),
-    from_git: Optional[str] = typer.Option(
+    from_git: str | None = typer.Option(
         None,
         "--from-git",
         help="git URL 에서 .anvyc/ 를 clone (apply 는 수동 실행 권장).",
@@ -119,7 +119,7 @@ def init(
             )
         except FileNotFoundError:
             console.print("[red]error[/] git binary 미설치")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
         if proc.returncode != 0:
             console.print(f"[red]error[/] git clone 실패\n{proc.stderr.strip()}")
             raise typer.Exit(code=1)
@@ -252,9 +252,9 @@ def doctor(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="모든 finding 나열."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
-    only: Optional[list[str]] = typer.Option(None, "--only", help="실행할 check 이름 (반복 가능)."),
-    skip: Optional[list[str]] = typer.Option(None, "--skip", help="건너뛸 check 이름 (반복 가능)."),
-    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    only: list[str] | None = typer.Option(None, "--only", help="실행할 check 이름 (반복 가능)."),
+    skip: list[str] | None = typer.Option(None, "--skip", help="건너뛸 check 이름 (반복 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
 ) -> None:
     """환경을 read-only 로 진단한다. DESIGN.md §27 참고."""
     report = run_doctor(config_path=config, only=only or None, skip=skip or None)
@@ -355,15 +355,15 @@ def _short_path(p: Path | None) -> str:
 
 @app.command()
 def backup(
-    root: Optional[Path] = typer.Option(None, "--root", help=".anvyc 디렉터리 경로."),
-    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
-    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 백업 (반복 가능)."),
+    root: Path | None = typer.Option(None, "--root", help=".anvyc 디렉터리 경로."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    only: list[str] | None = typer.Option(None, "--only", help="특정 도구만 백업 (반복 가능)."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
 ) -> None:
     """enabled adapter 들의 설정 파일을 `.anvyc/backups/<ts>/`에 백업한다."""
     try:
         result = run_backup(root=root, config_path=config, only=only or None, force=force)
-    except BackupBlocked as e:
+    except BackupBlockedError as e:
         from anvyc.utils.errors import print_blocked_error
 
         print_blocked_error(
@@ -373,7 +373,7 @@ def backup(
             allow_force=e.allow_force,
             console=console,
         )
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from e
 
     console.print(f"[green]backup[/] {_short_path(result.backup_dir)}")
     table = Table(show_header=True, header_style="bold")
@@ -411,14 +411,14 @@ def backup(
 @app.command()
 def status(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current 또는 최신."),
+    backup_id: str | None = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current 또는 최신."),
 ) -> None:
     """current(target) vs backup 의 drift 를 요약한다."""
     try:
         report = compute_status(root, backup_id=backup_id)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     counts = report.counts()
     console.print(f"[bold]backup[/] {_short_path(report.backup_dir)}")
@@ -448,7 +448,7 @@ def status(
 @app.command()
 def diff(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current/최신."),
+    backup_id: str | None = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current/최신."),
     only_changed: bool = typer.Option(True, "--only-changed/--all", help="변경된 파일만 출력."),
 ) -> None:
     """backup → 현재 target unified diff 를 출력한다."""
@@ -456,7 +456,7 @@ def diff(
         report = compute_status(root, backup_id=backup_id)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     printed = 0
     for e in report.entries:
@@ -490,9 +490,9 @@ def diff(
 @app.command()
 def apply(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
-    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."),
-    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    backup_id: str | None = typer.Option(None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."),
+    only: list[str] | None = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 적용 시나리오만 출력."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
 ) -> None:
@@ -511,7 +511,7 @@ def apply(
             dry_run=dry_run,
             force=force,
         )
-    except ApplyBlocked as e:
+    except ApplyBlockedError as e:
         from anvyc.utils.errors import print_blocked_error
 
         print_blocked_error(
@@ -521,10 +521,10 @@ def apply(
             allow_force=e.allow_force,
             console=console,
         )
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from e
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     _print_apply_report(report)
     if not dry_run and report.has_error():
@@ -574,8 +574,8 @@ def _print_apply_report(report: ApplyReport, label: str = "apply") -> None:
 def restore(
     backup_id: str = typer.Argument(..., help="복원할 backup id (예: 20260518-130000)."),
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
-    only: Optional[list[str]] = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    only: list[str] | None = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 시나리오만 출력."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용."),
 ) -> None:
@@ -594,7 +594,7 @@ def restore(
             dry_run=dry_run,
             force=force,
         )
-    except ApplyBlocked as e:
+    except ApplyBlockedError as e:
         from anvyc.utils.errors import print_blocked_error
 
         print_blocked_error(
@@ -604,10 +604,10 @@ def restore(
             allow_force=e.allow_force,
             console=console,
         )
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from e
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     _print_apply_report(report, label="restore")
     if not dry_run and report.has_error():
@@ -646,9 +646,9 @@ def list_(
 
 @app.command(name="scan-secrets")
 def scan_secrets(
-    paths: Optional[list[Path]] = typer.Argument(None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."),
+    paths: list[Path] | None = typer.Argument(None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."),
     staged: bool = typer.Option(False, "--staged", help="현재 cwd 의 git 저장소에서 staged 파일만 스캔."),
-    root: Optional[Path] = typer.Option(None, "--root", help="--staged 의 git repo 경로 override."),
+    root: Path | None = typer.Option(None, "--root", help="--staged 의 git repo 경로 override."),
     json_out: bool = typer.Option(False, "--json", help="JSON 출력."),
     quiet: bool = typer.Option(False, "--quiet", help="발견 시에도 메시지 최소화 (pre-commit hook 용)."),
     force: bool = typer.Option(False, "--force", help="medium 까지 허용 (비-block)."),
@@ -660,6 +660,7 @@ def scan_secrets(
       1 — block (critical/high/medium 발견)
     """
     import subprocess as _sp
+
     from anvyc.security.policy import evaluate
     from anvyc.security.scanner import scan_paths
 
@@ -676,7 +677,7 @@ def scan_secrets(
             ).stdout
         except _sp.CalledProcessError as e:
             console.print(f"[red]git diff --cached 실패: {e.stderr}[/]")
-            raise typer.Exit(code=2)
+            raise typer.Exit(code=2) from e
         for rel in out.splitlines():
             rel = rel.strip()
             if not rel:
@@ -728,7 +729,7 @@ def scan_secrets(
                 )
             console.print(table)
             if decision.block:
-                console.print(f"\n[red bold]차단됨 — reasons:[/]")
+                console.print("\n[red bold]차단됨 — reasons:[/]")
                 for r in decision.reasons[:5]:
                     console.print(f"  • {r}")
 
@@ -745,9 +746,9 @@ def git_init(
         init_repo(root.resolve())
     except GitError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     console.print(f"[green]git init OK[/] {_short_path(root.resolve())}")
-    console.print(f"  [dim]pre-commit hook 설치됨 — push 전 secret scan 자동 실행[/]")
+    console.print("  [dim]pre-commit hook 설치됨 — push 전 secret scan 자동 실행[/]")
 
 
 @git_app.command("status")
@@ -760,7 +761,7 @@ def git_status(
         out = status(root.resolve())
     except GitError as e:
         console.print(f"[red]{e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     if out.strip():
         typer.echo(out, nl=False)
     else:
@@ -778,7 +779,7 @@ def git_commit(
         out = commit(root.resolve(), message)
     except GitError as e:
         console.print(f"[red]commit failed: {e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     if out:
         typer.echo(out, nl=False)
 
@@ -786,7 +787,7 @@ def git_commit(
 @git_app.command("push")
 def git_push(
     remote: str = typer.Option("origin", "--remote"),
-    branch: Optional[str] = typer.Option(None, "--branch"),
+    branch: str | None = typer.Option(None, "--branch"),
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
 ) -> None:
     """.anvyc 영역의 git push."""
@@ -795,7 +796,7 @@ def git_push(
         out = push(root.resolve(), remote=remote, branch=branch)
     except GitError as e:
         console.print(f"[red]push failed: {e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     if out:
         typer.echo(out, nl=False)
 
@@ -803,9 +804,9 @@ def git_push(
 @sops_app.command("encrypt")
 def sops_encrypt(
     src: Path = typer.Argument(..., help="암호화할 파일 (평문)."),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="출력 경로. 미지정 시 자동."),
-    mode: Optional[str] = typer.Option(None, "--mode", help="binary | inplace. 미지정 시 yaml 의 format."),
-    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+    output: Path | None = typer.Option(None, "-o", "--output", help="출력 경로. 미지정 시 자동."),
+    mode: str | None = typer.Option(None, "--mode", help="binary | inplace. 미지정 시 yaml 의 format."),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """파일을 SOPS 로 암호화. anvyc.yaml security.sops 의 recipients 사용."""
     from anvyc.core.config import load_anvyc_config
@@ -827,15 +828,15 @@ def sops_encrypt(
         sops_encrypt_fn(src, output, recipients, mode=used_mode)
     except SopsError as e:
         console.print(f"[red]encrypt 실패: {e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     console.print(f"[green]encrypted[/] {_short_path(src)} → {_short_path(output)}  ({used_mode})")
 
 
 @sops_app.command("decrypt")
 def sops_decrypt(
     src: Path = typer.Argument(..., help="SOPS 암호화 파일."),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="평문 출력 경로. 미지정 시 stdout."),
-    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+    output: Path | None = typer.Option(None, "-o", "--output", help="평문 출력 경로. 미지정 시 stdout."),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """SOPS 파일을 복호화. anvyc.yaml security.sops.age_identity_file 사용.
 
@@ -849,7 +850,7 @@ def sops_decrypt(
 
     cfg = load_anvyc_config(config)
     identity = Path(cfg.security.sops.age_identity_file).expanduser()
-    identity_arg: Optional[Path] = identity if identity.is_file() else None
+    identity_arg: Path | None = identity if identity.is_file() else None
 
     name = src.name.lower()
     mode = "binary" if ".sops.json" in name else "inplace"
@@ -863,29 +864,27 @@ def sops_decrypt(
             typer.echo(tmp.read_text(), nl=False)
         except SopsError as e:
             console.print(f"[red]decrypt 실패: {e}[/]")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 tmp.unlink()
-            except OSError:
-                pass
         return
 
     try:
         sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode)
     except SopsError as e:
         console.print(f"[red]decrypt 실패: {e}[/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     console.print(f"[green]decrypted[/] {_short_path(src)} → {_short_path(output)}  ({mode})")
 
 
 @sops_app.command("rotate-keys")
 def sops_rotate_keys(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: Optional[str] = typer.Option(None, "--backup-id", help="특정 backup 만. 미지정 시 모든 backup."),
+    backup_id: str | None = typer.Option(None, "--backup-id", help="특정 backup 만. 미지정 시 모든 backup."),
     dry_run: bool = typer.Option(False, "--dry-run", help="변경 없이 처리 대상만 출력."),
     strict: bool = typer.Option(False, "--strict", help="1건 실패 시 즉시 exit 1 (default: continue)."),
-    config: Optional[Path] = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """모든 backup 의 SOPS 파일을 anvyc.yaml 의 현재 age_recipients 로 재암호화."""
     import json as _jl
@@ -899,7 +898,7 @@ def sops_rotate_keys(
         console.print("[red]anvyc.yaml security.sops.age_recipients 가 비어 있습니다.[/]")
         raise typer.Exit(code=2)
     identity = Path(cfg.security.sops.age_identity_file).expanduser()
-    identity_arg: Optional[Path] = identity if identity.is_file() else None
+    identity_arg: Path | None = identity if identity.is_file() else None
 
     backups_root = root / "backups"
     if not backups_root.is_dir():
@@ -945,7 +944,7 @@ def sops_rotate_keys(
                 failed.append((sops_file, str(e)))
                 if strict:
                     console.print(f"[red bold]strict mode — abort: {sops_file} ({e})[/]")
-                    raise typer.Exit(code=1)
+                    raise typer.Exit(code=1) from e
 
     # 보고
     label = "would-rotate" if dry_run else "rotated"
@@ -987,7 +986,7 @@ def _resolve_anvyc_yaml(explicit: Path | None) -> Path:
 
 @config_app.command("edit")
 def config_edit(
-    config: Optional[Path] = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
 ) -> None:
     """`$EDITOR` 로 `anvyc.yaml` 을 편집 후 schema 검증.
 
@@ -1017,13 +1016,13 @@ def config_edit(
     except ValueError as e:
         console.print(f"[red]error[/] EDITOR 파싱 실패: {e}")
         bak_path.unlink(missing_ok=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     try:
         proc = subprocess.run([*editor_argv, str(yaml_path)])
     except FileNotFoundError:
         console.print(f"[red]error[/] EDITOR 실행 실패: {editor}")
         bak_path.unlink(missing_ok=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
     if proc.returncode != 0:
         console.print(f"[yellow]editor exit {proc.returncode} — 변경 폐기[/]")
         shutil.copy2(bak_path, yaml_path)
@@ -1043,7 +1042,7 @@ def config_edit(
         console.print(f"[red]error[/] schema 검증 실패: {e}")
         console.print(f"[dim]원본 복구: {bak_path} → {yaml_path}[/]")
         shutil.copy2(bak_path, yaml_path)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     console.print(f"[green]ok[/] schema 검증 통과 ({yaml_path})")
     console.print(f"[dim]backup: {bak_path}[/]")
@@ -1059,7 +1058,7 @@ def config_show(
     json_out: bool = typer.Option(
         False, "--json", help="machine-readable JSON (--effective 와 함께 권장)."
     ),
-    config: Optional[Path] = typer.Option(None, "--config"),
+    config: Path | None = typer.Option(None, "--config"),
 ) -> None:
     """`anvyc.yaml` 을 raw 또는 effective view 로 출력 (yaml / json).
 
@@ -1084,7 +1083,9 @@ def config_show(
         return
 
     import dataclasses
+
     import yaml as _yaml
+
     from anvyc.core.config import load_anvyc_config
 
     cfg = load_anvyc_config(yaml_path)
@@ -1098,7 +1099,7 @@ def config_show(
         typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
 
 
-def _collect_tools_rows(config: Optional[Path]) -> list[dict]:
+def _collect_tools_rows(config: Path | None) -> list[dict]:
     """tools list 의 row 데이터 수집 (renderer 와 분리)."""
     from anvyc.core.backup import ADAPTERS
     from anvyc.core.config import load_anvyc_config
@@ -1134,7 +1135,7 @@ def _collect_tools_rows(config: Optional[Path]) -> list[dict]:
 
 @tools_app.command("list")
 def tools_list(
-    config: Optional[Path] = typer.Option(None, "--config"),
+    config: Path | None = typer.Option(None, "--config"),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
 ) -> None:
     """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
@@ -1263,7 +1264,7 @@ def serve(
     except SystemExit as e:
         # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — 그대로 표시
         console.print(f"[red]error[/] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     mcp_run()
 
 
@@ -1324,7 +1325,7 @@ def project_doctor(
 
 @project_app.command("list")
 def project_list(
-    roots: Optional[list[str]] = typer.Option(
+    roots: list[str] | None = typer.Option(
         None, "--root",
         help="scan root (반복 가능, default: ~/Documents).",
     ),

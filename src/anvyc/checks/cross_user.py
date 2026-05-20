@@ -20,8 +20,8 @@ from __future__ import annotations
 import os
 import plistlib
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 
@@ -180,9 +180,8 @@ class CrossUserCheck:
             for i, v in enumerate(data):
                 child = f"{prefix}[{i}]"
                 yield from CrossUserCheck._walk_plist(v, child)
-        elif isinstance(data, str):
-            if data:
-                yield prefix, data
+        elif isinstance(data, str) and data:
+            yield prefix, data
         # 기타 타입 (bool/int/float/datetime/bytes) 은 path 가 들어있지 않음
 
     # ---------- detector 3: symlink target ----------
@@ -231,9 +230,8 @@ class CrossUserCheck:
     def _is_text_file(path: Path) -> bool:
         if path.suffix.lower() in _TEXT_SUFFIXES:
             return True
-        if not path.suffix:  # extensionless ssh config, .gitconfig 등
-            return True
-        return False
+        # extensionless ssh config, .gitconfig 등
+        return not path.suffix
 
     @staticmethod
     def _classify(username: str, ctx: CheckContext) -> Severity:

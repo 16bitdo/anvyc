@@ -19,7 +19,7 @@ class AdapterValidationCheck:
         from anvyc.core.backup import ADAPTERS
 
         results: list[CheckResult] = []
-        for tool_name, cls in ADAPTERS.items():
+        for _tool_name, cls in ADAPTERS.items():
             try:
                 adapter = cls()
             except Exception:

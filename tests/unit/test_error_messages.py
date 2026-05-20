@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from rich.console import Console
 
-from anvyc.core.apply import ApplyBlocked
-from anvyc.core.backup import BackupBlocked
+from anvyc.core.apply import ApplyBlockedError
+from anvyc.core.backup import BackupBlockedError
 from anvyc.utils.errors import print_blocked_error
 
 
@@ -73,16 +73,16 @@ def test_blocked_error_no_next_steps_omits_section() -> None:
 
 
 def test_backup_blocked_carries_default_next_steps() -> None:
-    """BackupBlocked default next_steps include doctor + scan-secrets."""
-    exc = BackupBlocked(["a"])
+    """BackupBlockedError default next_steps include doctor + scan-secrets."""
+    exc = BackupBlockedError(["a"])
     assert exc.allow_force is True
     assert any("doctor" in s for s in exc.next_steps)
     assert any("scan-secrets" in s for s in exc.next_steps)
 
 
 def test_apply_blocked_carries_default_next_steps() -> None:
-    """ApplyBlocked default next_steps include doctor + diff."""
-    exc = ApplyBlocked(["b"])
+    """ApplyBlockedError default next_steps include doctor + diff."""
+    exc = ApplyBlockedError(["b"])
     assert exc.allow_force is True
     assert any("doctor" in s for s in exc.next_steps)
     assert any("diff" in s for s in exc.next_steps)

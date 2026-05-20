@@ -43,7 +43,7 @@ class McpTokensWarnCheck:
                     severity=Severity.WARNING,
                     message=(
                         f"raw secret {len(blocking)}건 발견 (line "
-                        f"{', '.join(str(l) for l in lines[:5])}"
+                        f"{', '.join(str(ln) for ln in lines[:5])}"
                         f"{'…' if len(lines) > 5 else ''})"
                     ),
                     location=p,

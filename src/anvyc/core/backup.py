@@ -22,9 +22,10 @@ from anvyc.adapters.iterm2 import Iterm2Adapter
 from anvyc.adapters.pulumi import PulumiAdapter
 from anvyc.adapters.shell import ShellAdapter
 from anvyc.core.config import AnvycConfig, load_anvyc_config
-from anvyc.core.inventory import Inventory, ManagedFile, build_source_inventory
+from anvyc.core.inventory import Inventory, build_source_inventory
 from anvyc.core.metadata import FileEntry, build_metadata, write_metadata
-from anvyc.core.sops import SopsError, encrypt as sops_encrypt
+from anvyc.core.sops import SopsError
+from anvyc.core.sops import encrypt as sops_encrypt
 from anvyc.security.policy import evaluate
 from anvyc.security.scanner import ScanFinding, scan_paths
 from anvyc.storage.local import new_backup_dir, update_current_symlink
@@ -47,7 +48,7 @@ ADAPTERS: dict[str, type[Adapter]] = {
 _FILE_BASED_ADAPTERS = frozenset({"shell", "git", "aws", "gh", "pulumi"})
 
 
-class BackupBlocked(RuntimeError):
+class BackupBlockedError(RuntimeError):
     """secret scan 결과 backup 중단."""
 
     def __init__(
@@ -144,7 +145,7 @@ def run_backup(
         findings = scan_paths([mf.source_path for mf in inventory.files])
         decision = evaluate(findings, force=force)
         if decision.block and cfg.security.block_on_secret:
-            raise BackupBlocked(decision.reasons)
+            raise BackupBlockedError(decision.reasons)
 
     backup_dir = new_backup_dir(root)
     md = build_metadata(

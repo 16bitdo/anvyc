@@ -7,6 +7,7 @@ deep-merge (덮어쓰기 X, 다른 키는 보존).
 """
 from __future__ import annotations
 
+import contextlib
 import plistlib
 import tempfile
 from pathlib import Path
@@ -166,10 +167,8 @@ class Iterm2Adapter:
                 plistlib.dump(safe, f, fmt=plistlib.FMT_XML, sort_keys=True)
             return sha256_file(tmp)
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 tmp.unlink()
-            except OSError:
-                pass
 
     def apply(self, source: Path, target: Path) -> ApplyResult:
         """backup XML plist 의 safe subset 을 target binary plist 에 deep-merge."""
