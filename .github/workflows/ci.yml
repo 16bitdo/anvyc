@@ -1,7 +1,8 @@
 name: CI
 
 # main push / PR 마다 lint + type-check + test 를 실행해 회귀를 잡는다.
-# scope: src/ + tests/ ruff, src/ mypy, 전체 pytest.
+# lint: src/+tests/ ruff, src/ mypy (Python 3.13 단일).
+# test: pytest 를 requires-python(>=3.11) 범위 전체 matrix 로.
 
 on:
   push:
@@ -9,8 +10,8 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Lint, type-check, test
+  lint:
+    name: Lint and type-check
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -32,6 +33,28 @@ jobs:
 
       - name: Mypy
         run: mypy src/anvyc/
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install anvyc + dev deps
+        run: uv pip install --system -e ".[dev,encryption,mcp]"
 
       - name: Pytest
         run: pytest
