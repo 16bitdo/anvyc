@@ -23,7 +23,11 @@ def test_dispatch_project_show(tmp_path: Path) -> None:
     from anvyc.mcp.server import _dispatch
 
     proj = tmp_path / "p"
-    _write(proj / ".envrc", "export AWS_PROFILE=test-profile\n")
+    _write(
+        proj / ".envrc",
+        "export AWS_PROFILE=test-profile\n"
+        'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n',
+    )
     _write(
         proj / ".git" / "config",
         '[remote "origin"]\n    url = git@github.com:o/r.git\n',
@@ -32,6 +36,7 @@ def test_dispatch_project_show(tmp_path: Path) -> None:
     result = _dispatch("project_show", {"path": str(proj)})
 
     assert result["aws_profile"] == "test-profile"
+    assert result["gh_account"] == "16bitdo"
     assert result["github"][0]["owner"] == "o"
 
 

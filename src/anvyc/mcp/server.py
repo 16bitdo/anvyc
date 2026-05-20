@@ -7,7 +7,7 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
 5 read-only tool 노출 (D21):
   project_show       cwd 의 단일 project connection
   project_list       root 아래 모든 project matrix
-  project_doctor     cwd 의 정합성 5 check
+  project_doctor     cwd 의 정합성 6 check
   doctor             anvyc 환경 진단 (12 check)
   tools_list         9 도구 enabled / detect
 
@@ -88,7 +88,7 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="project_doctor",
             description=(
-                "cwd (또는 명시 path) 의 connection 정합성 5 check. "
+                "cwd (또는 명시 path) 의 connection 정합성 6 check. "
                 "DESIGN §33.2/§33.3."
             ),
             inputSchema={

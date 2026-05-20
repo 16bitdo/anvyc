@@ -1,5 +1,83 @@
 # anvyc 릴리즈 노트
 
+## v0.11.0 — 2026-05-20 (per-project gh-account routing 인식)
+
+[Phase 2 — anvyc 의 기존 per-project AWS profile 기능을 GitHub 으로 미러링]
+여러 GitHub 계정 (`16bitdo` 개인 / `heisgone` whatap org) 을 쓰는 환경에서
+`gh` CLI 의 single global active account 가 "whack-a-mole" false warning 을
+유발한다. 해결책으로 project 별 `.envrc` 가
+`export GH_CONFIG_DIR="$HOME/.config/gh-<account>"` 를 export 해 direnv 로
+계정을 라우팅한다. v0.11.0 은 anvyc 가 이 라우팅을 인식하도록 확장한다.
+
+### `ProjectInfo.gh_account` 필드 (P1)
+
+`anvyc project show` / `project list` / MCP `project_show` 의 JSON 에
+`gh_account` 키 추가. `.envrc` 의 `GH_CONFIG_DIR` 경로 값에서 basename 의
+`gh-` prefix 를 제거해 도출 (`$HOME/.config/gh-16bitdo` → `16bitdo`).
+`AWS_PROFILE` 과 달리 경로 값이라 basename 추출 한 단계를 더 거친다.
+`GH_CONFIG_DIR` 부재 / basename 이 `gh-<name>` 형식 아님 → `null`.
+
+```bash
+$ anvyc project show --path ~/Documents/proj --json
+{
+  "path": "/Users/edward/Documents/proj",
+  "aws_profile": "company-dev",
+  "gh_account": "16bitdo",
+  ...
+}
+```
+
+### 신규 global doctor check: `project-gh-account-mapping` (P2)
+
+`~/Documents/**/.git` 의 GitHub `origin` 이 ssh alias (`github.com-<alias>`)
+를 쓰는 project 가, 같은 디렉터리 `.envrc` 의 `GH_CONFIG_DIR` 로 일치하는
+gh 계정 라우팅을 선언했는지 검증 (`project-aws-profile-mapping` 의 GitHub
+아날로그).
+
+- routing OK (gh 계정 == ssh alias) → INFO 1건 (summary)
+- `.envrc` 에 `GH_CONFIG_DIR` 없음 → project 마다 WARNING
+- gh 계정 ≠ ssh alias → mismatch 마다 WARNING
+- ssh alias 쓰는 GitHub origin 없음 → 결과 0건 (silent)
+
+```bash
+anvyc doctor --only project-gh-account-mapping
+```
+
+### `project doctor` 신규 per-cwd check: `gh_account_routing` (P3)
+
+cwd 의 origin ssh alias ↔ `.envrc` `GH_CONFIG_DIR` 정합성 검증
+(`github_remote_parseable` 와 동일 패턴). `project doctor` 가 5 check →
+6 check 로 확장. plain `github.com` origin (ssh alias 없음) 은 silent skip.
+
+### 신규 / 수정 파일
+
+- `src/anvyc/checks/project_gh_account.py` (신규)
+- `src/anvyc/core/project_info.py` (`gh_account` 필드 + `_derive_gh_account`)
+- `src/anvyc/core/doctor.py` (`_REGISTRY` 등록)
+- `src/anvyc/core/project_doctor.py` (`_check_gh_account_routing`)
+- `src/anvyc/cli.py` (project show/list 의 `gh_account` 렌더링)
+- `src/anvyc/mcp/server.py` (project_doctor docstring 5→6 check)
+- `tests/unit/test_project_gh_account.py` (신규, 9 case)
+- `tests/integration/test_project_show.py` / `test_project_doctor.py` /
+  `test_project_list.py` / `test_mcp_server.py` (`gh_account` schema 반영)
+- `DESIGN.md §27 / §32 / §33`, `README.md §11.6`, `CONTEXT.md`
+- `pyproject.toml`, `src/anvyc/__init__.py` — version 0.10.0 → 0.11.0
+
+### Backward compatibility
+
+- JSON schema 는 key 추가만 (`gh_account`) — minor 변경, backward-compat
+  (DESIGN §32.7 정책 그대로).
+- 신규 check 추가 — 기존 doctor / project doctor check 동작 변경 없음.
+- `GH_CONFIG_DIR` 미사용 환경은 모든 신규 check 가 silent (결과 0건).
+
+### 통계
+
+- pytest 기존 195 + 신규 14 (unit 9 + project doctor 4 + show 1) = 209
+- ruff check / mypy (src + tests) green
+- uv build → `anvyc-0.11.0-py3-none-any.whl` 정상
+
+---
+
 ## v0.10.0 — 2026-05-19 (MCP tool naming cleanup — breaking)
 
 [follow-up of v0.9.0 회귀 테스트 — `mcp__anvyc__anvyc_*` 의 redundant prefix

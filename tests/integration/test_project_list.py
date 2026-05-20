@@ -28,7 +28,8 @@ def test_list_json_schema(tmp_path: Path) -> None:
     for entry in data:
         # project show schema 와 동일
         assert set(entry.keys()) >= {
-            "path", "aws_profile", "github", "pulumi", "dev_env", "tool_versions"
+            "path", "aws_profile", "gh_account", "github", "pulumi",
+            "dev_env", "tool_versions",
         }
 
 

@@ -48,7 +48,7 @@ def test_all_ok_full_project(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr or proc.stdout
     data = json.loads(proc.stdout)
     names = {r["check_name"] for r in data["results"]}
-    # 5 check 모두 실행
+    # 적용 가능한 check 실행 (origin 은 plain github.com 이라 gh_account_routing 은 silent)
     assert {
         "aws_profile_defined",
         "github_remote_parseable",
@@ -86,6 +86,69 @@ def test_dev_env_op_reference_safe(tmp_path: Path) -> None:
     data = json.loads(proc.stdout)
     sec = [r for r in data["results"] if r["check_name"] == "dev_env_secret_safety"]
     assert sec[0]["severity"] == "info"
+
+
+def test_gh_account_routing_ok(tmp_path: Path) -> None:
+    """origin ssh alias == .envrc GH_CONFIG_DIR gh 계정 → gh_account_routing INFO."""
+    proj = tmp_path / "gh-ok"
+    _write(
+        proj / ".git" / "config",
+        '[remote "origin"]\n    url = git@github.com-16bitdo:16bitdo/gh-ok.git\n',
+    )
+    _write(proj / ".envrc", 'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    gh = [r for r in data["results"] if r["check_name"] == "gh_account_routing"]
+    assert len(gh) == 1
+    assert gh[0]["severity"] == "info"
+
+
+def test_gh_account_routing_missing(tmp_path: Path) -> None:
+    """ssh alias origin 인데 GH_CONFIG_DIR 없음 → gh_account_routing WARNING."""
+    proj = tmp_path / "gh-missing"
+    _write(
+        proj / ".git" / "config",
+        '[remote "origin"]\n    url = git@github.com-heisgone:whatap/gh-missing.git\n',
+    )
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    gh = [r for r in data["results"] if r["check_name"] == "gh_account_routing"]
+    assert len(gh) == 1
+    assert gh[0]["severity"] == "warning"
+    assert "GH_CONFIG_DIR" in gh[0]["message"]
+
+
+def test_gh_account_routing_mismatch(tmp_path: Path) -> None:
+    """gh 계정 ≠ origin ssh alias → gh_account_routing WARNING."""
+    proj = tmp_path / "gh-mismatch"
+    _write(
+        proj / ".git" / "config",
+        '[remote "origin"]\n    url = git@github.com-16bitdo:16bitdo/gh-mismatch.git\n',
+    )
+    _write(proj / ".envrc", 'export GH_CONFIG_DIR="$HOME/.config/gh-heisgone"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    gh = [r for r in data["results"] if r["check_name"] == "gh_account_routing"]
+    assert len(gh) == 1
+    assert gh[0]["severity"] == "warning"
+    assert "불일치" in gh[0]["message"]
+
+
+def test_gh_account_routing_silent_for_plain_origin(tmp_path: Path) -> None:
+    """plain github.com origin (ssh alias 없음) → gh_account_routing 결과 0건."""
+    proj = tmp_path / "gh-plain"
+    _write(
+        proj / ".git" / "config",
+        '[remote "origin"]\n    url = git@github.com:o/r.git\n',
+    )
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    gh = [r for r in data["results"] if r["check_name"] == "gh_account_routing"]
+    assert gh == []
 
 
 def test_pulumi_invalid_stack_name(tmp_path: Path) -> None:

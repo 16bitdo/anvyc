@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
@@ -31,10 +31,27 @@ REDACTED_MARKER = "***REDACTED***"
 class ProjectInfo:
     path: str
     aws_profile: str | None
+    gh_account: str | None
     github: list[dict[str, Any]] | None
     pulumi: dict[str, Any] | None
     dev_env: dict[str, str] = field(default_factory=dict)
     tool_versions: dict[str, str] = field(default_factory=dict)
+
+
+def _derive_gh_account(gh_config_dir: str | None) -> str | None:
+    """`GH_CONFIG_DIR` 경로 값 → gh 계정 이름.
+
+    convention: `$HOME/.config/gh-<account>` → `<account>` (basename 의 `gh-` prefix 제거).
+    값이 없거나 basename 이 `gh-<name>` 형식이 아니면 None.
+    AWS_PROFILE 과 달리 경로 값이므로 basename 추출 후 prefix strip 한 단계 더 거친다.
+    """
+    if not gh_config_dir:
+        return None
+    base = PurePosixPath(gh_config_dir.rstrip("/")).name
+    if not base.startswith("gh-"):
+        return None
+    account = base[len("gh-"):]
+    return account or None
 
 
 def _parse_envrc(envrc: Path) -> dict[str, str]:
@@ -97,6 +114,8 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
     dev_env = _redact_dev_env(raw_dev_env) if redact_secrets else raw_dev_env
 
     aws_profile = raw_dev_env.get("AWS_PROFILE")  # AWS_PROFILE 자체는 secret 아님
+    # GH_CONFIG_DIR 경로 값 → gh 계정 (per-project gh routing). 경로 자체는 secret 아님.
+    gh_account = _derive_gh_account(raw_dev_env.get("GH_CONFIG_DIR"))
 
     github_remotes: list[GitRemoteInfo] = []
     git_dir = p / ".git"
@@ -109,6 +128,7 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
     return ProjectInfo(
         path=str(p),
         aws_profile=aws_profile,
+        gh_account=gh_account,
         github=github,
         pulumi=pulumi,
         dev_env=dev_env,
