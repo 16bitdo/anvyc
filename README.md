@@ -142,6 +142,12 @@ anvyc --help
 
 상세 가이드: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
+> **macOS + Python 3.13.13+ 사용자**: editable install 직후에는 동작하다가
+> 잠시 후 `ModuleNotFoundError: No module named 'anvyc.cli'` 로 깨지면
+> [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md) 참고 —
+> macOS `UF_HIDDEN` flag 가 `.pth` 처리를 막는 알려진 이슈, 단일 `chflags`
+> 한 줄로 fix. 일반 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
+
 ---
 
 ## 6. 빠른 시작

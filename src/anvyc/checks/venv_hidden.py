@@ -7,7 +7,10 @@ editable install (`pip install -e .`) 의 `_editable_impl_*.pth` 가 무시되�
 
 참고: https://github.com/python/cpython/issues/116727
 
-해결: `chflags -R nohidden <venv-dir>` — doctor 가 안내한다.
+임시 해결: `chflags -R nohidden <venv-dir>`. 단 macOS 백그라운드 프로세스가
+flag 를 주기적으로 재적용하므로 1회 chflags 로는 영구 해결이 안 된다.
+영구 해결: 호출 시점마다 `chflags nohidden` 후 exec 하는 wrapper script.
+상세: docs/troubleshooting-macos.md
 """
 from __future__ import annotations
 
@@ -16,6 +19,10 @@ import sys
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+
+# editable install 이 site-packages 에 남기는 .pth shim 의 파일명 prefix.
+# hatchling: `_editable_impl_<name>.pth`, setuptools: `__editable__.<name>-<ver>.pth`
+_EDITABLE_SHIM_PREFIXES = ("_editable_impl_", "__editable__")
 
 
 class VenvHiddenFlagCheck:
@@ -28,7 +35,6 @@ class VenvHiddenFlagCheck:
         if venv_root is None:
             return []
 
-        problematic: list[Path] = []
         candidates: list[Path] = [venv_root]
         lib_dir = venv_root / "lib"
         if lib_dir.exists():
@@ -40,6 +46,9 @@ class VenvHiddenFlagCheck:
                 candidates.append(sp)
                 candidates.extend(sp.glob("*.pth"))
 
+        # editable shim 과 그 외(일반 .pth / 디렉터리) 를 분리 — message 정확도.
+        editable_hidden: list[Path] = []
+        other_hidden: list[Path] = []
         seen: set[Path] = set()
         for c in candidates:
             try:
@@ -49,27 +58,42 @@ class VenvHiddenFlagCheck:
             if rp in seen:
                 continue
             seen.add(rp)
-            if self._is_hidden(c):
-                problematic.append(c)
+            if not self._is_hidden(c):
+                continue
+            if self._is_editable_shim(c):
+                editable_hidden.append(c)
+            else:
+                other_hidden.append(c)
 
-        if not problematic:
+        if not editable_hidden and not other_hidden:
             return []
 
-        # 한 venv 안에서 여러 항목이 hidden 이면 대표 1건만 보고하고 root 수정 제안.
-        head = problematic[0]
+        # 한 venv 안에서 여러 항목이 hidden 이면 대표 1건만 보고 — editable shim 우선.
+        if editable_hidden:
+            location = editable_hidden[0]
+            message = (
+                f"venv {venv_root.name} 에 macOS UF_HIDDEN flag — "
+                f"editable shim .pth {len(editable_hidden)}건 site.py 가 무시 "
+                "→ editable install (import) 깨짐"
+            )
+        else:
+            location = other_hidden[0]
+            message = (
+                f"venv {venv_root.name} 에 macOS UF_HIDDEN flag — "
+                f".pth {len(other_hidden)}건 site.py 가 무시될 수 있음"
+            )
+
         suggestion = (
-            f"chflags -R nohidden {venv_root} "
-            "→ Python 3.13 의 site.py 가 .pth 를 다시 읽도록 한다."
+            f"chflags -R nohidden {venv_root} (임시 — macOS 백그라운드가 "
+            "hidden flag 를 재적용함). 영구 해법: 호출 시 chflags nohidden 후 "
+            "exec 하는 wrapper script. 상세: docs/troubleshooting-macos.md"
         )
         return [
             CheckResult(
                 check_name=self.name,
                 severity=Severity.WARNING,
-                message=(
-                    f"venv {venv_root.name} 에 macOS UF_HIDDEN flag — "
-                    f".pth {len(problematic)}건 site.py 가 무시 → editable install 깨짐"
-                ),
-                location=head,
+                message=message,
+                location=location,
                 suggestion=suggestion,
             )
         ]
@@ -91,3 +115,8 @@ class VenvHiddenFlagCheck:
             return False
         flags = getattr(st, "st_flags", 0)
         return bool(flags & stat.UF_HIDDEN)
+
+    @staticmethod
+    def _is_editable_shim(path: Path) -> bool:
+        """editable install 이 만든 .pth shim 인지 (hatchling/setuptools)."""
+        return path.suffix == ".pth" and path.name.startswith(_EDITABLE_SHIM_PREFIXES)

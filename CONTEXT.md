@@ -73,6 +73,7 @@
 | 2026-05-18 | v0.5.2 Y1 확정: secret_files schema = mixed string/dict | string 형식 backward compat + dict 형식으로 file 단위 옵션 가능 |
 | 2026-05-18 | v0.5.2 Y2 확정: format chain = file > tool > global > default | 가장 구체적인 설정이 이긴다 — 일반 config 우선순위 패턴 |
 | 2026-05-18 | v0.5.2 Y3 확정: dict 의 추가 필드 = format 만 | per-file recipients/identity 는 보안 모델 복잡화. v0.6+ 검토 |
+| 2026-05-19 | macOS UF_HIDDEN 이슈 README 안내 완료, self-heal wrapper 패턴 권장 | 2026-05-18 결정의 후속 — `chflags -R nohidden` 1회로는 영구 fix 불가 (백그라운드가 주기적 재적용). `~/.local/bin/anvyc` wrapper 가 매 호출 시 `chflags nohidden $PTH` + exec 으로 self-heal. docs/troubleshooting-macos.md 신설, README §5.6 cross-link. doctor 자동 안내는 미구현 |
 
 ---
 
