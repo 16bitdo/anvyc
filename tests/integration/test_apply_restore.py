@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from anvyc.core.apply import run_apply
 from anvyc.core.backup import run_backup
@@ -9,7 +10,7 @@ from anvyc.core.restore import run_restore
 from anvyc.core.status import compute_status
 
 
-def test_dry_run_does_not_mutate_target(isolated_env) -> None:
+def test_dry_run_does_not_mutate_target(isolated_env: dict[str, Path]) -> None:
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     isolated_env["zshrc"].write_text("tampered\n")
     report = run_apply(
@@ -24,7 +25,7 @@ def test_dry_run_does_not_mutate_target(isolated_env) -> None:
     assert all(e.state_after.startswith("would_") for e in report.entries)
 
 
-def test_apply_restores_modified_file(isolated_env) -> None:
+def test_apply_restores_modified_file(isolated_env: dict[str, Path]) -> None:
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     original = isolated_env["zshrc"].read_text()
     isolated_env["zshrc"].write_text("tampered\n")
@@ -32,7 +33,7 @@ def test_apply_restores_modified_file(isolated_env) -> None:
     assert isolated_env["zshrc"].read_text() == original
 
 
-def test_apply_recreates_missing_file(isolated_env) -> None:
+def test_apply_recreates_missing_file(isolated_env: dict[str, Path]) -> None:
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     original = isolated_env["zshrc"].read_text()
     isolated_env["zshrc"].unlink()
@@ -41,7 +42,7 @@ def test_apply_recreates_missing_file(isolated_env) -> None:
     assert isolated_env["zshrc"].read_text() == original
 
 
-def test_apply_local_backup_preserves_pre_apply_state(isolated_env) -> None:
+def test_apply_local_backup_preserves_pre_apply_state(isolated_env: dict[str, Path]) -> None:
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     isolated_env["zshrc"].write_text("PRE_APPLY_STATE\n")
     result = run_apply(root=isolated_env["root"], config_path=isolated_env["config"])
@@ -51,7 +52,7 @@ def test_apply_local_backup_preserves_pre_apply_state(isolated_env) -> None:
     assert lb_file.read_text() == "PRE_APPLY_STATE\n"
 
 
-def test_restore_older_backup(isolated_env) -> None:
+def test_restore_older_backup(isolated_env: dict[str, Path]) -> None:
     # backup A
     isolated_env["zshrc"].write_text("VERSION_A\n")
     res_a = run_backup(root=isolated_env["root"], config_path=isolated_env["config"])

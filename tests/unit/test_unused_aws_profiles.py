@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,7 @@ def _write_envrc(project: Path, profile: str) -> None:
 
 
 @pytest.fixture
-def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
+def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     docs = tmp_path / "Documents"
     docs.mkdir()
     aws_cfg = tmp_path / "aws" / "config"
@@ -39,7 +40,7 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     return {"docs": docs, "aws_cfg": aws_cfg}
 
 
-def test_unused_profiles_yields_info(patched_paths: dict) -> None:
+def test_unused_profiles_yields_info(patched_paths: dict[str, Any]) -> None:
     """defined 3 profile + .envrc 가 1개만 사용 → 2 unused."""
     _write_aws_config(
         patched_paths["aws_cfg"],
@@ -55,7 +56,7 @@ def test_unused_profiles_yields_info(patched_paths: dict) -> None:
     assert "ws-prd" in res[0].message
 
 
-def test_all_profiles_used_yields_zero(patched_paths: dict) -> None:
+def test_all_profiles_used_yields_zero(patched_paths: dict[str, Any]) -> None:
     """defined 모두 사용 중 → 0 결과."""
     _write_aws_config(patched_paths["aws_cfg"], ["default", "ws-dev"])
     _write_envrc(patched_paths["docs"] / "proj-a", "ws-dev")
@@ -64,20 +65,20 @@ def test_all_profiles_used_yields_zero(patched_paths: dict) -> None:
     assert res == []
 
 
-def test_no_aws_config_yields_zero(patched_paths: dict) -> None:
+def test_no_aws_config_yields_zero(patched_paths: dict[str, Any]) -> None:
     """`~/.aws/config` 부재 → silent skip."""
     res = UnusedAwsProfilesCheck().run(CheckContext())
     assert res == []
 
 
-def test_only_default_profile_yields_zero(patched_paths: dict) -> None:
+def test_only_default_profile_yields_zero(patched_paths: dict[str, Any]) -> None:
     """[default] 만 정의돼 있음 → unused 판정 안 함 (default 는 fallback 으로 제외)."""
     _write_aws_config(patched_paths["aws_cfg"], ["default"])
     res = UnusedAwsProfilesCheck().run(CheckContext())
     assert res == []
 
 
-def test_no_envrcs_all_profiles_unused(patched_paths: dict) -> None:
+def test_no_envrcs_all_profiles_unused(patched_paths: dict[str, Any]) -> None:
     """.envrc 가 0 건이고 profile 이 정의돼 있음 → 모두 unused INFO."""
     _write_aws_config(patched_paths["aws_cfg"], ["default", "ws-dev", "ws-prd"])
     res = UnusedAwsProfilesCheck().run(CheckContext())

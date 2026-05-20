@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def age_key(tmp_path: Path) -> dict:
+def age_key(tmp_path: Path) -> dict[str, Any]:
     identity = tmp_path / "age-key.txt"
     result = subprocess.run(
         ["age-keygen", "-o", str(identity)],
@@ -66,7 +67,7 @@ def _write_yaml(path: Path, age_pub: str, identity_file: Path, fmt: str = "binar
     )
 
 
-def test_sops_encrypt_creates_default_output(tmp_path, age_key) -> None:
+def test_sops_encrypt_creates_default_output(tmp_path: Path, age_key: dict[str, Any]) -> None:
     cfg = tmp_path / "anvyc.yaml"
     _write_yaml(cfg, age_key["public"], age_key["identity"])
     src = tmp_path / "secret.env"
@@ -82,7 +83,7 @@ def test_sops_encrypt_creates_default_output(tmp_path, age_key) -> None:
     assert "secret_value_123" not in expected_out.read_text()
 
 
-def test_sops_decrypt_to_stdout(tmp_path, age_key) -> None:
+def test_sops_decrypt_to_stdout(tmp_path: Path, age_key: dict[str, Any]) -> None:
     cfg = tmp_path / "anvyc.yaml"
     _write_yaml(cfg, age_key["public"], age_key["identity"])
     src = tmp_path / "x.env"
@@ -95,7 +96,7 @@ def test_sops_decrypt_to_stdout(tmp_path, age_key) -> None:
     assert "KEY=val" in proc.stdout
 
 
-def test_sops_decrypt_to_file(tmp_path, age_key) -> None:
+def test_sops_decrypt_to_file(tmp_path: Path, age_key: dict[str, Any]) -> None:
     cfg = tmp_path / "anvyc.yaml"
     _write_yaml(cfg, age_key["public"], age_key["identity"])
     src = tmp_path / "x.env"
@@ -109,7 +110,7 @@ def test_sops_decrypt_to_file(tmp_path, age_key) -> None:
     assert out.read_text() == "FOO=bar\n"
 
 
-def test_sops_rotate_keys_with_new_recipient(tmp_path, age_key) -> None:
+def test_sops_rotate_keys_with_new_recipient(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.5 핵심: rotate 후 새 키로만 복호화 가능."""
     from anvyc.core.backup import run_backup
     from anvyc.core.sops import SopsError
@@ -185,7 +186,7 @@ def test_sops_rotate_keys_with_new_recipient(tmp_path, age_key) -> None:
         sops_decrypt(enc, tmp_path / "out2.env", identity_file=age_key["identity"])
 
 
-def test_sops_rotate_dry_run_no_changes(tmp_path, age_key) -> None:
+def test_sops_rotate_dry_run_no_changes(tmp_path: Path, age_key: dict[str, Any]) -> None:
     from anvyc.core.backup import run_backup
 
     anvyc_dir = tmp_path / ".anvyc"

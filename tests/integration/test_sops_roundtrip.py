@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def age_key(tmp_path: Path) -> dict:
+def age_key(tmp_path: Path) -> dict[str, Any]:
     """임시 age key 한 쌍 생성. identity file + public key 반환."""
     identity = tmp_path / "age-key.txt"
     result = subprocess.run(
@@ -83,7 +84,7 @@ def _make_yaml(
     return cfg
 
 
-def test_sops_encrypt_backup_does_not_contain_plaintext(tmp_path, age_key) -> None:
+def test_sops_encrypt_backup_does_not_contain_plaintext(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """secret_file 의 평문이 backup 디렉터리에 절대 들어가지 않아야."""
     secret = tmp_path / "secret.env"
     secret.write_text("DB_PASSWORD=plaintext_secret_xyz_123\n")
@@ -109,7 +110,7 @@ def test_sops_encrypt_backup_does_not_contain_plaintext(tmp_path, age_key) -> No
     assert "secret.env" in enc_entries[0]["targetPath"]
 
 
-def test_sops_apply_decrypts_to_target(tmp_path, age_key) -> None:
+def test_sops_apply_decrypts_to_target(tmp_path: Path, age_key: dict[str, Any]) -> None:
     secret = tmp_path / "secret.env"
     secret.write_text("DB_PASSWORD=plaintext_secret_xyz_123\n")
 
@@ -127,7 +128,7 @@ def test_sops_apply_decrypts_to_target(tmp_path, age_key) -> None:
     assert secret.read_text() == "DB_PASSWORD=plaintext_secret_xyz_123\n"
 
 
-def test_sops_apply_fails_without_key(tmp_path, age_key) -> None:
+def test_sops_apply_fails_without_key(tmp_path: Path, age_key: dict[str, Any]) -> None:
     secret = tmp_path / "secret.env"
     secret.write_text("X=y\n")
 
@@ -159,7 +160,7 @@ def test_sops_apply_fails_without_key(tmp_path, age_key) -> None:
         pytest.skip("default keyring 에 우연히 일치하는 key 존재")
 
 
-def test_sops_inplace_yaml_roundtrip(tmp_path, age_key) -> None:
+def test_sops_inplace_yaml_roundtrip(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """inplace 모드 — yaml 값만 암호화, 키와 형식 유지."""
     secret = tmp_path / "creds.yaml"
     secret.write_text("api_key: plaintext_yaml_secret_value\nuser: edward\n")
@@ -194,7 +195,7 @@ def test_sops_inplace_yaml_roundtrip(tmp_path, age_key) -> None:
     assert "user: edward" in restored
 
 
-def test_sops_per_tool_format_override(tmp_path, age_key) -> None:
+def test_sops_per_tool_format_override(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.4.1: tool 별 sops_format 이 전역보다 우선 — binary tool + inplace tool 혼합."""
     # 두 tool 의 secret_file 을 다른 모드로 처리
     bin_secret = tmp_path / "binsec.txt"
@@ -266,7 +267,7 @@ def test_sops_per_tool_format_override(tmp_path, age_key) -> None:
     assert "api_key: yaml_value_abc" in yaml_secret.read_text()
 
 
-def test_sops_status_unchanged_after_backup(tmp_path, age_key) -> None:
+def test_sops_status_unchanged_after_backup(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.4.0: SOPS entry 가 backup 직후 status 에서 unchanged 로 표시되는지."""
     from anvyc.core.status import compute_status
 
@@ -285,7 +286,7 @@ def test_sops_status_unchanged_after_backup(tmp_path, age_key) -> None:
     assert counts.get("modified", 0) == 0, f"expected 0 modified, got {counts}"
 
 
-def test_sops_status_modified_after_target_tamper(tmp_path, age_key) -> None:
+def test_sops_status_modified_after_target_tamper(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.4.0: target 평문 수정 시 status 가 modified 로 정확히 잡아야."""
     from anvyc.core.status import compute_status
 
@@ -304,7 +305,7 @@ def test_sops_status_modified_after_target_tamper(tmp_path, age_key) -> None:
     assert report.counts().get("modified", 0) >= 1
 
 
-def test_sops_per_file_format_dict(tmp_path, age_key) -> None:
+def test_sops_per_file_format_dict(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.5.2: secret_files 의 dict 항목이 자체 format 으로 override."""
     bin_src = tmp_path / "bin.txt"
     bin_src.write_text("binary_payload\n")
@@ -360,7 +361,7 @@ def test_sops_per_file_format_dict(tmp_path, age_key) -> None:
     assert by_target[str(yaml_src)]["encryption"] == "sops/age/inplace"
 
 
-def test_sops_format_chain_file_over_tool_over_global(tmp_path, age_key) -> None:
+def test_sops_format_chain_file_over_tool_over_global(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.5.2 chain: file format > tool format > global format > default."""
     f_global = tmp_path / "global.yaml"       # 전역 inplace 만 명시
     f_tool = tmp_path / "tool.yaml"           # tool sops_format=binary 가 적용
@@ -420,7 +421,7 @@ def test_sops_format_chain_file_over_tool_over_global(tmp_path, age_key) -> None
     assert by_target[str(f_file)]["encryption"] == "sops/age/inplace"
 
 
-def test_sops_invalid_dict_entry_skipped(tmp_path, age_key) -> None:
+def test_sops_invalid_dict_entry_skipped(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """v0.5.2: dict 에 path 가 없으면 silently skip — 오타 entry 가 빌드를 깨지 않음."""
     src = tmp_path / "good.txt"
     src.write_text("ok\n")
@@ -466,7 +467,7 @@ def test_sops_invalid_dict_entry_skipped(tmp_path, age_key) -> None:
     assert len(enc_entries) == 1, f"expected 1 sops entry (invalid 2 skipped), got {len(enc_entries)}"
 
 
-def test_scanner_skips_sops_encrypted(tmp_path, age_key) -> None:
+def test_scanner_skips_sops_encrypted(tmp_path: Path, age_key: dict[str, Any]) -> None:
     """sops 로 암호화된 파일은 secret scanner 가 통과시켜야 (false positive 차단)."""
     from anvyc.security.scanner import scan_file
 

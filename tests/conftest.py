@@ -25,7 +25,7 @@ def _heal_venv_pth() -> None:
 
 
 @pytest.fixture
-def isolated_env(tmp_path: Path) -> dict:
+def isolated_env(tmp_path: Path) -> dict[str, Path]:
     """격리된 anvyc 환경.
 
     Returns dict:
@@ -81,7 +81,7 @@ def isolated_env(tmp_path: Path) -> dict:
 
 
 @pytest.fixture
-def project_with_cursor(tmp_path: Path) -> dict:
+def project_with_cursor(tmp_path: Path) -> dict[str, Path]:
     """Cursor Layer C 검증용: .cursor/rules 가 있는 합성 프로젝트 root."""
     proj = tmp_path / "fake-proj"
     (proj / ".cursor/rules").mkdir(parents=True)

@@ -42,7 +42,7 @@ def _make_layer_c_yaml(root: Path, anvyc_dir: Path, project_root: Path) -> Path:
     return cfg
 
 
-def test_layer_c_backup_includes_files_and_symlink(tmp_path, project_with_cursor) -> None:
+def test_layer_c_backup_includes_files_and_symlink(tmp_path: Path, project_with_cursor: dict[str, Path]) -> None:
     anvyc_dir = tmp_path / ".anvyc-test"
     for sub in ("backups", "local-backups", "reports"):
         (anvyc_dir / sub).mkdir(parents=True)
@@ -57,10 +57,12 @@ def test_layer_c_backup_includes_files_and_symlink(tmp_path, project_with_cursor
     # symlink metadata
     syms = [mf for mf in result.inventory.files if mf.symlink_target is not None]
     assert len(syms) == 1
-    assert syms[0].symlink_target.endswith("external/external-rule.md")
+    sym_target = syms[0].symlink_target
+    assert sym_target is not None
+    assert sym_target.endswith("external/external-rule.md")
 
 
-def test_layer_c_apply_restores_files_and_symlink(tmp_path, project_with_cursor) -> None:
+def test_layer_c_apply_restores_files_and_symlink(tmp_path: Path, project_with_cursor: dict[str, Path]) -> None:
     anvyc_dir = tmp_path / ".anvyc-test"
     for sub in ("backups", "local-backups", "reports"):
         (anvyc_dir / sub).mkdir(parents=True)
@@ -84,7 +86,7 @@ def test_layer_c_apply_restores_files_and_symlink(tmp_path, project_with_cursor)
     assert os.readlink(link).endswith("external/external-rule.md")
 
 
-def test_layer_c_symlink_unchanged_state(tmp_path, project_with_cursor) -> None:
+def test_layer_c_symlink_unchanged_state(tmp_path: Path, project_with_cursor: dict[str, Path]) -> None:
     """이미 올바른 symlink 가 있으면 state_before=unchanged."""
     anvyc_dir = tmp_path / ".anvyc-test"
     for sub in ("backups", "local-backups", "reports"):

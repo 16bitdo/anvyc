@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -25,7 +26,7 @@ def _write_aws_config(path: Path, profiles: list[str]) -> None:
 @pytest.fixture
 def patched_sources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> dict:
+) -> dict[str, Any]:
     aws_cfg = tmp_path / "aws" / "config"
     ssh_cfg = tmp_path / "ssh" / "config"
     cursor_projects = tmp_path / "cursor" / "projects"
@@ -47,7 +48,7 @@ def patched_sources(
     }
 
 
-def test_aws_only_multi_yields_info(patched_sources: dict) -> None:
+def test_aws_only_multi_yields_info(patched_sources: dict[str, Any]) -> None:
     """AWS profile ≥ 2 (default 제외) 단독 감지."""
     _write_aws_config(
         patched_sources["aws_cfg"],
@@ -60,14 +61,14 @@ def test_aws_only_multi_yields_info(patched_sources: dict) -> None:
     assert "ws-dev" in res[0].message
 
 
-def test_aws_single_profile_skipped(patched_sources: dict) -> None:
+def test_aws_single_profile_skipped(patched_sources: dict[str, Any]) -> None:
     """default + 1 profile 만 있으면 multi-account 판정 안 함."""
     _write_aws_config(patched_sources["aws_cfg"], ["default", "ws-dev"])
     res = MultiAccountDetectedCheck().run(CheckContext())
     assert res == []
 
 
-def test_github_ssh_alias_yields_info(patched_sources: dict) -> None:
+def test_github_ssh_alias_yields_info(patched_sources: dict[str, Any]) -> None:
     ssh_cfg = patched_sources["ssh_cfg"]
     ssh_cfg.parent.mkdir(parents=True, exist_ok=True)
     ssh_cfg.write_text(
@@ -89,7 +90,7 @@ def test_github_ssh_alias_yields_info(patched_sources: dict) -> None:
     assert "secondary" in res[0].message
 
 
-def test_cursor_alias_symlink_yields_info(patched_sources: dict) -> None:
+def test_cursor_alias_symlink_yields_info(patched_sources: dict[str, Any]) -> None:
     cursor_projects = patched_sources["cursor_projects"]
     cursor_projects.mkdir(parents=True, exist_ok=True)
     target = cursor_projects / "Users-edward-Documents"
@@ -104,13 +105,13 @@ def test_cursor_alias_symlink_yields_info(patched_sources: dict) -> None:
     assert "Users-aliasuser-Documents" in res[0].message
 
 
-def test_all_sources_absent_yields_zero(patched_sources: dict) -> None:
+def test_all_sources_absent_yields_zero(patched_sources: dict[str, Any]) -> None:
     """모든 source 미존재 → 0 결과."""
     res = MultiAccountDetectedCheck().run(CheckContext())
     assert res == []
 
 
-def test_combined_aws_plus_ssh_yields_two(patched_sources: dict) -> None:
+def test_combined_aws_plus_ssh_yields_two(patched_sources: dict[str, Any]) -> None:
     """두 영역 동시 감지 시 결과 2건 (각각 1)."""
     _write_aws_config(
         patched_sources["aws_cfg"],

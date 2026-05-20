@@ -18,7 +18,7 @@ def _git_user_for_test(repo: Path) -> None:
     subprocess.run(["git", "config", "user.name", "test"], cwd=str(repo), check=True)
 
 
-def test_init_creates_repo_gitignore_hook(isolated_env) -> None:
+def test_init_creates_repo_gitignore_hook(isolated_env: dict[str, Path]) -> None:
     root = isolated_env["root"]
     init_repo(root)
     assert (root / ".git").is_dir()
@@ -30,7 +30,7 @@ def test_init_creates_repo_gitignore_hook(isolated_env) -> None:
     assert hook.stat().st_mode & 0o111  # executable
 
 
-def test_status_after_init_lists_untracked(isolated_env) -> None:
+def test_status_after_init_lists_untracked(isolated_env: dict[str, Path]) -> None:
     init_repo(isolated_env["root"])
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     out = status(isolated_env["root"])
@@ -38,7 +38,7 @@ def test_status_after_init_lists_untracked(isolated_env) -> None:
     assert "anvyc.yaml" in out or "backups" in out
 
 
-def test_commit_creates_revision(isolated_env) -> None:
+def test_commit_creates_revision(isolated_env: dict[str, Path]) -> None:
     init_repo(isolated_env["root"])
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     _git_user_for_test(isolated_env["root"])
@@ -54,7 +54,7 @@ def test_commit_creates_revision(isolated_env) -> None:
     assert len(result.stdout.strip()) == 40
 
 
-def test_commit_with_no_changes_does_not_error(isolated_env) -> None:
+def test_commit_with_no_changes_does_not_error(isolated_env: dict[str, Path]) -> None:
     init_repo(isolated_env["root"])
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     _git_user_for_test(isolated_env["root"])
@@ -64,7 +64,7 @@ def test_commit_with_no_changes_does_not_error(isolated_env) -> None:
     assert "nothing to commit" in out
 
 
-def test_pre_commit_hook_blocks_raw_secret(isolated_env, monkeypatch) -> None:
+def test_pre_commit_hook_blocks_raw_secret(isolated_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
     """pre-commit hook 이 anvyc 를 호출해 secret 차단.
 
     hook 안에서 `command -v anvyc` 가 실패하면 silent skip 으로 빠지므로,

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -34,7 +35,7 @@ def _write_envrc(project: Path, profile: str) -> Path:
 
 
 @pytest.fixture
-def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
+def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     docs = tmp_path / "Documents"
     docs.mkdir()
     aws_cfg = tmp_path / "aws" / "config"
@@ -47,7 +48,7 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     return {"docs": docs, "aws_cfg": aws_cfg}
 
 
-def test_all_defined_yields_single_info(patched_paths: dict) -> None:
+def test_all_defined_yields_single_info(patched_paths: dict[str, Any]) -> None:
     """모든 .envrc 의 profile 이 aws/config 에 정의돼 있으면 INFO summary 1건."""
     docs = patched_paths["docs"]
     _write_envrc(docs / "proj-a", "ws-dev")
@@ -62,7 +63,7 @@ def test_all_defined_yields_single_info(patched_paths: dict) -> None:
     assert "모두 정의" in res[0].message
 
 
-def test_one_missing_yields_warning(patched_paths: dict) -> None:
+def test_one_missing_yields_warning(patched_paths: dict[str, Any]) -> None:
     """일부 누락 시 누락마다 WARNING — summary INFO 발행 안 함."""
     docs = patched_paths["docs"]
     _write_envrc(docs / "proj-a", "ws-dev")
@@ -80,14 +81,14 @@ def test_one_missing_yields_warning(patched_paths: dict) -> None:
     assert "aws configure" in res[0].suggestion
 
 
-def test_no_envrcs_yields_silent(patched_paths: dict) -> None:
+def test_no_envrcs_yields_silent(patched_paths: dict[str, Any]) -> None:
     """`.envrc` 부재 → 결과 0건 (silent)."""
     _write_aws_config(patched_paths["aws_cfg"], ["default", "ws-dev"])
     res = ProjectAwsProfileMappingCheck().run(CheckContext())
     assert res == []
 
 
-def test_aws_config_absent_yields_all_missing(patched_paths: dict) -> None:
+def test_aws_config_absent_yields_all_missing(patched_paths: dict[str, Any]) -> None:
     """`~/.aws/config` 부재 → 모든 .envrc 의 profile 이 missing 처리."""
     docs = patched_paths["docs"]
     _write_envrc(docs / "proj-a", "ws-dev")
@@ -99,7 +100,7 @@ def test_aws_config_absent_yields_all_missing(patched_paths: dict) -> None:
     assert "ws-dev" in res[0].message
 
 
-def test_envrc_with_quoted_value(patched_paths: dict) -> None:
+def test_envrc_with_quoted_value(patched_paths: dict[str, Any]) -> None:
     """`export AWS_PROFILE="X"` 큰따옴표 형식도 파싱 OK."""
     docs = patched_paths["docs"]
     proj = docs / "proj-q"

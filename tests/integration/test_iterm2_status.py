@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import plistlib
 from pathlib import Path
+from typing import Any
 
 from anvyc.adapters.iterm2 import Iterm2Adapter
 from anvyc.core.status import _adapter_target_hash
 
 
-def _write_plist(p: Path, data: dict) -> None:
+def _write_plist(p: Path, data: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("wb") as f:
         plistlib.dump(data, f, fmt=plistlib.FMT_BINARY)
