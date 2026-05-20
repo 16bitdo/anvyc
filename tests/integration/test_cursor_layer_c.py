@@ -50,10 +50,9 @@ def test_layer_c_backup_includes_files_and_symlink(tmp_path, project_with_cursor
 
     result = run_backup(root=anvyc_dir, config_path=cfg, only=["cursor"])
     # 4 plain (00-base.md, 01-second.md, mcp.json, .cursorrules) + 1 symlink (zz-link.md)
-    proj_name = project_with_cursor["root"].name
     paths = [str(mf.target_path) for mf in result.inventory.files]
-    assert any(f".cursor/rules/00-base.md" in p for p in paths)
-    assert any(f".cursor/rules/01-second.md" in p for p in paths)
+    assert any(".cursor/rules/00-base.md" in p for p in paths)
+    assert any(".cursor/rules/01-second.md" in p for p in paths)
     assert any(".cursorrules" in p for p in paths)
     # symlink metadata
     syms = [mf for mf in result.inventory.files if mf.symlink_target is not None]
@@ -94,6 +93,11 @@ def test_layer_c_symlink_unchanged_state(tmp_path, project_with_cursor) -> None:
     run_backup(root=anvyc_dir, config_path=cfg, only=["cursor"])
 
     report = run_apply(root=anvyc_dir, config_path=cfg, only=["cursor"], dry_run=True)
-    # 모든 entry 가 would_skip (unchanged) 이어야
-    states = [e.state_before for e in report.entries]
-    assert all(s == "unchanged" for s in states), f"unexpected states: {states}"
+    # cfg 가 global/ide include 를 [] 로 비웠으므로 Layer C entry 만 backup 된다.
+    # 모든 entry 가 would_skip (unchanged) 이어야 한다.
+    bad = [
+        (str(e.target_path), e.state_before)
+        for e in report.entries
+        if e.state_before != "unchanged"
+    ]
+    assert not bad, f"unexpected: {bad}"

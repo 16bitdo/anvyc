@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from pathspec import PathSpec
 
@@ -23,8 +24,6 @@ from anvyc.core.inventory import ManagedFile
 
 GLOBAL_CANONICAL = "~/.cursor"
 IDE_CANONICAL = "~/Library/Application Support/Cursor/User"
-GLOBAL_ROOT = Path(GLOBAL_CANONICAL).expanduser()
-IDE_ROOT = Path(IDE_CANONICAL).expanduser()
 
 # Layer A — ~/.cursor/
 DEFAULT_GLOBAL_INCLUDES: tuple[str, ...] = (
@@ -123,25 +122,29 @@ class CursorAdapter:
 
     def __init__(
         self,
-        global_cfg: dict | None = None,
-        ide_cfg: dict | None = None,
-        projects_cfg: dict | None = None,
+        global_cfg: dict[str, Any] | None = None,
+        ide_cfg: dict[str, Any] | None = None,
+        projects_cfg: dict[str, Any] | None = None,
     ) -> None:
         self.global_cfg = global_cfg or {}
         self.ide_cfg = ide_cfg or {}
         self.projects_cfg = projects_cfg or {}
 
+        # Layer A/B root — 인스턴스 생성 시 expanduser (HOME 변경 추종).
+        self._global_root = Path(GLOBAL_CANONICAL).expanduser()
+        self._ide_root = Path(IDE_CANONICAL).expanduser()
+
         self._global_includes = self._normalize_includes(
-            self.global_cfg.get("include"), GLOBAL_ROOT, DEFAULT_GLOBAL_INCLUDES
+            self.global_cfg.get("include"), self._global_root, DEFAULT_GLOBAL_INCLUDES
         )
         self._global_spec = self._build_spec(
-            self.global_cfg.get("exclude"), GLOBAL_ROOT, DEFAULT_GLOBAL_EXCLUDES
+            self.global_cfg.get("exclude"), self._global_root, DEFAULT_GLOBAL_EXCLUDES
         )
         self._ide_includes = self._normalize_includes(
-            self.ide_cfg.get("include"), IDE_ROOT, DEFAULT_IDE_INCLUDES
+            self.ide_cfg.get("include"), self._ide_root, DEFAULT_IDE_INCLUDES
         )
         self._ide_spec = self._build_spec(
-            self.ide_cfg.get("exclude"), IDE_ROOT, DEFAULT_IDE_EXCLUDES
+            self.ide_cfg.get("exclude"), self._ide_root, DEFAULT_IDE_EXCLUDES
         )
         self._gs_allow = list(self.ide_cfg.get("global_storage_allowlist") or [])
         self._gs_always_excl_spec = PathSpec.from_lines(
@@ -151,18 +154,23 @@ class CursorAdapter:
     # ---------- public ----------
 
     def detect(self) -> bool:
-        return GLOBAL_ROOT.exists() or IDE_ROOT.exists()
+        if self._global_root.exists() or self._ide_root.exists():
+            return True
+        # Layer A/B 디렉터리가 없어도 Layer C (project-local) 가 설정돼 있으면 활성.
+        return bool(
+            self.projects_cfg.get("enabled") and self.projects_cfg.get("roots")
+        )
 
     def collect(self) -> list[ManagedFile]:
         out: list[ManagedFile] = []
         out.extend(
             self._collect_layer(
-                GLOBAL_ROOT, GLOBAL_CANONICAL, self._global_includes, self._global_spec, "global"
+                self._global_root, GLOBAL_CANONICAL, self._global_includes, self._global_spec, "global"
             )
         )
         out.extend(
             self._collect_layer(
-                IDE_ROOT, IDE_CANONICAL, self._ide_includes, self._ide_spec, "ide"
+                self._ide_root, IDE_CANONICAL, self._ide_includes, self._ide_spec, "ide"
             )
         )
         if self._gs_allow:
@@ -173,8 +181,8 @@ class CursorAdapter:
 
     def exclude(self) -> list[str]:
         out: list[str] = []
-        out.extend(f"{GLOBAL_ROOT}/{p}" for p in DEFAULT_GLOBAL_EXCLUDES if "*" not in p)
-        out.extend(f"{IDE_ROOT}/{p}" for p in DEFAULT_IDE_EXCLUDES if "*" not in p)
+        out.extend(f"{self._global_root}/{p}" for p in DEFAULT_GLOBAL_EXCLUDES if "*" not in p)
+        out.extend(f"{self._ide_root}/{p}" for p in DEFAULT_IDE_EXCLUDES if "*" not in p)
         return out
 
     def validate(self) -> list[CheckResult]:
@@ -186,10 +194,10 @@ class CursorAdapter:
         from anvyc.checks.base import Severity
 
         results: list[CheckResult] = []
-        if not GLOBAL_ROOT.exists():
+        if not self._global_root.exists():
             return results
-        for root, dirs, files in os.walk(GLOBAL_ROOT, followlinks=False):
-            depth = len(Path(root).relative_to(GLOBAL_ROOT).parts)
+        for root, dirs, files in os.walk(self._global_root, followlinks=False):
+            depth = len(Path(root).relative_to(self._global_root).parts)
             if depth >= 3:
                 dirs[:] = []
             for entry_name in list(dirs) + list(files):
@@ -234,7 +242,7 @@ class CursorAdapter:
         root: Path,
         canonical: str,
         includes: tuple[str, ...],
-        spec: PathSpec,
+        spec: PathSpec[Any],
         ns: str,
     ) -> list[ManagedFile]:
         out: list[ManagedFile] = []
@@ -265,7 +273,7 @@ class CursorAdapter:
     def _collect_global_storage(self) -> list[ManagedFile]:
         """globalStorage allowlist 가 명시된 extension 디렉터리만 포함."""
         out: list[ManagedFile] = []
-        gs_root = IDE_ROOT / "globalStorage"
+        gs_root = self._ide_root / "globalStorage"
         if not gs_root.is_dir():
             return out
         for ext_id in self._gs_allow:
@@ -274,14 +282,14 @@ class CursorAdapter:
                 continue
             for entry in self._walk(ext_dir):
                 try:
-                    rel = str(entry.relative_to(IDE_ROOT))  # "globalStorage/<ext>/..."
+                    rel = str(entry.relative_to(self._ide_root))  # "globalStorage/<ext>/..."
                 except ValueError:
                     continue
                 rel_under_gs = str(entry.relative_to(gs_root))  # "<ext>/..."
                 if self._gs_always_excl_spec.match_file(rel_under_gs):
                     continue
                 if entry.is_symlink():
-                    out.append(self._make_symlink(entry, IDE_ROOT, IDE_CANONICAL, "ide"))
+                    out.append(self._make_symlink(entry, self._ide_root, IDE_CANONICAL, "ide"))
                 elif entry.is_file():
                     out.append(self._make_file(entry, IDE_CANONICAL, rel, "ide"))
         return out
@@ -413,7 +421,8 @@ class CursorAdapter:
         root: Path,
         defaults: tuple[str, ...],
     ) -> tuple[str, ...]:
-        if not raw:
+        # raw is None → 미설정(DEFAULT). raw == [] → 명시적으로 Layer 끔(빈 tuple).
+        if raw is None:
             return defaults
         out: list[str] = []
         for s in raw:
@@ -429,7 +438,7 @@ class CursorAdapter:
         raw: list[str] | tuple[str, ...] | None,
         root: Path,
         defaults: tuple[str, ...],
-    ) -> PathSpec:
+    ) -> PathSpec[Any]:
         # yaml exclude 의 절대 경로를 root 기준 상대 패턴으로 정규화
         patterns = list(defaults)
         if raw:
