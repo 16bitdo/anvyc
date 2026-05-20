@@ -9,6 +9,7 @@ import pytest
 
 from anvyc.core.backup import run_backup
 from anvyc.storage.git import GitError, commit, init_repo, status
+from tests.integration._helpers import heal_editable_pth
 
 
 def _git_user_for_test(repo: Path) -> None:
@@ -69,6 +70,7 @@ def test_pre_commit_hook_blocks_raw_secret(isolated_env, monkeypatch) -> None:
     hook 안에서 `command -v anvyc` 가 실패하면 silent skip 으로 빠지므로,
     venv 의 anvyc 실행파일 절대 경로를 ANVYC_BIN env var 로 전달한다.
     """
+    heal_editable_pth()
     venv_anvyc = Path(sys.executable).parent / "anvyc"
     assert venv_anvyc.exists(), f"venv anvyc not found at {venv_anvyc}"
     monkeypatch.setenv("ANVYC_BIN", str(venv_anvyc))

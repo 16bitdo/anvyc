@@ -36,7 +36,7 @@ def age_key(tmp_path: Path) -> dict:
     )
     # age-keygen 은 public key 를 stderr 에 출력
     pub_line = next(
-        (l for l in result.stderr.splitlines() if l.startswith("Public key:")),
+        (line for line in result.stderr.splitlines() if line.startswith("Public key:")),
         "",
     )
     public = pub_line.split(":", 1)[1].strip()

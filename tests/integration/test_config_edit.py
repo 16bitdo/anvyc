@@ -5,25 +5,11 @@ monkeypatch.setenv("EDITOR", ...) 로 외부 에디터 호출 격리.
 """
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-
-def _anvyc(*args: str, env: dict | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    full_env = {**__import__("os").environ}
-    if env:
-        full_env.update(env)
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        env=full_env,
-        capture_output=True,
-        text=True,
-    )
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 @pytest.fixture
@@ -101,10 +87,12 @@ def test_config_edit_invalid_yaml_restores_backup(
 def test_config_edit_missing_file_fails(tmp_path: Path) -> None:
     """anvyc.yaml 부재 → exit 1 + anvyc init 안내."""
     missing = tmp_path / "not-exist.yaml"
+    # HOME 격리 — _candidate_paths 의 ~/.anvyc/anvyc.yaml fallback 이
+    # 실 사용자 HOME 의 config 를 잡지 않도록 한다.
     proc = _anvyc(
         "config", "edit",
         "--config", str(missing),
-        env={"EDITOR": "true"},
+        env={"EDITOR": "true", "HOME": str(tmp_path)},
         cwd=tmp_path,
     )
     assert proc.returncode == 1

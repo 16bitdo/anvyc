@@ -2,21 +2,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
 import pytest
 
-
-def _anvyc(*args: str, env: dict | None = None) -> subprocess.CompletedProcess:
-    import os as _os
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    full_env = {**_os.environ}
-    if env:
-        full_env.update(env)
-    return subprocess.run(cmd, env=full_env, capture_output=True, text=True)
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _write(p: Path, body: str) -> None:

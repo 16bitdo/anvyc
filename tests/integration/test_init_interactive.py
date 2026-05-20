@@ -7,25 +7,11 @@ typer 의 default 처리:
 """
 from __future__ import annotations
 
-import subprocess
-import sys
-import textwrap
 from pathlib import Path
 
 import yaml
 
-
-def _anvyc(
-    *args: str, input_str: str = "", cwd: Path | None = None
-) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        input=input_str,
-        capture_output=True,
-        text=True,
-    )
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _enter_only(n: int) -> str:

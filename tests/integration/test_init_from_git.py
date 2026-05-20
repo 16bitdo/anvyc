@@ -7,17 +7,11 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-
-def _anvyc(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(
-        cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True
-    )
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _git(*args: str, cwd: Path) -> None:

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
 import pytest
+
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _have_sops_age() -> bool:
@@ -29,7 +30,7 @@ def age_key(tmp_path: Path) -> dict:
         check=True,
     )
     pub_line = next(
-        (l for l in result.stderr.splitlines() if l.startswith("Public key:")),
+        (line for line in result.stderr.splitlines() if line.startswith("Public key:")),
         "",
     )
     public = pub_line.split(":", 1)[1].strip()
@@ -63,11 +64,6 @@ def _write_yaml(path: Path, age_pub: str, identity_file: Path, fmt: str = "binar
             """
         )
     )
-
-
-def _anvyc(*args: str, cwd: Path) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
 
 
 def test_sops_encrypt_creates_default_output(tmp_path, age_key) -> None:
@@ -161,7 +157,7 @@ def test_sops_rotate_keys_with_new_recipient(tmp_path, age_key) -> None:
         ["age-keygen", "-o", str(new_identity)], capture_output=True, text=True, check=True
     )
     new_pub = next(
-        l for l in r.stderr.splitlines() if l.startswith("Public key:")
+        line for line in r.stderr.splitlines() if line.startswith("Public key:")
     ).split(":", 1)[1].strip()
 
     # yaml 갱신 — old + new recipient 둘 다, identity 는 new (old 키 잃은 시나리오 흉내X)

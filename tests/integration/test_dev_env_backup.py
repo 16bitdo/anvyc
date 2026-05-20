@@ -1,17 +1,10 @@
 """dev_env adapter 통합 — anvyc backup --only dev_env 가 정상 동작하는지."""
 from __future__ import annotations
 
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
-
-def _anvyc(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(
-        cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True
-    )
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _touch(p: Path, body: str = "# fixture\n") -> None:
@@ -102,7 +95,7 @@ def test_dev_env_disabled_by_default(tmp_path: Path) -> None:
         """)
     )
 
-    proc = _anvyc(
+    _anvyc(
         "backup",
         "--config", str(cfg),
         "--root", str(tmp_path / ".anvyc"),

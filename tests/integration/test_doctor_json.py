@@ -6,11 +6,9 @@ schema 변경 시 본 테스트가 회귀를 잡는다.
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
-import pytest
+from tests.integration._helpers import run_anvyc as _anvyc
 
 # JSON 출력의 result entry 가 가져야 할 6 필드 (camelCase 아님 — snake)
 REQUIRED_RESULT_KEYS = {
@@ -31,13 +29,6 @@ EXPECTED_SEVERITIES = {
     "warning-dangling",
     "critical",
 }
-
-
-def _anvyc(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(
-        cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True
-    )
 
 
 def test_doctor_json_parses(tmp_path: Path) -> None:
@@ -71,7 +62,7 @@ def test_doctor_json_summary_includes_all_severities(tmp_path: Path) -> None:
     proc = _anvyc("doctor", "--json", cwd=tmp_path)
     data = json.loads(proc.stdout)
     assert set(data["summary"].keys()) == EXPECTED_SEVERITIES
-    for k, v in data["summary"].items():
+    for v in data["summary"].values():
         assert isinstance(v, int)
         assert v >= 0
 

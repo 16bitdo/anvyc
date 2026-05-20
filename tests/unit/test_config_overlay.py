@@ -11,7 +11,6 @@ import pytest
 
 from anvyc.core.config import _deep_merge, load_anvyc_config
 
-
 # ----- _deep_merge unit ---------------------------------------------------
 
 

@@ -4,8 +4,6 @@ from __future__ import annotations
 import plistlib
 from pathlib import Path
 
-import pytest
-
 from anvyc.adapters.iterm2 import Iterm2Adapter
 from anvyc.core.status import _adapter_target_hash
 

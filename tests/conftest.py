@@ -11,6 +11,18 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration._helpers import heal_editable_pth
+
+# test 모듈 collection (anvyc import) 전에 editable .pth 를 self-heal —
+# macOS UF_HIDDEN flag 가 Python 3.13 site.py 의 .pth 처리를 막는 문제 회피.
+heal_editable_pth()
+
+
+@pytest.fixture(autouse=True)
+def _heal_venv_pth() -> None:
+    """매 테스트 직전 editable .pth self-heal (지역 import / subprocess 보호)."""
+    heal_editable_pth()
+
 
 @pytest.fixture
 def isolated_env(tmp_path: Path) -> dict:

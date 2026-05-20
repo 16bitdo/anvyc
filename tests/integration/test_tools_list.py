@@ -1,17 +1,10 @@
 """anvyc tools list 통합 테스트."""
 from __future__ import annotations
 
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
-
-def _anvyc(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = [str(Path(sys.executable).parent / "anvyc"), *args]
-    return subprocess.run(
-        cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True
-    )
+from tests.integration._helpers import run_anvyc as _anvyc
 
 
 def _write_yaml(path: Path, body: str) -> None:

@@ -11,7 +11,6 @@ from anvyc.core.status import compute_status
 
 def test_dry_run_does_not_mutate_target(isolated_env) -> None:
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
-    original = isolated_env["zshrc"].read_text()
     isolated_env["zshrc"].write_text("tampered\n")
     report = run_apply(
         root=isolated_env["root"],

@@ -84,7 +84,6 @@ def test_deep_nesting_obeys_max_depth(tmp_path: Path) -> None:
 
 def test_symlinks_not_followed(tmp_path: Path) -> None:
     """symlink 디렉터리는 alias 가능 → skip."""
-    import os
     root = tmp_path / "docs"
     root.mkdir()
     real = _mkproj(root, "real-proj", ".git")
