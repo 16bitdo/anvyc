@@ -1,9 +1,7 @@
 name: CI
 
-# main push / PR 마다 lint + test 를 실행해 회귀를 잡는다.
-#
-# 현재 scope: tests/ ruff + 전체 pytest.
-# src/ 의 ruff(~116건)·mypy(~46건) 부채는 정리 후 단계 추가 예정 (TODO).
+# main push / PR 마다 lint + type-check + test 를 실행해 회귀를 잡는다.
+# scope: src/ + tests/ ruff, src/ mypy, 전체 pytest.
 
 on:
   push:
@@ -12,7 +10,7 @@ on:
 
 jobs:
   test:
-    name: Lint and test
+    name: Lint, type-check, test
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -29,8 +27,11 @@ jobs:
       - name: Install anvyc + dev deps
         run: uv pip install --system -e ".[dev,encryption,mcp]"
 
-      - name: Ruff (tests)
-        run: ruff check tests/
+      - name: Ruff
+        run: ruff check src/ tests/
+
+      - name: Mypy
+        run: mypy src/anvyc/
 
       - name: Pytest
         run: pytest
