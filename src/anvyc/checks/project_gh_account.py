@@ -1,6 +1,6 @@
 """project-gh-account-mapping check.
 
-프로젝트 루트(`doctor.project_roots`) 아래 `.git` 의 GitHub `origin` remote 가
+프로젝트 루트(`project_roots`) 아래 `.git` 의 GitHub `origin` remote 가
 ssh alias (`github.com-<alias>`) 를 쓰는 project 가, 같은 디렉터리의 `.envrc` 에
 `export GH_CONFIG_DIR=...` 로 일치하는 gh 계정 라우팅을 선언했는지 검증.
 

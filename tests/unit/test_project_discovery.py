@@ -4,10 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from anvyc.core.project_discovery import (
-    DEFAULT_ROOTS,
     PROJECT_MARKERS,
     discover_projects,
 )
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
 
 
 def _mkproj(root: Path, name: str, marker: str = ".git") -> Path:
@@ -23,7 +23,8 @@ def _mkproj(root: Path, name: str, marker: str = ".git") -> Path:
 
 
 def test_default_constants() -> None:
-    assert "~/Documents" in DEFAULT_ROOTS
+    # discover_projects 무인자 default = SoT (core.project_roots)
+    assert "~/dev" in DEFAULT_PROJECT_ROOTS
     assert ".git" in PROJECT_MARKERS
     assert "Pulumi.yaml" in PROJECT_MARKERS
 

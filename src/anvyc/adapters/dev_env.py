@@ -6,7 +6,7 @@
 - `.python-version`   — pyenv
 - `.nvmrc`            — nvm
 
-수집 범위는 `project_roots` (default `~/Documents`) 아래 depth ≤ 3.
+수집 범위는 `project_roots` (default: SoT — `~/dev` 등 표준 루트) 아래 depth ≤ 3.
 node_modules / .venv 같은 빌드 산출물은 기본 제외.
 
 target_path 는 실제 파일의 절대 경로 그대로 — apply 시 동일 경로로 복원.
@@ -22,8 +22,8 @@ from anvyc.adapters.base import ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
 
-DEFAULT_PROJECT_ROOTS: tuple[str, ...] = ("~/Documents",)
 DEFAULT_PATTERNS: tuple[str, ...] = (
     ".envrc",
     ".tool-versions",

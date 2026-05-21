@@ -4,7 +4,7 @@
 > 대상 버전: v0.11.0 기준
 > 검토 범위: 사용자 프로젝트 루트(`~/Documents`)를 가정한 코드·테스트·문서 전반
 > 배경: 사용자가 25개 프로젝트를 `~/Documents` → `~/dev` 로 이전. `dotfiles-claude` 는 이전 완료(2026-05-21, PR #10). anvyc 는 별도 PR 로 분리(`dotfiles-claude/docs/path-migration-report.md` P2-4 권고).
-> 상태: **리뷰 완료 / 수정 미착수** — 본 문서를 인계 기준으로 후속 PR 진행.
+> 상태: **PR 1 + PR 1-b 완료 (§3.1·§3.2) / PR 2 (§3.3) 미착수** — 2026-05-21.
 
 ---
 
@@ -78,7 +78,7 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
 
 ## 3. 권장 수정 계획
 
-### 3.1 핵심 — 루트 상수 SoT 단일화 (High)
+### 3.1 핵심 — 루트 상수 SoT 단일화 (High) ✅ 완료 (PR 1 + PR 1-b)
 
 - 신규 `src/anvyc/core/project_roots.py` (또는 기존 `core/config.py` 에 추가):
   - `DEFAULT_PROJECT_ROOTS` — `cursor_projects_suggest` 의 7-루트 리스트를 승격, **`~/dev` 를 선두**로 재배치.
@@ -89,7 +89,7 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
   - `cursor_projects_suggest.DEFAULT_CANDIDATE_ROOTS` → 공용 상수로 대체(동작 동일)
   - `project_aws_profile`·`project_gh_account` → 아래 3.2
 
-### 3.2 핵심 — Tier 1 체크 config-aware 전환 (High)
+### 3.2 핵심 — Tier 1 체크 config-aware 전환 (High) ✅ 완료 (PR 1 — e00b00d)
 
 - `project_aws_profile.py` / `project_gh_account.py` 의 `run(ctx)` 가 `DEFAULT_PROJECT_ROOT` 단일 상수 대신 **멀티 루트** 를 순회하도록 변경.
 - 루트 출처: `cursor_projects_suggest` 처럼 `load_anvyc_config()` 사용 또는 `CheckContext` 에 루트를 싣는 방안 검토(`CheckContext` 스키마 확인 필요).
@@ -109,6 +109,12 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
 - 1 PR: 3.1 + 3.2 (코드 핵심 + 해당 테스트) — 리뷰 집중도 위해.
 - 2 PR(또는 동일 PR 후속 커밋): 3.3 문서·템플릿·wizard.
 - anvyc 룰: 코드 구조 변경 시 `README.md`·`CONTEXT.md`·`DESIGN.md` 동기 갱신 필수.
+
+> **진행 기록**: PR 1(`e00b00d`) = §3.2 + `core/project_roots.py` SoT 모듈 생성.
+> PR 1-b = §3.1 소비처 3곳(`project_discovery`·`dev_env`·`cursor-projects-suggest`)
+> 수렴 + config 키 `doctor.project_roots` → top-level `project_roots` 승격 +
+> `project list`/MCP `project_list` config-aware 화. `project list` 무인자 1→24
+> 버그 해소. PR 2(§3.3 Tier 2/3) 미착수.
 
 ---
 

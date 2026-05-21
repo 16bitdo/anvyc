@@ -111,7 +111,6 @@ class DoctorConfig:
     known_user_aliases: dict[str, str] = field(default_factory=dict)
     scan_targets: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_TARGETS))
     severity_overrides: dict[str, str] = field(default_factory=dict)
-    project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
 
 
 @dataclass
@@ -120,6 +119,7 @@ class AnvycConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     tools: dict[str, ToolConfig] = field(default_factory=dict)
     doctor: DoctorConfig = field(default_factory=DoctorConfig)
+    project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
     source: Path | None = None  # 로드된 base yaml 경로 (debug 용)
     overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
 
@@ -247,7 +247,6 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         known_user_aliases=dict(cu.get("known_user_aliases") or {}),
         scan_targets=list(cu.get("scan_targets") or DEFAULT_SCAN_TARGETS),
         severity_overrides=dict(cu.get("severity_overrides") or {}),
-        project_roots=list(doctor_raw.get("project_roots") or []),
     )
 
     return AnvycConfig(
@@ -255,6 +254,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         security=security,
         tools=tools,
         doctor=doctor,
+        project_roots=list(raw.get("project_roots") or []),
         source=source,
         overlay_source=overlay_source,
     )

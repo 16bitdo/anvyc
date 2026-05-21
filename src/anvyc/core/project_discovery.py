@@ -12,7 +12,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-DEFAULT_ROOTS: tuple[str, ...] = ("~/Documents",)
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
+
 PROJECT_MARKERS: tuple[str, ...] = (".git", "Pulumi.yaml")
 DEFAULT_MAX_DEPTH = 2
 
@@ -29,13 +30,13 @@ def discover_projects(
     """root 아래에서 PROJECT_MARKERS 보유 디렉터리 수집.
 
     Args:
-        roots: scan 시작점들 (default: DEFAULT_ROOTS).
+        roots: scan 시작점들 (default: DEFAULT_PROJECT_ROOTS — SoT).
         max_depth: root 기준 최대 깊이 (1 = root 의 즉시 child).
 
     Returns:
         resolve 된 절대 경로 list (alphabetical).
     """
-    roots_iter = roots if roots is not None else DEFAULT_ROOTS
+    roots_iter = roots if roots is not None else DEFAULT_PROJECT_ROOTS
     found: set[Path] = set()
     for root_str in roots_iter:
         root = Path(root_str).expanduser()

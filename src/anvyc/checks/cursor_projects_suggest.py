@@ -11,17 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-
-# 일반적인 프로젝트 root 후보 — 추후 yaml 노출 검토.
-DEFAULT_CANDIDATE_ROOTS: tuple[str, ...] = (
-    "~/Documents",
-    "~/Projects",
-    "~/code",
-    "~/Code",
-    "~/dev",
-    "~/workspace",
-    "~/src",
-)
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
 
 _MAX_DETAILS = 10  # 한 번에 표시할 sample 개수 — 그 이상은 summary 만
 
@@ -50,7 +40,7 @@ class CursorProjectsSuggestCheck:
 
         # candidate roots 스캔
         discovered: list[Path] = []
-        for cand in DEFAULT_CANDIDATE_ROOTS:
+        for cand in DEFAULT_PROJECT_ROOTS:
             base = Path(cand).expanduser()
             if not base.is_dir():
                 continue

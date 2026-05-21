@@ -1,6 +1,6 @@
 """project-aws-profile-mapping check.
 
-프로젝트 루트(`doctor.project_roots`) 아래 `.envrc` 의 `export AWS_PROFILE=X`
+프로젝트 루트(`project_roots`) 아래 `.envrc` 의 `export AWS_PROFILE=X`
 값들이 `~/.aws/config` 에 `[profile X]` 또는 `[default]` 로 정의되어 있는지 검증.
 
 - 정의 OK → INFO 1건 (summary)

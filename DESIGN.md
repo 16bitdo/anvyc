@@ -1210,26 +1210,28 @@ contributor 환경에서 이를 *복구*하는 메커니즘이 dev wrapper 다.
 
 ### 27.8 프로젝트 루트 SoT (v0.11.0)
 
+anvyc 가 "사용자 프로젝트 루트" 아래를 스캔하는 모든 경로 — doctor 의
 `project-aws-profile-mapping`·`project-gh-account-mapping`·`unused-aws-profiles`
-세 check 는 "사용자 프로젝트 루트" 아래 `.envrc`/`.git` 을 스캔한다. 스캔 루트는
-`core/project_roots.py` 가 SoT 로 단일 관리한다.
+세 check, `anvyc project list` (및 MCP `project_list`), `dev_env` 어댑터,
+`cursor-projects-suggest` check — 는 `core/project_roots.py` 를 SoT 로 참조한다.
 
-- `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값.
-- `resolve_project_roots(config)` — anvyc.yaml 의 `doctor.project_roots` 를 읽고,
-  없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback.
+- `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값. 정적 fallback 이
+  필요한 곳(`discover_projects`·`dev_env`·`cursor-projects-suggest`)이 직접 참조.
+- `resolve_project_roots(config)` — anvyc.yaml 의 top-level `project_roots` 를 읽고,
+  없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback. config 인지가 필요한 진입점
+  (doctor 3 check, `project list`, MCP `project_list`)이 호출.
 
 설정 예:
 
 ```yaml
-doctor:
-  project_roots:
-    - ~/dev
-    - ~/work
+project_roots:
+  - ~/dev
+  - ~/work
 ```
 
-세 check 의 `run()` 은 `resolve_project_roots()` 로 멀티 루트를 순회하며 `Path.resolve()`
-로 중복 디렉터리를 제거한다. `CheckContext` 는 루트를 싣지 않으므로 — `cursor-projects-suggest`
-선례대로 `run()` 안에서 `load_anvyc_config()` 를 직접 호출한다.
+doctor 세 check 와 `project list`/MCP 진입점은 `resolve_project_roots()` 로 멀티
+루트를 순회하며 `Path.resolve()` 로 중복 디렉터리를 제거한다. `dev_env` 어댑터는
+별도로 `tools.dev_env.project_roots` config 를 쓰고 SoT 상수는 fallback 으로만 쓴다.
 
 ---
 
