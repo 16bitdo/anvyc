@@ -4,7 +4,7 @@
 > 대상 버전: v0.11.0 기준 → v0.12+ 후보
 > 검토 범위: anvyc 의 per-project 계정 라우팅을 Claude Code / Cursor / Pulumi 로 확장
 > 배경: anvyc 은 AWS(`AWS_PROFILE`)·GitHub(`GH_CONFIG_DIR`) 의 per-project 계정 라우팅을 인식·검증한다 (`project show` / `project doctor` / global doctor check). 같은 모델을 Claude·Cursor·Pulumi 로 확장 요청.
-> 상태: **리뷰 완료 / 수정 미착수** — 본 문서를 인계 기준으로 후속 PR 진행. §3.3(Cursor)은 열린 결정 포함.
+> 상태: **리뷰 완료 / 수정 미착수** — 본 문서를 인계 기준으로 후속 PR 진행. §3.3(Cursor)은 2026-05-21 옵션 A(제외) 확정.
 
 ---
 
@@ -12,9 +12,9 @@
 
 - **Claude Code** — ✅ 깨끗한 확장. `CLAUDE_CONFIG_DIR` 은 `GH_CONFIG_DIR` 의 직접 analog (Claude Code 가 네이티브로 읽는 env var). `.envrc` 라우팅 + `claude_account` 필드 + doctor check 모두 적용 가능.
 - **Pulumi** — ✅ 확장 가능, 단 신호원이 다름. per-project 신호가 `.envrc` 가 아니라 **`Pulumi.yaml` 의 `backend` 필드** (+ 선택적 `.envrc` `PULUMI_BACKEND_URL`). "계정" = backend/org.
-- **Cursor** — ⚠️ **네이티브 per-project 라우팅 메커니즘이 없음**. Cursor 멀티 계정은 `cursor --user-data-dir=...` *실행 플래그* — env var 도, 프로젝트별도 아님. AWS/gh/Claude 패턴이 성립하지 않음 → §3.3 의 옵션 중 택일 필요.
+- **Cursor** — ⚠️ **네이티브 per-project 라우팅 메커니즘이 없음**. Cursor 멀티 계정은 `cursor --user-data-dir=...` *실행 플래그* — env var 도, 프로젝트별도 아님. AWS/gh/Claude 패턴이 성립하지 않음 → §3.3 에서 옵션 A(제외) 확정 (2026-05-21).
 
-**권장 진행 순서**: Phase 1 Claude → Phase 2 Pulumi → Phase 3 Cursor (결정 후, 또는 제외).
+**권장 진행 순서**: Phase 1 Claude → Phase 2 Pulumi. Phase 3 Cursor 는 옵션 A(제외) 확정으로 제외 — PR 불요.
 
 ---
 
@@ -84,7 +84,7 @@
 
 비고: Pulumi "계정"은 AWS profile / gh account 같은 단일 username 이 아니라 **backend(+org)** 개념. 필드명을 `pulumi.backend` 로 두어 혼동을 피한다.
 
-### 3.3 Phase 3 — Cursor (열린 결정 — 네이티브 메커니즘 부재)
+### 3.3 Phase 3 — Cursor (결정 확정: 옵션 A 제외 — 네이티브 메커니즘 부재)
 
 Cursor 는 `.envrc` 로 라우팅할 env var 가 **없다**. 멀티 계정은 `cursor --user-data-dir=<dir>` 실행 플래그 (per-instance, 사용자가 alias/런처로 관리). anvyc 의 `.envrc` 기반 라우팅 패턴이 성립하지 않는다.
 
@@ -94,7 +94,9 @@ Cursor 는 `.envrc` 로 라우팅할 env var 가 **없다**. 멀티 계정은 `c
 | **B. convention-only** | anvyc 이 `.envrc` 의 `CURSOR_USER_DATA_DIR` (anvyc 정의 convention) 를 인식. 단 Cursor 가 안 읽으므로, 사용자가 wrapper alias 로 `cursor --user-data-dir="$CURSOR_USER_DATA_DIR"` 를 직접 연결해야 의미 있음 | 동작은 가능하나 "anvyc 규약"일 뿐 — gh/Claude 처럼 도구 네이티브가 아니라 오해 소지 |
 | **C. detect-only** | 라우팅은 안 하고 `multi_account_detected` 에 "Cursor user-data-dir 후보 다수 감지" INFO 만 추가 | 안전하나 라우팅 가치는 낮음 |
 
-**권장: A (제외)** — 네이티브 메커니즘 부재. 사용자가 이미 `--user-data-dir` wrapper 패턴을 운용 중이면 B 검토 가능. Cursor 가 향후 `CURSOR_CONFIG_DIR` 류 env var 를 지원하면 재검토.
+**결정: A (제외)** — 2026-05-21 확정. 네이티브 per-project 라우팅 메커니즘 부재로 검증할 SoT 가 없음. Cursor 는 본 계획에서 제외하며 Phase 3 PR 은 진행하지 않는다.
+
+재검토 조건: ① Cursor 가 `CURSOR_CONFIG_DIR` 류 env var 를 지원, 또는 ② 사용자가 `--user-data-dir` wrapper alias 패턴을 표준 운용으로 채택 → 이 경우 옵션 B 재검토.
 
 ### 3.4 공통 변경
 
@@ -107,7 +109,7 @@ Cursor 는 `.envrc` 로 라우팅할 env var 가 **없다**. 멀티 계정은 `c
 
 - PR 1 — Phase 1 (Claude). 깨끗하고 독립적.
 - PR 2 — Phase 2 (Pulumi). `pulumi_project.py` 변경 포함.
-- PR 3 — Phase 3 (Cursor). §3.3 결정 후. 제외(A) 선택 시 PR 불요.
+- ~~PR 3 — Phase 3 (Cursor)~~ — §3.3 에서 옵션 A(제외) 확정. PR 진행 안 함.
 
 ---
 
@@ -133,7 +135,7 @@ pytest -q   # 신규 테스트 포함 전체 green
 
 | 항목 | 메모 |
 |---|---|
-| Cursor 메커니즘 부재 | §3.3 — A/B/C 택일. 기본 A(제외) 권장 |
+| Cursor 메커니즘 부재 | §3.3 — 옵션 A(제외) 확정 (2026-05-21). 재검토 조건은 §3.3 참조 |
 | Claude check 강도 | cross-check 대상 없음 → 디렉터리 존재 확인만. "mapping" 보다 "surface + 존재" 성격 |
 | `_derive_claude_account` convention | `~/.claude-<account>` 가정. `~/.config/claude/...` 등 다른 레이아웃은 basename best-effort |
 | Pulumi "계정" 모호성 | backend ≠ username. 필드명 `pulumi.backend` 권장. org 단위 추적은 후속 검토 |
