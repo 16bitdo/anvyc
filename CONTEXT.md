@@ -5,20 +5,20 @@
 
 ---
 
-## 1. 현재 상태 (2026-05-18 기준)
+## 1. 현재 상태 (2026-05-21 기준)
 
 | 항목 | 상태 |
 |---|---|
-| 설계 문서 (DESIGN.md) | v0.2 — 손상 섹션 복원 완료 |
-| README.md | 초안 작성됨 |
-| pyproject.toml | 초안 작성됨 (의존성 정의만, 미설치) |
-| 소스 스켈레톤 (`src/anvyc/`) | 디렉터리/`__init__.py`/`cli.py` placeholder |
-| Adapter 구현 | 미착수 |
-| Secret scanner | 미착수 |
-| 테스트 | 미착수 |
-| `.anvyc/` runtime 디렉터리 | 미생성 (실 사용자 환경에서 `anvyc init` 호출 시 생성 예정) |
-| Git 저장소 초기화 | 미수행 |
-| 패키지 설치/배포 | 미수행 |
+| 버전 | v0.11.0 개발 중 — git tag 최신 release 는 v0.10.0 |
+| 어댑터 | 9개 (shell·git·aws·gh·cursor·claude·iterm2·pulumi·dev_env) |
+| CLI | init·doctor·backup·status·diff·apply·restore·list·scan-secrets·config·tools·project(show/list/doctor)·serve·git·sops |
+| Doctor checks | 12개 (cross-user / op-references / sops-keys / project-aws·gh-mapping 등) |
+| Secret scanner | 구현 완료 — 패턴 매칭 + 1Password `op://` + SOPS 통합 |
+| MCP server | 구현 완료 — `anvyc serve --mcp` (read-only 5 tool) |
+| 테스트 | 210 passed / 1 skipped (unit + integration, Python 3.11~3.13 matrix) |
+| 패키징/배포 | Homebrew tap · `install.sh` one-liner · GitHub Release wheel |
+| Git 저장소 | `16bitdo/anvyc` (GitHub) — main 직접 push 차단, PR 경유 |
+| 로드맵 | README §13 이 SoT |
 
 ---
 
@@ -115,34 +115,13 @@
 
 ---
 
-## 5. 작업 우선순위 (Roadmap snapshot)
+## 5. 작업 우선순위
 
-### 5.1 즉시 (D+0 ~ D+3)
+릴리스 로드맵의 SoT 는 README §13. 본 절은 단기 우선순위만 추적한다.
 
-1. ~~DESIGN.md v0.2 정합성 확보~~ (완료)
-2. ~~README.md / CONTEXT.md / pyproject.toml 생성~~ (완료)
-3. ~~`src/anvyc/` 스켈레톤 생성~~ (완료)
-4. `anvyc init` / `anvyc doctor` 최소 동작 구현
-5. 설정 로더 (`anvyc.yaml`) 구현
-
-### 5.2 1주차
-
-- shell / git / aws adapter 1차 구현
-- secret scanner v0 (패턴 6종)
-- `backup` 명령 end-to-end
-
-### 5.3 2주차
-
-- cursor / claude / iterm2 adapter
-- `diff` / `apply --dry-run` / `apply`
-- `restore` 및 local-backup 의무화
-- pre-commit hook 통합
-
-### 5.4 3주차
-
-- 테스트 보강 (unit/integration)
-- 실제 Mac 2대 end-to-end 검증
-- pipx 패키징 및 v0.1.0 릴리즈
+- **진행 중 작업**: 없음 — scan-root `~/Documents`→`~/dev` 이전이 PR #2·#3·#4 로 완결(`docs/improvement-plan-scan-root.md` §3.1·§3.2·§3.3 전 범위).
+- **다음 후보 (우선순위 낮음)**: 구 개선 계획 문서(`docs/improvement-plan-ai-agent.md`·`docs/improvement-plan-ux-review.md`)는 v0.7~v0.10 릴리스로 내용이 소진됨 — 완료 표기 또는 `docs/archive/` 이동 검토.
+- **로드맵**: README §13 — v0.12.0(shell prompt 통합) → v1.0(API stable, PyPI 배포).
 
 ---
 
