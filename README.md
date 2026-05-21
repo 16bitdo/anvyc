@@ -203,7 +203,7 @@ anvyc/
 anvyc init                     # 프로젝트/설정 초기화
 anvyc init --interactive       # 대화형 wizard (v0.7.1+)
 anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
-anvyc doctor                   # 환경 진단 (10 check)
+anvyc doctor                   # 환경 진단 (13 check)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력
@@ -221,7 +221,7 @@ anvyc project show [--path P] [--json] [--reveal-secrets]
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
-                               # cwd connection 정합성 6 check (v0.8.1+)
+                               # cwd connection 정합성 7 check (v0.8.1+)
 
 anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
 
@@ -536,12 +536,50 @@ cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 ```bash
 # 개별 실행
 anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 6 check
+anvyc project doctor              # cwd 에 gh_account_routing 포함 7 check
 ```
 
 `anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을
 machine-readable 하게 확인할 수 있다 (DESIGN §32.4a). AWS 와 마찬가지로
 anvyc 는 **정적 설정 동기화 + 검증** 역할이며, 계정 인증 자체는 `gh` 가 관리한다.
+
+### 11.7 다수 Claude Code 계정 관리 (per-project Claude routing, v0.12.0+)
+
+Claude Code 도 단일 계정 config 를 쓰므로, 개인 / 업무 계정을 오가면 잘못된
+계정으로 동작할 수 있다. `CLAUDE_CONFIG_DIR` 은 Claude Code 가 네이티브로 읽는
+env var (`GH_CONFIG_DIR` 의 직접 analog) 이므로, `.envrc` 에 선언하면 direnv 가
+project 별 계정(config + auth 토큰)을 라우팅한다.
+
+```bash
+# 1) 계정별 config 디렉터리 준비 (convention: ~/.claude-<account>)
+CLAUDE_CONFIG_DIR="$HOME/.claude-16bitdo" claude   # 개인 계정 로그인
+CLAUDE_CONFIG_DIR="$HOME/.claude-work"    claude   # 업무 계정 로그인
+
+# 2) 프로젝트 .envrc 에 라우팅 선언
+cat >> ~/dev/my-personal-repo/.envrc <<'EOF'
+export CLAUDE_CONFIG_DIR="$HOME/.claude-16bitdo"
+EOF
+
+# 3) 새 .envrc 신뢰
+cd ~/dev/my-personal-repo
+direnv allow
+```
+
+| Check | 동작 | 상태 |
+|---|---|---|
+| `project-claude-account-mapping` | `project_roots` 아래 `.envrc` 의 `CLAUDE_CONFIG_DIR` 가 가리키는 config 디렉터리 존재 검증 (global) | ✓ v0.12.0 |
+| `claude_account_dir_exists` | cwd 의 `CLAUDE_CONFIG_DIR` config 디렉터리 존재 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.12.0 |
+
+```bash
+# 개별 실행
+anvyc doctor --only project-claude-account-mapping
+anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 7 check
+```
+
+`anvyc project show --json` 의 `claude_account` 필드로 라우팅 계정을 확인할 수
+있다 (DESIGN §32.4b). gh 와 달리 cross-check 할 remote 가 없어 검증은 **디렉터리
+존재 확인 (1-way)** 만 한다 — 핵심 가치는 AI agent / 사용자가 "이 프로젝트가 어느
+Claude 계정으로 라우팅되는지" 를 알 수 있는 것이다.
 
 ---
 
@@ -612,8 +650,8 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.8.1** ✓ — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
 - **v0.9.0** ✓ — MCP server (`anvyc serve --mcp`, Claude Code/Cursor 직접 호출)
 - **v0.10.0** ✓ — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
-- **v0.11.0** (현재) — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전)
-- **v0.12.0** — shell prompt 통합 (starship/p10k)
+- **v0.11.0** — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전)
+- **v0.12.0** (현재) — per-project Claude Code 계정 라우팅 인식 ([plan](./docs/improvement-plan-account-routing.md)) + shell prompt 통합 (starship/p10k)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

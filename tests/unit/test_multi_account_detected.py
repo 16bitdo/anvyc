@@ -30,6 +30,8 @@ def patched_sources(
     aws_cfg = tmp_path / "aws" / "config"
     ssh_cfg = tmp_path / "ssh" / "config"
     cursor_projects = tmp_path / "cursor" / "projects"
+    claude_home = tmp_path / "home"
+    claude_home.mkdir()
 
     monkeypatch.setattr(
         "anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg
@@ -41,10 +43,14 @@ def patched_sources(
         "anvyc.checks.multi_account_detected.DEFAULT_CURSOR_PROJECTS",
         cursor_projects,
     )
+    monkeypatch.setattr(
+        "anvyc.checks.multi_account_detected.DEFAULT_CLAUDE_HOME", claude_home
+    )
     return {
         "aws_cfg": aws_cfg,
         "ssh_cfg": ssh_cfg,
         "cursor_projects": cursor_projects,
+        "claude_home": claude_home,
     }
 
 
@@ -104,6 +110,23 @@ def test_cursor_alias_symlink_yields_info(patched_sources: dict[str, Any]) -> No
     assert res[0].severity is Severity.INFO
     assert "Cursor user alias symlink" in res[0].message
     assert "Users-aliasuser-dev" in res[0].message
+
+
+def test_claude_config_dirs_yield_info(patched_sources: dict[str, Any]) -> None:
+    """`~/.claude-<account>` 디렉터리 감지 → INFO."""
+    home: Path = patched_sources["claude_home"]
+    (home / ".claude-edward").mkdir()
+    (home / ".claude-jklee").mkdir()
+    (home / ".claude").mkdir()  # 기본 디렉터리는 suffix 없음 — 무시 대상
+
+    res = MultiAccountDetectedCheck().run(CheckContext())
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "Claude Code" in res[0].message
+    assert ".claude-edward" in res[0].message
+    assert ".claude-jklee" in res[0].message
+    # suffix 없는 기본 `.claude` 는 glob `.claude-*` 에 안 걸려 제외 — 2건만 보고
+    assert res[0].message.count(".claude-") == 2
 
 
 def test_all_sources_absent_yields_zero(patched_sources: dict[str, Any]) -> None:
