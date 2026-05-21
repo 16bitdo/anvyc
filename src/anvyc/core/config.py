@@ -111,6 +111,7 @@ class DoctorConfig:
     known_user_aliases: dict[str, str] = field(default_factory=dict)
     scan_targets: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_TARGETS))
     severity_overrides: dict[str, str] = field(default_factory=dict)
+    project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
 
 
 @dataclass
@@ -239,12 +240,14 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
             extra=extra,
         )
 
-    cu = (raw.get("doctor") or {}).get("cross_user") or {}
+    doctor_raw = raw.get("doctor") or {}
+    cu = doctor_raw.get("cross_user") or {}
     doctor = DoctorConfig(
         enabled=bool(cu.get("enabled", True)),
         known_user_aliases=dict(cu.get("known_user_aliases") or {}),
         scan_targets=list(cu.get("scan_targets") or DEFAULT_SCAN_TARGETS),
         severity_overrides=dict(cu.get("severity_overrides") or {}),
+        project_roots=list(doctor_raw.get("project_roots") or []),
     )
 
     return AnvycConfig(

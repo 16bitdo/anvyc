@@ -40,7 +40,8 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     docs.mkdir()
     aws_cfg = tmp_path / "aws" / "config"
     monkeypatch.setattr(
-        "anvyc.checks.project_aws_profile.DEFAULT_PROJECT_ROOT", docs
+        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        lambda config=None: (str(docs),),
     )
     monkeypatch.setattr(
         "anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg
@@ -98,6 +99,46 @@ def test_aws_config_absent_yields_all_missing(patched_paths: dict[str, Any]) -> 
     assert len(res) == 1
     assert res[0].severity is Severity.WARNING
     assert "ws-dev" in res[0].message
+
+
+def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve_project_roots 가 2개 루트를 주면 양쪽 .envrc 모두 스캔."""
+    root_a = tmp_path / "dev"
+    root_b = tmp_path / "Documents"
+    root_a.mkdir()
+    root_b.mkdir()
+    _write_envrc(root_a / "proj-a", "ws-dev")
+    _write_envrc(root_b / "proj-b", "company-audit")
+    aws_cfg = tmp_path / "aws" / "config"
+    _write_aws_config(aws_cfg, ["default", "ws-dev", "company-audit"])
+    monkeypatch.setattr(
+        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        lambda config=None: (str(root_a), str(root_b)),
+    )
+    monkeypatch.setattr("anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg)
+
+    res = ProjectAwsProfileMappingCheck().run(CheckContext())
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "2개" in res[0].message
+
+
+def test_duplicate_root_dedup(
+    patched_paths: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """동일 루트가 2번 잡혀도 .envrc 는 Path.resolve dedup 으로 1회만 카운트."""
+    docs = patched_paths["docs"]
+    _write_envrc(docs / "proj-a", "ws-dev")
+    _write_aws_config(patched_paths["aws_cfg"], ["default", "ws-dev"])
+    monkeypatch.setattr(
+        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        lambda config=None: (str(docs), str(docs)),
+    )
+
+    res = ProjectAwsProfileMappingCheck().run(CheckContext())
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "1개" in res[0].message
 
 
 def test_envrc_with_quoted_value(patched_paths: dict[str, Any]) -> None:

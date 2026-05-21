@@ -1,7 +1,7 @@
 """project-aws-profile-mapping check.
 
-`~/Documents/**/.envrc` 의 `export AWS_PROFILE=X` 값들이 `~/.aws/config` 에
-`[profile X]` 또는 `[default]` 로 정의되어 있는지 검증.
+프로젝트 루트(`doctor.project_roots`) 아래 `.envrc` 의 `export AWS_PROFILE=X`
+값들이 `~/.aws/config` 에 `[profile X]` 또는 `[default]` 로 정의되어 있는지 검증.
 
 - 정의 OK → INFO 1건 (summary)
 - 누락 → 각 누락마다 WARNING (location = .envrc 파일, suggestion 포함)
@@ -13,10 +13,10 @@ import re
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.project_roots import resolve_project_roots
 from anvyc.utils.aws_config import load_aws_profile_names
 
-DEFAULT_PROJECT_ROOT = Path("~/Documents").expanduser()
-_MAX_DEPTH = 3  # ~/Documents/<group>/<project>/.envrc 까지
+_MAX_DEPTH = 3  # <root>/<group>/<project>/.envrc 까지
 
 # 한 줄에 `export AWS_PROFILE=foo` 또는 `export AWS_PROFILE="foo"` 등을 매칭.
 # 인용부호 끝나기 전 까지 또는 공백/#/끝까지 캡쳐.
@@ -61,7 +61,19 @@ class ProjectAwsProfileMappingCheck:
     name = "project-aws-profile-mapping"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
-        envrcs = _iter_envrcs(DEFAULT_PROJECT_ROOT)
+        envrcs: list[Path] = []
+        seen: set[Path] = set()
+        for root_str in resolve_project_roots():
+            root = Path(root_str).expanduser()
+            for e in _iter_envrcs(root):
+                try:
+                    key = e.resolve()
+                except OSError:
+                    key = e
+                if key in seen:
+                    continue
+                seen.add(key)
+                envrcs.append(e)
         if not envrcs:
             return []
 

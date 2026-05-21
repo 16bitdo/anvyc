@@ -32,7 +32,8 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     docs.mkdir()
     aws_cfg = tmp_path / "aws" / "config"
     monkeypatch.setattr(
-        "anvyc.checks.project_aws_profile.DEFAULT_PROJECT_ROOT", docs
+        "anvyc.core.project_roots.resolve_project_roots",
+        lambda config=None: (str(docs),),
     )
     monkeypatch.setattr(
         "anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg

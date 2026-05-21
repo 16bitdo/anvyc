@@ -1050,7 +1050,8 @@ src/anvyc/
 │   ├── base.py              # Severity, CheckResult, CheckContext
 │   └── cross_user.py        # §27.3 구현
 └── core/
-    └── doctor.py            # check 등록/실행 orchestrator
+    ├── doctor.py            # check 등록/실행 orchestrator
+    └── project_roots.py     # 프로젝트 루트 SoT (§27.8)
 ```
 
 `CheckResult`는 `(check_name, severity, message, location, line?, suggestion?)` 5~6필드 dataclass.
@@ -1206,6 +1207,29 @@ contributor 환경에서 이를 *복구*하는 메커니즘이 dev wrapper 다.
 
 **향후**: wrapper 가 `.pth` 대신 `PYTHONPATH` 로 src 를 주입하면 trap 자체를 우회할
 수 있다 (`src/anvyc/__main__.py` 추가 선행 필요). 상세는 `docs/improvement-plan-dev-wrapper.md` §3.4.
+
+### 27.8 프로젝트 루트 SoT (v0.11.0)
+
+`project-aws-profile-mapping`·`project-gh-account-mapping`·`unused-aws-profiles`
+세 check 는 "사용자 프로젝트 루트" 아래 `.envrc`/`.git` 을 스캔한다. 스캔 루트는
+`core/project_roots.py` 가 SoT 로 단일 관리한다.
+
+- `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값.
+- `resolve_project_roots(config)` — anvyc.yaml 의 `doctor.project_roots` 를 읽고,
+  없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback.
+
+설정 예:
+
+```yaml
+doctor:
+  project_roots:
+    - ~/dev
+    - ~/work
+```
+
+세 check 의 `run()` 은 `resolve_project_roots()` 로 멀티 루트를 순회하며 `Path.resolve()`
+로 중복 디렉터리를 제거한다. `CheckContext` 는 루트를 싣지 않으므로 — `cursor-projects-suggest`
+선례대로 `run()` 안에서 `load_anvyc_config()` 를 직접 호출한다.
 
 ---
 
