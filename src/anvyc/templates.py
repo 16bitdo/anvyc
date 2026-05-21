@@ -86,7 +86,7 @@ tools:
   dev_env:
     enabled: false
     project_roots:
-      - "~/Documents"
+      - "~/dev"
     patterns:
       - ".envrc"
       - ".tool-versions"

@@ -418,16 +418,16 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
 
 # 2) 프로젝트 디렉터리에 .envrc 작성
-cat > ~/Documents/my-dev-project/.envrc <<'EOF'
+cat > ~/dev/my-dev-project/.envrc <<'EOF'
 export AWS_PROFILE=my-dev
 EOF
 
 # 3) 새 .envrc 신뢰 (보안)
-cd ~/Documents/my-dev-project
+cd ~/dev/my-dev-project
 direnv allow
 
 # 4) 이후로는 cd 시 AWS_PROFILE 자동 설정
-cd ~/Documents/my-dev-project   # → AWS_PROFILE=my-dev 자동 export
+cd ~/dev/my-dev-project   # → AWS_PROFILE=my-dev 자동 export
 cd ~/                            # → AWS_PROFILE 자동 unset
 ```
 
@@ -464,7 +464,7 @@ tools:
 
   # 향후 v0.7+ (dev_env 어댑터, 계획 중):
   # dev_env:
-  #   project_roots: ["~/Documents"]
+  #   project_roots: ["~/dev"]
   #   patterns: [".envrc", ".tool-versions", ".python-version", ".nvmrc"]
 ```
 
@@ -484,7 +484,7 @@ anvyc 는 **정적 설정 동기화 + 검증 + 권장 워크플로 가이드** �
 
 | Check | 동작 | 상태 |
 |---|---|---|
-| `project-aws-profile-mapping` | `~/Documents/**/.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 | ✓ v0.6.1 |
+| `project-aws-profile-mapping` | `project_roots` 아래 `.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 | ✓ v0.6.1 |
 | `aws-profile-status` | 현재 active `AWS_PROFILE` env var ↔ 정의 검증 | ✓ v0.6.1 |
 | `multi-account-detected` | ssh / aws / cursor alias 의 multi-account 환경 자동 안내 (INFO) | ✓ v0.6.1 |
 | `unused-aws-profiles` | `.aws/config` 에만 있고 어디서도 안 쓰는 profile (INFO) | v0.7+ 계획 |
@@ -512,16 +512,16 @@ GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"  gh auth login   # 개인 계정
 GH_CONFIG_DIR="$HOME/.config/gh-heisgone" gh auth login   # org 봇 계정
 
 # 2) 프로젝트 .envrc 에 라우팅 선언 (origin ssh alias 와 일치시킬 것)
-cat >> ~/Documents/my-personal-repo/.envrc <<'EOF'
+cat >> ~/dev/my-personal-repo/.envrc <<'EOF'
 export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"
 EOF
 
 # 3) 새 .envrc 신뢰
-cd ~/Documents/my-personal-repo
+cd ~/dev/my-personal-repo
 direnv allow
 
 # 4) 이후 cd 시 gh 가 올바른 계정 자동 사용
-cd ~/Documents/my-personal-repo   # → gh 가 gh-16bitdo config 사용
+cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 ```
 
 권장: `GH_CONFIG_DIR` 의 계정 이름을 git `origin` 의 ssh alias
@@ -530,7 +530,7 @@ cd ~/Documents/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 
 | Check | 동작 | 상태 |
 |---|---|---|
-| `project-gh-account-mapping` | `~/Documents/**/.envrc` 의 `GH_CONFIG_DIR` gh 계정 ↔ GitHub `origin` ssh alias 정합성 검증 (global) | ✓ v0.11.0 |
+| `project-gh-account-mapping` | `project_roots` 아래 `.envrc` 의 `GH_CONFIG_DIR` gh 계정 ↔ GitHub `origin` ssh alias 정합성 검증 (global) | ✓ v0.11.0 |
 | `gh_account_routing` | cwd 의 `GH_CONFIG_DIR` ↔ origin ssh alias 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.11.0 |
 
 ```bash

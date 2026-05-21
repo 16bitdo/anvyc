@@ -18,7 +18,8 @@ DEFAULT_SSH_CONFIG = Path("~/.ssh/config").expanduser()
 DEFAULT_CURSOR_PROJECTS = Path("~/.cursor/projects").expanduser()
 
 _GITHUB_HOST_RE = re.compile(r"^\s*Host\s+(github\.com-\S+)\s*$", re.IGNORECASE)
-_USERS_DIR_RE = re.compile(r"^Users-([^-]+)-Documents$")
+# Cursor user-keyed project dir: `Users-<user>-<path>` (마지막 세그먼트 무관 — SoT 이전 안전)
+_USERS_DIR_RE = re.compile(r"^Users-[^-]+-")
 
 _AWS_THRESHOLD = 2  # default 제외 후 profile 수가 이 이상이면 multi-account 판정
 _SAMPLE_N = 3
