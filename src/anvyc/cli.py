@@ -1233,7 +1233,8 @@ def project_show(
         stacks = ", ".join(pul["stacks"]) or "[dim](no stack)[/]"
         console.print(
             f"[bold]pulumi[/] {pul['project_name']} "
-            f"(runtime={pul['runtime'] or '-'}, stacks={stacks})"
+            f"(runtime={pul['runtime'] or '-'}, "
+            f"backend={pul.get('backend') or '-'}, stacks={stacks})"
         )
     else:
         console.print("[bold]pulumi[/] [dim](no Pulumi.yaml)[/]")
@@ -1283,15 +1284,16 @@ def project_doctor(
         False, "--strict", help="warning 이상 발견 시 exit 1."
     ),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 7 check.
+    """cwd (또는 --path) 의 connection 정합성 8 check.
 
     1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
     2. github_remote_parseable    origin URL parse
     3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
     4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
     5. pulumi_stacks_valid        stack 이름 형식
-    6. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
-    7. tool_versions_installed    python/node binary PATH 존재
+    6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
+    7. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
+    8. tool_versions_installed    python/node binary PATH 존재
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")

@@ -157,6 +157,9 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
         github_remotes = parse_git_config(git_dir)
     github = [_git_to_dict(r) for r in github_remotes] if github_remotes else None
 
+    # pulumi dict 는 `backend` 키 포함 (Pulumi.yaml 의 backend.url, per-project routing).
+    # `.envrc` 의 PULUMI_BACKEND_URL 은 dev_env 에 자동 수집(비-secret), PULUMI_ACCESS_TOKEN
+    # 은 secret → D11c redaction 으로 자동 마스킹 (security.patterns.pulumi_token).
     pulumi = _pulumi_to_dict(detect_pulumi_project(p))
 
     return ProjectInfo(

@@ -1024,7 +1024,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (13종, v0.12.0)
+#### 27.1.1 등록된 check 목록 (14종, v0.12.0)
 
 | check_name | 영역 | 추가 |
 |---|---|---|
@@ -1041,6 +1041,7 @@ touch src/anvyc/cli.py
 | `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
 | `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ GitHub origin ssh alias | v0.11.0 |
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
+| `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
 
 ### 27.2 모듈 구조
 
@@ -1213,15 +1214,15 @@ contributor 환경에서 이를 *복구*하는 메커니즘이 dev wrapper 다.
 
 anvyc 가 "사용자 프로젝트 루트" 아래를 스캔하는 모든 경로 — doctor 의
 `project-aws-profile-mapping`·`project-gh-account-mapping`·`project-claude-account-mapping`
-·`unused-aws-profiles` 네 check, `anvyc project list` (및 MCP `project_list`),
-`dev_env` 어댑터, `cursor-projects-suggest` check — 는 `core/project_roots.py` 를
-SoT 로 참조한다.
+·`project-pulumi-backend-mapping`·`unused-aws-profiles` 다섯 check, `anvyc project list`
+(및 MCP `project_list`), `dev_env` 어댑터, `cursor-projects-suggest` check — 는
+`core/project_roots.py` 를 SoT 로 참조한다.
 
 - `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값. 정적 fallback 이
   필요한 곳(`discover_projects`·`dev_env`·`cursor-projects-suggest`)이 직접 참조.
 - `resolve_project_roots(config)` — anvyc.yaml 의 top-level `project_roots` 를 읽고,
   없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback. config 인지가 필요한 진입점
-  (doctor 4 check, `project list`, MCP `project_list`)이 호출.
+  (doctor 5 check, `project list`, MCP `project_list`)이 호출.
 
 설정 예:
 
@@ -1539,6 +1540,7 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `project_name` | string | Pulumi.yaml 의 `name` |
 | `runtime` | string\|null | `"python"`, `"nodejs"`, ... (dict 형식이면 `name` 만) |
 | `description` | string\|null | Pulumi.yaml 의 `description` |
+| `backend` | string\|null | Pulumi.yaml 의 `backend.url` — state backend (§32.4c). 키 부재 → null |
 | `stacks` | array | `Pulumi.<stack>.yaml` 파일들의 stack 이름 (alphabetical) |
 | `yaml_path` | string | Pulumi.yaml 의 절대 경로 |
 
@@ -1575,6 +1577,23 @@ per-project Claude Code routing convention: `.envrc` 가
 - 경로 값 자체는 secret 이 아니므로 `dev_env` 에 그대로 남고, 편의 single-field
   `claude_account` 는 도출된 계정만 노출.
 
+### 32.4c pulumi.backend 도출 (v0.12.0)
+
+per-project Pulumi routing: `Pulumi.yaml` 의 `backend.url` 이 Pulumi state backend
+(state 저장 위치 + org/account) 를 결정한다. AWS profile / gh account 같은 단일
+username 이 아니라 **backend** 개념이라 필드명을 `pulumi.backend` 로 둔다.
+
+- 도출: `Pulumi.yaml` 의 `backend` 키가 `{url: <str>}` 형식이면 그 URL.
+  - `s3://my-state-bucket`, `gs://...`, `azblob://...`, `https://api.pulumi.com`,
+    `file://~/state` 등
+- `backend` 키 부재 = Pulumi Cloud default — anvyc 은 **명시 선언만 추적**하며
+  default 는 추론하지 않는다 (`null`).
+- `.envrc` 의 `PULUMI_BACKEND_URL` 은 env override 로, `dev_env` 에 그대로 수집된다
+  (비-secret). `PULUMI_ACCESS_TOKEN` 은 secret → D11c redaction (`pulumi_token`
+  패턴) 으로 자동 마스킹, 값은 추적하지 않는다.
+- 두 신호의 정합성은 doctor `pulumi_backend_routing` / `project-pulumi-backend-mapping`
+  check 가 검증 (§33.3).
+
 ### 32.5 dev_env redaction (D11c)
 
 - 각 (KEY, VALUE) 페어에 대해 가상 line `KEY=VALUE` 를 생성하고 anvyc 의
@@ -1608,6 +1627,7 @@ per-project Claude Code routing convention: `.envrc` 가
     "project_name": "proj",
     "runtime": "python",
     "description": null,
+    "backend": "s3://acme-pulumi-state",
     "stacks": ["dev", "prd"],
     "yaml_path": "/Users/edward/dev/proj/Pulumi.yaml"
   },
@@ -1615,6 +1635,7 @@ per-project Claude Code routing convention: `.envrc` 가
     "AWS_PROFILE": "company-dev",
     "GH_CONFIG_DIR": "$HOME/.config/gh-16bitdo",
     "CLAUDE_CONFIG_DIR": "$HOME/.claude-16bitdo",
+    "PULUMI_BACKEND_URL": "s3://acme-pulumi-state",
     "NODE_ENV": "development",
     "GITHUB_TOKEN": "***REDACTED***"
   },
@@ -1660,7 +1681,7 @@ discovery 규칙:
 `results` 는 doctor `--json` 의 result entry 와 동일 6 field (check_name, severity,
 message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절대 경로.
 
-### 33.3 project doctor check 명세 (7 check)
+### 33.3 project doctor check 명세 (8 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
@@ -1669,6 +1690,7 @@ message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절
 | `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
 | `claude_account_dir_exists` | `.envrc` 의 CLAUDE_CONFIG_DIR 있을 때만 | WARNING |
 | `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
+| `pulumi_backend_routing` | `Pulumi.yaml` 의 backend 또는 `.envrc` PULUMI_BACKEND_URL 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
 
@@ -1685,6 +1707,13 @@ global `project-gh-account-mapping` check (§27.1.1) 의 path-aware 버전.
 존재 → INFO, 부재 → WARNING. cross-check 할 "remote" 가 없으므로 gh 와 달리
 **1-way (디렉터리 존재 확인)** 만 한다. `CLAUDE_CONFIG_DIR` 미선언 → 검증 대상
 아님 (silent). global `project-claude-account-mapping` check 의 path-aware 버전.
+
+`pulumi_backend_routing` (v0.12.0): `Pulumi.yaml` 의 `backend.url` 과 `.envrc` 의
+`PULUMI_BACKEND_URL` 이 둘 다 선언되면 일치하는지 검증한다 (**2-way 정합성** —
+gh 수준). 비교 전 trailing slash 제거 + `file://` 의 `~` 확장으로 정규화. 둘 다
+일치 / 한쪽만 선언 → INFO, 불일치 → WARNING. backend·PULUMI_BACKEND_URL 둘 다
+미선언 (Pulumi Cloud default) → 검증 대상 아님 (silent). global
+`project-pulumi-backend-mapping` check 의 path-aware 버전.
 
 이 check 들은 기존 `anvyc doctor` 와 별개 — `project doctor` 는 path-aware.
 

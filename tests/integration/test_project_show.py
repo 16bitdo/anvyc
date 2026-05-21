@@ -156,6 +156,31 @@ def test_claude_account_default_dir_is_null(tmp_path: Path) -> None:
     assert data["claude_account"] is None
 
 
+def test_pulumi_backend_exposed(tmp_path: Path) -> None:
+    """Pulumi.yaml 의 backend.url → pulumi.backend 필드 노출."""
+    proj = tmp_path / "pul"
+    _write(
+        proj / "Pulumi.yaml",
+        "name: pul\nruntime: python\nbackend:\n  url: s3://my-state\n",
+    )
+
+    proc = _anvyc("project", "show", "--path", str(proj), "--json")
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["pulumi"]["backend"] == "s3://my-state"
+
+
+def test_pulumi_access_token_redacted(tmp_path: Path) -> None:
+    """`.envrc` 의 PULUMI_ACCESS_TOKEN 은 secret → D11c redaction (pulumi_token 패턴)."""
+    proj = tmp_path / "pul-tok"
+    _write(proj / ".envrc", f"export PULUMI_ACCESS_TOKEN=pul-{'a' * 40}\n")
+
+    proc = _anvyc("project", "show", "--path", str(proj), "--json")
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["dev_env"]["PULUMI_ACCESS_TOKEN"] == "***REDACTED***"
+
+
 def test_missing_path_fails(tmp_path: Path) -> None:
     proc = _anvyc("project", "show", "--path", str(tmp_path / "nonexistent"))
     assert proc.returncode == 1
