@@ -91,18 +91,19 @@ def test_github_ssh_alias_yields_info(patched_sources: dict[str, Any]) -> None:
 
 
 def test_cursor_alias_symlink_yields_info(patched_sources: dict[str, Any]) -> None:
+    """Cursor user-alias symlink 감지 — root 세그먼트 무관 (dev 등)."""
     cursor_projects = patched_sources["cursor_projects"]
     cursor_projects.mkdir(parents=True, exist_ok=True)
-    target = cursor_projects / "Users-edward-Documents"
+    target = cursor_projects / "Users-edward-dev"
     target.mkdir()
-    alias = cursor_projects / "Users-aliasuser-Documents"
+    alias = cursor_projects / "Users-aliasuser-dev"
     os.symlink(target, alias)
 
     res = MultiAccountDetectedCheck().run(CheckContext())
     assert len(res) == 1
     assert res[0].severity is Severity.INFO
     assert "Cursor user alias symlink" in res[0].message
-    assert "Users-aliasuser-Documents" in res[0].message
+    assert "Users-aliasuser-dev" in res[0].message
 
 
 def test_all_sources_absent_yields_zero(patched_sources: dict[str, Any]) -> None:

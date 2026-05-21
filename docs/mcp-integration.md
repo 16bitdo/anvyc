@@ -64,8 +64,8 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 [Claude → project_show(path=".") → ProjectInfo JSON]
 → AWS_PROFILE=company-dev
 
-> ~/Documents 의 모든 Pulumi project 알려줘
-[project_list(roots=["~/Documents"]) → filter pulumi != null]
+> ~/dev 의 모든 Pulumi project 알려줘
+[project_list(roots=["~/dev"]) → filter pulumi != null]
 → workspace, pulumi-cloudflare-zt, ...
 ```
 
@@ -155,7 +155,7 @@ output: dev_env.GITHUB_TOKEN = "op://Personal/GitHub/token"  (그대로)
 ```
 사용자: 어떤 project 들이 company-dev profile 을 쓰는지 알려줘.
 
-Claude: [project_list(roots=["~/Documents"]) 호출]
+Claude: [project_list(roots=["~/dev"]) 호출]
        [JSON 응답 받음 — 32 projects]
        [filter: aws_profile == "company-dev"]
        → 3 projects: proj-a, proj-b, proj-c
@@ -164,7 +164,7 @@ Claude: [project_list(roots=["~/Documents"]) 호출]
 ### 6.2 Cursor 가 정합성 자동 점검
 
 ```
-사용자가 cd ~/Documents/new-proj.
+사용자가 cd ~/dev/new-proj.
 Cursor: [현재 file 변경 시 project_doctor(path=".") 자동 호출]
        → CRITICAL: dev_env raw secret (GITHUB_TOKEN)
        → 사용자에게 1Password 사용 권장 alert

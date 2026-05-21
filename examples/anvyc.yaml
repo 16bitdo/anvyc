@@ -83,7 +83,7 @@ tools:
     # Layer C — project-local .cursor (opt-in)
     projects:
       enabled: false
-      roots: []                       # 예: ["~/Documents/anvyc"]
+      roots: []                       # 예: ["~/dev/anvyc"]
       patterns:
         - ".cursor/rules"
         - ".cursor/skills"

@@ -4,7 +4,7 @@
 > 대상 버전: v0.11.0 기준
 > 검토 범위: 사용자 프로젝트 루트(`~/Documents`)를 가정한 코드·테스트·문서 전반
 > 배경: 사용자가 25개 프로젝트를 `~/Documents` → `~/dev` 로 이전. `dotfiles-claude` 는 이전 완료(2026-05-21, PR #10). anvyc 는 별도 PR 로 분리(`dotfiles-claude/docs/path-migration-report.md` P2-4 권고).
-> 상태: **PR 1 + PR 1-b 완료 (§3.1·§3.2) / PR 2 (§3.3) 미착수** — 2026-05-21.
+> 상태: **완료 — PR 1·1-b (§3.1·§3.2) + PR 2 (§3.3). 전 범위 적용** — 2026-05-21.
 
 ---
 
@@ -95,7 +95,7 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
 - 루트 출처: `cursor_projects_suggest` 처럼 `load_anvyc_config()` 사용 또는 `CheckContext` 에 루트를 싣는 방안 검토(`CheckContext` 스키마 확인 필요).
 - `_iter_envrcs` / `_iter_git_dirs` 를 루트 리스트 순회로 래핑. `# noqa: ARG002` 제거(ctx 실제 사용 시).
 
-### 3.3 Tier 2/3 (Medium/Low)
+### 3.3 Tier 2/3 (Medium/Low) ✅ 완료 (PR 2)
 
 - `cli.py:1335`·`mcp/server.py:79` help/description 텍스트 갱신.
 - `cli.py:161` `_WIZARD_DEV_ENV_DEFAULTS` → `~/dev`.
@@ -114,7 +114,7 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
 > PR 1-b = §3.1 소비처 3곳(`project_discovery`·`dev_env`·`cursor-projects-suggest`)
 > 수렴 + config 키 `doctor.project_roots` → top-level `project_roots` 승격 +
 > `project list`/MCP `project_list` config-aware 화. `project list` 무인자 1→24
-> 버그 해소. PR 2(§3.3 Tier 2/3) 미착수.
+> 버그 해소. PR 2 = §3.3 Tier 2/3 — wizard·템플릿 default `~/dev`, multi-account 정규식 일반화(`^Users-[^-]+-`), 문서 sweep(시점 기록 문서 보존). 전 범위 완료.
 
 ---
 

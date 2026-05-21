@@ -158,7 +158,7 @@ _WIZARD_FILE_DEFAULTS: dict[str, list[str]] = {
     "pulumi": ["~/.pulumi/config.json"],
 }
 _WIZARD_DEV_ENV_DEFAULTS = {
-    "project_roots": ["~/Documents"],
+    "project_roots": ["~/dev"],
     "patterns": [".envrc", ".tool-versions", ".python-version", ".nvmrc"],
 }
 _WIZARD_TOOLS_ORDER = (

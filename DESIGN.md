@@ -658,8 +658,8 @@ cursor:
   projects:
     enabled: false
     roots:
-      - "~/Documents/anvyc"
-      - "~/Documents/another-project"
+      - "~/dev/anvyc"
+      - "~/dev/another-project"
     patterns:
       - ".cursor/rules"
       - ".cursor/skills"
@@ -1322,7 +1322,7 @@ Day 4  P6.1 ~ P6.5   unit/integration test + pipx + v0.1.0 tag
 |---|---|---|
 | Q1 | Phase 3 (Git sync) v0.1.0 포함 | **포함** — `anvyc git init/commit/push` + pre-commit hook 모두 v0.1.0 |
 | Q2 | iterm2 safe subset 확정 방법 | **사용자 환경 기준 재조정** — §14.2/§14.3 실측 plist 기반으로 확정 완료 |
-| Q3 | Cursor projects 모드 default roots | **자동 감지 후 제안** — doctor 의 `cursor-projects-suggest` check 가 ~/Documents 등 스캔, INFO 로 출력하고 사용자 yaml 편집 권유 |
+| Q3 | Cursor projects 모드 default roots | **자동 감지 후 제안** — doctor 의 `cursor-projects-suggest` check 가 ~/dev 등 스캔, INFO 로 출력하고 사용자 yaml 편집 권유 |
 | Q4 | v0.1.0 secret 분리 솔루션 | **1Password Secret Reference (`op://`)** — v0.1.0. **SOPS** 는 v0.2 로 연기 |
 
 ---
@@ -1569,7 +1569,7 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
 
 ```json
 {
-  "path": "/Users/edward/Documents/proj",
+  "path": "/Users/edward/dev/proj",
   "aws_profile": "company-dev",
   "gh_account": "16bitdo",
   "github": [
@@ -1588,7 +1588,7 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
     "runtime": "python",
     "description": null,
     "stacks": ["dev", "prd"],
-    "yaml_path": "/Users/edward/Documents/proj/Pulumi.yaml"
+    "yaml_path": "/Users/edward/dev/proj/Pulumi.yaml"
   },
   "dev_env": {
     "AWS_PROFILE": "company-dev",
@@ -1615,7 +1615,7 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
 순서: path alphabetical. 발견 0건 시 빈 array `[]`.
 
 discovery 규칙:
-- root candidates: `--root` 반복 옵션 (default: `~/Documents`)
+- root candidates: `--root` 반복 옵션 (미지정 시 `project_roots` config 또는 표준 루트)
 - marker: `.git` 또는 `Pulumi.yaml` 보유 디렉터리 (depth ≤ 2)
 - symlink 디렉터리는 alias 가능성으로 skip
 - marker 발견 디렉터리의 sub-dir 은 별도 project 가 아니라 동일 project 의 일부
