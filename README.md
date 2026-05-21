@@ -134,19 +134,21 @@ uv tool install --upgrade 'anvyc[mcp]'
 ```bash
 git clone git@github.com:16bitdo/anvyc.git
 cd anvyc
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-anvyc --help
+bash scripts/dev-install.sh
 ```
+
+`scripts/dev-install.sh` 는 venv 생성·editable 설치·macOS self-heal wrapper
+(`~/.local/bin/anvyc`) 설치·검증을 한 번에 처리하며 재실행해도 안전합니다.
+디렉터리 이전이나 Python 업그레이드 후에도 이 스크립트만 재실행하면 복구됩니다.
 
 상세 가이드: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
-> **macOS + Python 3.13.13+ 사용자**: editable install 직후에는 동작하다가
-> 잠시 후 `ModuleNotFoundError: No module named 'anvyc.cli'` 로 깨지면
-> [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md) 참고 —
-> macOS `UF_HIDDEN` flag 가 `.pth` 처리를 막는 알려진 이슈, 단일 `chflags`
-> 한 줄로 fix. 일반 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
+> **macOS + Python 3.13.13+ 참고**: editable install 의 `.pth` 가 macOS
+> `UF_HIDDEN` flag 때문에 `ModuleNotFoundError: No module named 'anvyc.cli'` 로
+> 깨질 수 있습니다 — `dev-install.sh` 가 설치하는 self-heal wrapper 가 매 호출 시
+> 자동 복구하므로 보통은 신경 쓸 필요가 없습니다. 원인·수동 대응은
+> [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md) 참고. 일반
+> 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
 
 ---
 

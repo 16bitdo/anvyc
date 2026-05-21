@@ -27,8 +27,19 @@ CLI 도구이며, 사용자 친화성과 보안 안전망을 핵심 가치로 �
 ```bash
 git clone git@github.com:16bitdo/anvyc.git
 cd anvyc
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev,encryption]"
+bash scripts/dev-install.sh
+```
+
+`scripts/dev-install.sh` 가 venv·editable 설치·self-heal wrapper 를 멱등하게
+처리합니다. 인터프리터를 고정하려면 `ANVYC_PYTHON=python3.13 bash scripts/dev-install.sh`,
+extras 를 늘리려면 `ANVYC_EXTRAS="dev,encryption,mcp" bash scripts/dev-install.sh`.
+
+<details><summary>수동 설치 (스크립트 미사용 시)</summary>
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,encryption]"
 anvyc --version
 ```
 
@@ -40,7 +51,10 @@ anvyc --version
 > chflags -R nohidden .venv
 > ```
 >
-> `anvyc doctor --only venv-hidden-flag` 가 이 문제를 자동 감지합니다.
+> `anvyc doctor --only venv-hidden-flag` 가 이 문제를 자동 감지합니다. 이 수동
+> 경로는 self-heal wrapper 를 설치하지 않습니다 — 위의 `dev-install.sh` 사용을 권장합니다.
+
+</details>
 
 ### 2.3 선택: SOPS + age 설치 (encryption 테스트 통과)
 
