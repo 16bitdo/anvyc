@@ -611,8 +611,9 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.8.0** ✓ — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/improvement-plan-ai-agent.md))
 - **v0.8.1** ✓ — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
 - **v0.9.0** ✓ — MCP server (`anvyc serve --mcp`, Claude Code/Cursor 직접 호출)
-- **v0.10.0** (현재) — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
-- **v0.10.x** — shell prompt 통합 (starship/p10k)
+- **v0.10.0** ✓ — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
+- **v0.11.0** (현재) — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전)
+- **v0.12.0** — shell prompt 통합 (starship/p10k)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
