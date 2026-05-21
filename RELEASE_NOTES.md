@@ -1,5 +1,64 @@
 # anvyc 릴리즈 노트
 
+## v0.12.0 — 2026-05-22 (per-project Claude/Pulumi 계정 라우팅)
+
+[account-routing 확장 — anvyc 의 per-project 계정 라우팅 인식을 Claude Code 와
+Pulumi 로 확장] anvyc 은 AWS(`AWS_PROFILE`)·GitHub(`GH_CONFIG_DIR`) 의
+per-project 계정 라우팅을 인식·검증해 왔다. v0.12.0 은 같은 모델을 Claude Code
+와 Pulumi 로 확장한다 (계획: `docs/improvement-plan-account-routing.md`).
+
+> v0.11.0 cycle 변경분(scan-root 프로젝트 루트 SoT 단일화 `~/dev` 이전 +
+> per-project gh-account routing 인식)도 본 릴리스에 함께 포함된다 — v0.11.0
+> 은 별도 태깅 없이 v0.12.0 으로 통합 배포한다. 상세는 아래 v0.11.0 섹션 참조.
+
+### Claude Code 계정 라우팅 (Phase 1)
+
+`.envrc` 의 `export CLAUDE_CONFIG_DIR="$HOME/.claude-<account>"` 는 Claude Code
+가 네이티브로 읽는 env var (`GH_CONFIG_DIR` 의 직접 analog) 다. anvyc 이 이
+라우팅을 인식·검증한다.
+
+- `ProjectInfo.claude_account` 필드 — `project show` / `project list` / MCP JSON
+  에 추가. `CLAUDE_CONFIG_DIR` basename 의 `.claude-` prefix 제거로 도출
+  (`$HOME/.claude-edward` → `edward`).
+- 신규 global doctor check `project-claude-account-mapping` — `project_roots`
+  아래 `.envrc` 의 `CLAUDE_CONFIG_DIR` 가 가리키는 config 디렉터리 존재 검증.
+- 신규 per-cwd check `claude_account_dir_exists` (`anvyc project doctor`).
+- `multi-account-detected` 가 `~/.claude-*` 계정별 디렉터리도 감지.
+
+gh 와 달리 cross-check 할 remote 가 없어 검증은 디렉터리 존재 확인(1-way)이다.
+
+```bash
+$ anvyc project show --json | jq .claude_account
+"edward"
+```
+
+### Pulumi backend 라우팅 (Phase 2)
+
+Pulumi 의 "계정"은 단일 username 이 아니라 **backend**(state 저장 위치 + org)
+다. `Pulumi.yaml` 의 `backend.url`(1순위 SoT)과 `.envrc` 의 `PULUMI_BACKEND_URL`
+(env override) 정합성을 검증한다.
+
+- `ProjectInfo.pulumi.backend` 필드 — `Pulumi.yaml` 의 `backend.url` 노출.
+  `backend` 키 부재(Pulumi Cloud default)는 추적하지 않는다.
+- 신규 global doctor check `project-pulumi-backend-mapping`.
+- 신규 per-cwd check `pulumi_backend_routing` — 2-way 정합성 (URL 정규화 후 비교).
+- `PULUMI_ACCESS_TOKEN` 은 secret → `dev_env` 에서 자동 마스킹 (값 추적 안 함).
+
+### Cursor — 라우팅 제외 결정
+
+Cursor 멀티 계정은 `cursor --user-data-dir=` 실행 플래그뿐 — `.envrc` env var
+신호가 없어 anvyc 의 라우팅 패턴이 성립하지 않는다. account-routing 계획 §3.3
+에서 옵션 A(제외)로 확정.
+
+### doctor check 확장
+
+- global `anvyc doctor` — 12 → **14 check** (`project-claude-account-mapping`,
+  `project-pulumi-backend-mapping` 추가).
+- `anvyc project doctor` — 6 → **8 check** (`claude_account_dir_exists`,
+  `pulumi_backend_routing` 추가).
+
+---
+
 ## v0.11.0 — 2026-05-20 (per-project gh-account routing 인식)
 
 [Phase 2 — anvyc 의 기존 per-project AWS profile 기능을 GitHub 으로 미러링]
