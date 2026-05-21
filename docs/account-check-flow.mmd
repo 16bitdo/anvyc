@@ -1,0 +1,53 @@
+%% anvyc — Claude Code 에서 프로젝트 계정 정보 확인 과정
+%% 대상: anvyc v0.11.0 · 생성 2026-05-21
+flowchart TB
+    Start["Claude Code — 프로젝트 디렉터리에서 작업 중<br>예: ~/dev/my-project"]
+    Trigger["계정 정보 확인 필요<br>이 프로젝트가 쓰는 AWS / GitHub 계정"]
+    Invoke{"anvyc 호출 경로"}
+    MCP["MCP 서버 — anvyc serve --mcp<br>project_show · project_doctor tool 직접 호출"]
+    CLI["Bash — anvyc project show / anvyc project doctor"]
+
+    Start --> Trigger
+    Trigger --> Invoke
+    Invoke -->|"MCP 통합"| MCP
+    Invoke -->|"CLI 실행"| CLI
+
+    subgraph SG_COLLECT["anvyc — 프로젝트 컨텍스트 수집"]
+        Collect["collect_project_info(cwd)"]
+        Collect --> Envrc[".envrc 파싱<br>AWS_PROFILE · GH_CONFIG_DIR"]
+        Collect --> GitCfg[".git/config 파싱<br>origin remote 의 ssh alias"]
+        Collect --> AwsCfg["~/.aws/config 파싱<br>정의된 profile 목록"]
+    end
+
+    MCP --> Collect
+    CLI --> Collect
+
+    Show["project show — 통합 view 반환<br>aws_profile · gh_account · github remotes"]
+    Envrc --> Show
+    GitCfg --> Show
+    AwsCfg --> Show
+
+    subgraph SG_VERIFY["project doctor — 정합성 검증 · 계정 관련 2 / 총 6 check"]
+        AwsChk{"aws_profile_defined<br>.envrc 의 AWS_PROFILE 가<br>~/.aws/config 에 정의됨?"}
+        GhChk{"gh_account_routing<br>GH_CONFIG_DIR 의 gh 계정이<br>origin ssh alias 와 일치?"}
+        Others["그 외 4 check<br>github_remote_parseable · pulumi_stacks_valid<br>dev_env_secret_safety · tool_versions_installed"]
+    end
+
+    Show --> AwsChk
+    Show --> GhChk
+
+    AwsChk -->|"정의됨"| AwsOk["INFO — AWS 계정 정상"]
+    AwsChk -->|"미정의"| AwsWarn["WARNING — AWS profile 미정의<br>제안: aws configure 로 profile 정의"]
+    GhChk -->|"일치"| GhOk["INFO — gh 계정 라우팅 정상"]
+    GhChk -->|"불일치 또는 누락"| GhWarn["WARNING — gh 계정 불일치<br>제안: GH_CONFIG_DIR 를 ssh alias 와 일치"]
+
+    Result["Claude Code 가 계정 정보 확정<br>정상 → 작업 계속 · 경고 → 사용자에게 안내"]
+    AwsOk --> Result
+    AwsWarn --> Result
+    GhOk --> Result
+    GhWarn --> Result
+
+    classDef ok fill:#e6f4ea,stroke:#34a853,color:#202124
+    classDef warn fill:#fce8e6,stroke:#ea4335,color:#202124
+    class AwsOk,GhOk ok
+    class AwsWarn,GhWarn warn
