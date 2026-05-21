@@ -1182,6 +1182,31 @@ anvyc doctor --skip cross-user     # 특정 check 제외
 | 5 | Adapter `validate()`를 CheckResult로 통합 | 2주차 |
 | 6 | `--fix` 모드 검토 | v0.2 이후 |
 
+### 27.7 dev wrapper / contributor 설치 자동화 (v0.11.0)
+
+`§27.1.1` 의 `venv-hidden-flag` check 는 macOS `UF_HIDDEN` trap 을 *진단*만 한다.
+contributor 환경에서 이를 *복구*하는 메커니즘이 dev wrapper 다.
+
+**문제**: macOS + Python 3.13.13+ 에서 editable install (`pip install -e .`) 의
+`.pth` 가 `UF_HIDDEN` flag 때문에 `site.addpackage()` 에서 silent skip 되어 `anvyc`
+가 주기적으로 `ModuleNotFoundError` 로 깨진다 (상세: `docs/troubleshooting-macos.md`).
+
+**설계 결정**:
+
+| 결정 | 내용 | 근거 |
+|---|---|---|
+| self-heal wrapper | `~/.local/bin/anvyc` 가 매 호출 시 `chflags nohidden` 후 venv 의 anvyc 로 `exec` | 호출당 ~2ms, macOS 의 재-hidden 에 무관하게 항상 복구 |
+| wrapper 정본 = 저장소 자산 | `scripts/anvyc-wrapper.sh` 가 SoT, 손수 작성 금지 | 경로·버전 하드코딩 재발 방지 (사례: `~/Documents`→`~/dev` 이전 시 실행 불능) |
+| 환경 비의존 | wrapper 가 `$HOME` + `python3.*` glob + `ANVYC_VENV` override 로 venv 해석 | 디렉터리 이전·Python 마이너 업그레이드에 견딤. venv 부재 시 침묵 대신 명시적 에러 |
+| 멱등 설치 스크립트 | `scripts/dev-install.sh` — venv·editable 설치·wrapper 설치를 1회 실행으로 | contributor 가 환경을 한 줄로 복구 |
+| `scripts/` wheel 제외 | `pyproject.toml` `packages = ["src/anvyc"]` 가 `src/anvyc` 만 포함 | wrapper 는 contributor 전용 — 배포 wheel 과 분리 |
+
+**적용 범위**: editable install 에 한정. 일반 사용자 경로(`uv tool install` / `pipx`
+— `install.sh`)는 격리 venv 에 비-editable 설치라 `.pth` 를 쓰지 않아 trap 과 무관하다.
+
+**향후**: wrapper 가 `.pth` 대신 `PYTHONPATH` 로 src 를 주입하면 trap 자체를 우회할
+수 있다 (`src/anvyc/__main__.py` 추가 선행 필요). 상세는 `docs/improvement-plan-dev-wrapper.md` §3.4.
+
 ---
 
 ## 28. 최종 의사결정

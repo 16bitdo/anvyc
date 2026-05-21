@@ -56,7 +56,7 @@ anvyc 는 "사용자 프로젝트 루트"의 기본값으로 `~/Documents` 를 *
 | `src/anvyc/templates.py:89` | `DEFAULT_ANVYC_YAML` 템플릿의 `dev_env.project_roots: - "~/Documents"` → 신규 `anvyc init` 사용자가 구 경로 상속 |
 | `tests/unit/test_project_discovery.py:26` | `assert "~/Documents" in DEFAULT_ROOTS` — 상수 변경 시 이 단언이 깨짐(동기 수정 필수) |
 | `examples/anvyc.yaml:86` | 주석 예시 `roots: []  # 예: ["~/Documents/anvyc"]` |
-| 문서 | `README.md`(419·424·428·465·485·513·518·522·531), `DESIGN.md`(661·662·1274·1521·1540·1567), `CONTEXT.md`(51·60), `RELEASE_NOTES.md`(다수), `docs/improvement-plan-ai-agent.md`(32·221), `docs/improvement-plan-ux-review.md`(21·23·120·121·155·293·303), `docs/mcp-integration.md`(67·68·158·167), `docs/troubleshooting-macos.md`(96·157·159) |
+| 문서 | `README.md`(419·424·428·465·485·513·518·522·531), `DESIGN.md`(661·662·1274·1521·1540·1567), `CONTEXT.md`(51·60), `RELEASE_NOTES.md`(다수), `docs/improvement-plan-ai-agent.md`(32·221), `docs/improvement-plan-ux-review.md`(21·23·120·121·155·293·303), `docs/mcp-integration.md`(67·68·158·167), ~~`docs/troubleshooting-macos.md`(96·157·159)~~ — dev-wrapper PR(2026-05-21)에서 처리 완료, 본 계획 범위 제외 |
 
 **테스트 fixture 중 무해 항목**(temp dir 이름일 뿐 — 변경 불요): `test_project_aws_profile.py:39`, `test_project_gh_account.py:38`, `test_unused_aws_profiles.py:31` 의 `tmp_path / "Documents"`.
 

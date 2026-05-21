@@ -150,8 +150,8 @@ uv pip install -e ".[mcp]" --python .venv/bin/python
 같은 머신의 다른 editable venv 도 같은 증상일 가능성:
 
 ```bash
-find ~/Documents -path '*/.venv/lib/python*/site-packages/_editable_impl_*.pth' -flags hidden \
+find ~/dev -path '*/.venv/lib/python*/site-packages/_editable_impl_*.pth' -flags hidden \
   -exec chflags nohidden {} \;
-find ~/Documents -path '*/.venv/lib/python*/site-packages/__editable__*.pth' -flags hidden \
+find ~/dev -path '*/.venv/lib/python*/site-packages/__editable__*.pth' -flags hidden \
   -exec chflags nohidden {} \;
 ```
