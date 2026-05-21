@@ -1,7 +1,7 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-7 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+8 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
@@ -9,8 +9,9 @@ Check list (D14):
 3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
 4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
 5. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
-6. dev_env_secret_safety      .envrc 안 raw secret without op://
-7. tool_versions_installed    python/node binary 의 PATH 존재
+6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
+7. dev_env_secret_safety      .envrc 안 raw secret without op://
+8. tool_versions_installed    python/node binary 의 PATH 존재
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.project_info import ProjectInfo, collect_project_info, expand_envrc_path
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 from anvyc.utils.aws_config import load_aws_profile_names
+from anvyc.utils.pulumi_project import normalize_backend_url
 
 _STACK_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
 _TOOL_BINARIES = {
@@ -216,6 +218,71 @@ def _check_pulumi_stacks_valid(info: ProjectInfo) -> list[CheckResult]:
     ]
 
 
+def _check_pulumi_backend_routing(info: ProjectInfo) -> list[CheckResult]:
+    """`Pulumi.yaml` 의 backend.url 과 `.envrc` 의 PULUMI_BACKEND_URL 정합성.
+
+    per-project Pulumi routing: `Pulumi.yaml` 의 `backend.url` 이 state backend
+    (org/account) 를 결정한다. `.envrc` 의 PULUMI_BACKEND_URL 은 env override.
+    둘 다 선언되면 일치해야 한다 (2-way 정합성 — gh 수준). global
+    `project-pulumi-backend-mapping` check 의 path-aware 버전.
+
+    - Pulumi.yaml 없음 / backend·PULUMI_BACKEND_URL 둘 다 없음 → 검증 대상 X (silent)
+    - 한쪽만 선언 → INFO
+    - 둘 다, 정규화 후 일치 → INFO
+    - 둘 다, 불일치 → WARNING
+    """
+    if not info.pulumi:
+        return []
+    yaml_backend = info.pulumi.get("backend")
+    envrc_backend = info.dev_env.get("PULUMI_BACKEND_URL")
+    if not yaml_backend and not envrc_backend:
+        return []
+    if yaml_backend and envrc_backend:
+        if normalize_backend_url(yaml_backend) == normalize_backend_url(envrc_backend):
+            return [
+                CheckResult(
+                    check_name="pulumi_backend_routing",
+                    severity=Severity.INFO,
+                    message=(
+                        "Pulumi backend 라우팅 OK — Pulumi.yaml ↔ "
+                        f".envrc PULUMI_BACKEND_URL 일치: {yaml_backend}"
+                    ),
+                )
+            ]
+        return [
+            CheckResult(
+                check_name="pulumi_backend_routing",
+                severity=Severity.WARNING,
+                message=(
+                    f"Pulumi.yaml backend '{yaml_backend}' 가 "
+                    f".envrc PULUMI_BACKEND_URL '{envrc_backend}' 와 불일치"
+                ),
+                suggestion=(
+                    "Pulumi.yaml 의 backend.url 과 .envrc 의 PULUMI_BACKEND_URL 을 "
+                    "동일 backend 로 맞추세요 (둘 중 의도한 SoT 기준)."
+                ),
+            )
+        ]
+    if yaml_backend:
+        return [
+            CheckResult(
+                check_name="pulumi_backend_routing",
+                severity=Severity.INFO,
+                message=f"Pulumi.yaml backend 선언: {yaml_backend} (.envrc override 없음)",
+            )
+        ]
+    return [
+        CheckResult(
+            check_name="pulumi_backend_routing",
+            severity=Severity.INFO,
+            message=(
+                f".envrc PULUMI_BACKEND_URL 선언: {envrc_backend} "
+                "(Pulumi.yaml backend 없음)"
+            ),
+        )
+    ]
+
+
 def _check_dev_env_secret_safety(info: ProjectInfo) -> list[CheckResult]:
     """`.envrc` 의 raw secret (op:// reference 없이) → CRITICAL.
 
@@ -283,7 +350,7 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """7 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """8 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
@@ -291,6 +358,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_gh_account_routing(info))
     report.results.extend(_check_claude_account_dir_exists(info))
     report.results.extend(_check_pulumi_stacks_valid(info))
+    report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
     return report

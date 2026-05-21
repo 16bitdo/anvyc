@@ -18,6 +18,7 @@ from anvyc.checks.op_references import OpReferencesCheck
 from anvyc.checks.project_aws_profile import ProjectAwsProfileMappingCheck
 from anvyc.checks.project_claude_account import ProjectClaudeAccountMappingCheck
 from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
+from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
@@ -49,6 +50,7 @@ _REGISTRY: dict[str, Check] = {
     "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),
     "project-gh-account-mapping": ProjectGhAccountMappingCheck(),
     "project-claude-account-mapping": ProjectClaudeAccountMappingCheck(),
+    "project-pulumi-backend-mapping": ProjectPulumiBackendMappingCheck(),
     "aws-profile-status": AwsProfileStatusCheck(),
     "multi-account-detected": MultiAccountDetectedCheck(),
     "unused-aws-profiles": UnusedAwsProfilesCheck(),

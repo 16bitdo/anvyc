@@ -203,7 +203,7 @@ anvyc/
 anvyc init                     # 프로젝트/설정 초기화
 anvyc init --interactive       # 대화형 wizard (v0.7.1+)
 anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
-anvyc doctor                   # 환경 진단 (13 check)
+anvyc doctor                   # 환경 진단 (14 check)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력
@@ -221,7 +221,7 @@ anvyc project show [--path P] [--json] [--reveal-secrets]
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
-                               # cwd connection 정합성 7 check (v0.8.1+)
+                               # cwd connection 정합성 8 check (v0.8.1+)
 
 anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
 
@@ -536,7 +536,7 @@ cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 ```bash
 # 개별 실행
 anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 7 check
+anvyc project doctor              # cwd 에 gh_account_routing 포함 8 check
 ```
 
 `anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을
@@ -573,13 +573,52 @@ direnv allow
 ```bash
 # 개별 실행
 anvyc doctor --only project-claude-account-mapping
-anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 7 check
+anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 8 check
 ```
 
 `anvyc project show --json` 의 `claude_account` 필드로 라우팅 계정을 확인할 수
 있다 (DESIGN §32.4b). gh 와 달리 cross-check 할 remote 가 없어 검증은 **디렉터리
 존재 확인 (1-way)** 만 한다 — 핵심 가치는 AI agent / 사용자가 "이 프로젝트가 어느
 Claude 계정으로 라우팅되는지" 를 알 수 있는 것이다.
+
+### 11.8 다수 Pulumi backend 관리 (per-project Pulumi routing, v0.12.0+)
+
+Pulumi 의 "계정"은 AWS profile / gh 계정 같은 단일 username 이 아니라 **backend**
+(state 저장 위치 + org/account) 개념이다. project 별로 다른 backend 를 쓰면
+`Pulumi.yaml` 의 `backend.url` 로 선언하고, 필요 시 `.envrc` 의
+`PULUMI_BACKEND_URL` 로 override 한다.
+
+```yaml
+# Pulumi.yaml — state backend 선언 (커밋되는 SoT)
+name: my-infra
+runtime: python
+backend:
+  url: s3://acme-pulumi-state
+```
+
+```bash
+# (선택) .envrc 로 backend env override — Pulumi.yaml 과 일치시킬 것
+cat >> ~/dev/my-infra/.envrc <<'EOF'
+export PULUMI_BACKEND_URL="s3://acme-pulumi-state"
+EOF
+direnv allow
+```
+
+| Check | 동작 | 상태 |
+|---|---|---|
+| `project-pulumi-backend-mapping` | `project_roots` 아래 `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` 정합성 검증 (global) | ✓ v0.12.0 |
+| `pulumi_backend_routing` | cwd 의 `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.12.0 |
+
+```bash
+# 개별 실행
+anvyc doctor --only project-pulumi-backend-mapping
+anvyc project doctor              # cwd 에 pulumi_backend_routing 포함 8 check
+```
+
+`anvyc project show --json` 의 `pulumi.backend` 필드로 backend 를 확인할 수 있다
+(DESIGN §32.4c). `backend` 키를 명시하지 않으면 Pulumi Cloud default 이며 anvyc 은
+명시 선언만 추적한다. `PULUMI_ACCESS_TOKEN` 은 secret 이라 `dev_env` 에서 자동
+마스킹되고, anvyc 은 값을 추적하지 않는다.
 
 ---
 
@@ -651,7 +690,7 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.9.0** ✓ — MCP server (`anvyc serve --mcp`, Claude Code/Cursor 직접 호출)
 - **v0.10.0** ✓ — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
 - **v0.11.0** — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전)
-- **v0.12.0** (현재) — per-project Claude Code 계정 라우팅 인식 ([plan](./docs/improvement-plan-account-routing.md)) + shell prompt 통합 (starship/p10k)
+- **v0.12.0** (현재) — per-project Claude Code·Pulumi backend 계정 라우팅 인식 ([plan](./docs/improvement-plan-account-routing.md)) + shell prompt 통합 (starship/p10k)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.

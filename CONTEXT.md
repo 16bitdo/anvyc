@@ -12,7 +12,7 @@
 | 버전 | v0.12.0 개발 중 — git tag 최신 release 는 v0.10.0 |
 | 어댑터 | 9개 (shell·git·aws·gh·cursor·claude·iterm2·pulumi·dev_env) |
 | CLI | init·doctor·backup·status·diff·apply·restore·list·scan-secrets·config·tools·project(show/list/doctor)·serve·git·sops |
-| Doctor checks | 13개 (cross-user / op-references / sops-keys / project-aws·gh·claude-mapping 등) |
+| Doctor checks | 14개 (cross-user / op-references / sops-keys / project-aws·gh·claude·pulumi-mapping 등) |
 | Secret scanner | 구현 완료 — 패턴 매칭 + 1Password `op://` + SOPS 통합 |
 | MCP server | 구현 완료 — `anvyc serve --mcp` (read-only 5 tool) |
 | 테스트 | 210 passed / 1 skipped (unit + integration, Python 3.11~3.13 matrix) |
@@ -80,6 +80,7 @@
 | 2026-05-21 | scan-root §3.3 (Tier 2/3, PR 2) 완료 — `anvyc init` wizard·`DEFAULT_ANVYC_YAML` 템플릿 default `~/Documents`→`~/dev`, `multi-account-detected` 의 Cursor user-alias 정규식을 last-segment-agnostic(`^Users-[^-]+-`)으로 일반화, README/DESIGN/mcp-integration/examples 현재상태 서술 sweep | 신규 `anvyc init` 사용자가 구 경로 상속, `dev` 기반 Cursor alias 미감지. improvement-plan 문서·RELEASE_NOTES·결정표는 시점 기록이라 보존. docs/improvement-plan-scan-root.md §3.3 완료 |
 | 2026-05-21 | account-routing 계획 §3.3 — Cursor 계정 라우팅은 옵션 A(제외) 확정 | Cursor 멀티 계정은 `cursor --user-data-dir=` 실행 플래그뿐 — `.envrc` env var 신호가 없어 anvyc 의 AWS/gh/Claude 라우팅 패턴(도구가 네이티브로 읽는 env var 검증)이 성립하지 않음. 검증할 SoT 부재. account-routing 확장은 Claude(Phase 1)·Pulumi(Phase 2)만 진행, Phase 3 Cursor PR 불요. 재검토 조건: Cursor 가 `CURSOR_CONFIG_DIR` 류 env var 지원 또는 `--user-data-dir` wrapper alias 표준 운용 채택. docs/improvement-plan-account-routing.md §3.3 |
 | 2026-05-21 | v0.12.0 per-project Claude Code 계정 라우팅 인식 (account-routing Phase 1, PR 1) — `project_info.claude_account` 필드(`_derive_claude_account` — `CLAUDE_CONFIG_DIR` basename 의 `.claude-` prefix strip) + global doctor check `project-claude-account-mapping` + per-cwd check `claude_account_dir_exists` + `multi-account-detected` 의 `~/.claude-*` 감지 + `expand_envrc_path` 공용 헬퍼 | `CLAUDE_CONFIG_DIR` 은 Claude Code 가 네이티브로 읽는 env var (`GH_CONFIG_DIR` 직접 analog). gh 와 달리 cross-check 할 remote 부재 → 검증은 디렉터리 존재 확인(1-way). 핵심 가치는 `project show`/MCP 에 `claude_account` 노출. docs/improvement-plan-account-routing.md §3.1 |
+| 2026-05-21 | v0.12.0 per-project Pulumi backend 라우팅 인식 (account-routing Phase 2, PR 2) — `pulumi_project.PulumiProjectInfo.backend_url`(`Pulumi.yaml` 의 `backend.url` 파싱) → `pulumi["backend"]` 노출 + `normalize_backend_url` 공용 헬퍼 + per-cwd check `pulumi_backend_routing` + global check `project-pulumi-backend-mapping` | Pulumi "계정" = backend(state 저장 위치 + org). `Pulumi.yaml backend.url`(1순위) ↔ `.envrc PULUMI_BACKEND_URL`(env override) 2-way 정합성 검증. `backend` 키 부재 = Pulumi Cloud default — 명시 선언만 추적. `PULUMI_ACCESS_TOKEN` 은 D11c `pulumi_token` 패턴으로 자동 마스킹. credentials.json cross-check 는 safety-first 로 제외. docs/improvement-plan-account-routing.md §3.2 |
 
 ---
 
@@ -121,7 +122,7 @@
 
 릴리스 로드맵의 SoT 는 README §13. 본 절은 단기 우선순위만 추적한다.
 
-- **진행 중 작업**: account-routing Phase 1 (Claude Code 계정 라우팅, `docs/improvement-plan-account-routing.md` §3.1) 완료 — 다음은 Phase 2 (Pulumi backend 라우팅, §3.2).
+- **진행 중 작업**: account-routing Phase 1(Claude)·Phase 2(Pulumi backend) 완료 — `docs/improvement-plan-account-routing.md` §3.1·§3.2 전 범위. Phase 3(Cursor)는 옵션 A(제외) 확정으로 PR 없음 → account-routing 계획 종료.
 - **다음 후보 (우선순위 낮음)**: 구 개선 계획 문서(`docs/improvement-plan-ai-agent.md`·`docs/improvement-plan-ux-review.md`)는 v0.7~v0.10 릴리스로 내용이 소진됨 — 완료 표기 또는 `docs/archive/` 이동 검토.
 - **로드맵**: README §13 — v0.12.0(Claude 계정 라우팅 + shell prompt 통합) → v1.0(API stable, PyPI 배포).
 

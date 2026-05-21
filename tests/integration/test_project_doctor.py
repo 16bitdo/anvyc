@@ -204,6 +204,65 @@ def test_pulumi_invalid_stack_name(tmp_path: Path) -> None:
     assert pul[0]["severity"] == "warning"
 
 
+def test_pulumi_backend_routing_ok(tmp_path: Path) -> None:
+    """Pulumi.yaml backend == .envrc PULUMI_BACKEND_URL → pulumi_backend_routing INFO."""
+    proj = tmp_path / "pul-ok"
+    _write(
+        proj / "Pulumi.yaml",
+        "name: p\nruntime: python\nbackend:\n  url: s3://state-bucket\n",
+    )
+    _write(proj / ".envrc", 'export PULUMI_BACKEND_URL="s3://state-bucket"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    b = [r for r in data["results"] if r["check_name"] == "pulumi_backend_routing"]
+    assert len(b) == 1
+    assert b[0]["severity"] == "info"
+
+
+def test_pulumi_backend_routing_mismatch(tmp_path: Path) -> None:
+    """Pulumi.yaml backend ≠ .envrc PULUMI_BACKEND_URL → pulumi_backend_routing WARNING."""
+    proj = tmp_path / "pul-mismatch"
+    _write(
+        proj / "Pulumi.yaml",
+        "name: p\nruntime: python\nbackend:\n  url: s3://bucket-one\n",
+    )
+    _write(proj / ".envrc", 'export PULUMI_BACKEND_URL="s3://bucket-two"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    b = [r for r in data["results"] if r["check_name"] == "pulumi_backend_routing"]
+    assert len(b) == 1
+    assert b[0]["severity"] == "warning"
+    assert "불일치" in b[0]["message"]
+
+
+def test_pulumi_backend_yaml_only_info(tmp_path: Path) -> None:
+    """Pulumi.yaml backend 만 선언 (.envrc override 없음) → INFO."""
+    proj = tmp_path / "pul-yaml"
+    _write(
+        proj / "Pulumi.yaml",
+        "name: p\nruntime: python\nbackend:\n  url: gs://my-bucket\n",
+    )
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    b = [r for r in data["results"] if r["check_name"] == "pulumi_backend_routing"]
+    assert len(b) == 1
+    assert b[0]["severity"] == "info"
+
+
+def test_pulumi_backend_silent_without_backend(tmp_path: Path) -> None:
+    """Pulumi.yaml 에 backend 없고 .envrc 도 없음 → pulumi_backend_routing 0건 (silent)."""
+    proj = tmp_path / "pul-none"
+    _write(proj / "Pulumi.yaml", "name: p\nruntime: python\n")
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    b = [r for r in data["results"] if r["check_name"] == "pulumi_backend_routing"]
+    assert b == []
+
+
 def test_strict_mode_exits_1_on_warning(tmp_path: Path) -> None:
     """--strict 시 warning 이상 → exit 1."""
     proj = tmp_path / "p"

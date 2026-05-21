@@ -4,7 +4,7 @@
 > 대상 버전: v0.11.0 기준 → v0.12+ 후보
 > 검토 범위: anvyc 의 per-project 계정 라우팅을 Claude Code / Cursor / Pulumi 로 확장
 > 배경: anvyc 은 AWS(`AWS_PROFILE`)·GitHub(`GH_CONFIG_DIR`) 의 per-project 계정 라우팅을 인식·검증한다 (`project show` / `project doctor` / global doctor check). 같은 모델을 Claude·Cursor·Pulumi 로 확장 요청.
-> 상태: **리뷰 완료 / 수정 미착수** — 본 문서를 인계 기준으로 후속 PR 진행. §3.3(Cursor)은 2026-05-21 옵션 A(제외) 확정.
+> 상태: **구현 완료 (Phase 1·2)** — Phase 1(Claude) PR #9, Phase 2(Pulumi) PR 2 머지로 §3.1·§3.2 적용 완료. §3.3(Cursor)은 2026-05-21 옵션 A(제외) 확정 — PR 없음. account-routing 계획 종료.
 
 ---
 
@@ -52,7 +52,7 @@
 
 ## 3. 권장 수정 계획
 
-### 3.1 Phase 1 — Claude Code 계정 라우팅 (High — 깨끗한 확장)
+### 3.1 Phase 1 — Claude Code 계정 라우팅 (High — 깨끗한 확장) ✅ 완료 (PR #9)
 
 신호: `.envrc` 의 `export CLAUDE_CONFIG_DIR="$HOME/.claude-<account>"` (anvyc 권장 convention: `~/.claude-<account>`).
 
@@ -68,7 +68,9 @@
 
 검증 강도: gh 보다 약함 (존재 확인만 — cross-check 대상 부재). 핵심 가치는 `project show`/MCP 에 `claude_account` 를 노출해, agent/사용자가 "이 프로젝트가 어느 Claude 계정으로 라우팅되는지" 를 알 수 있는 것.
 
-### 3.2 Phase 2 — Pulumi backend 라우팅 (Medium)
+### 3.2 Phase 2 — Pulumi backend 라우팅 (Medium) ✅ 완료 (PR 2)
+
+> 구현 메모: global check `project-pulumi-backend-mapping` 포함 확정. `~/.pulumi/credentials.json` cross-check(강화 옵션)는 safety-first 로 **제외**. backend URL 정규화는 trailing slash strip + `file://` 의 `~` 확장만 (`normalize_backend_url`).
 
 신호: `Pulumi.yaml` 의 `backend.url` (프로젝트 파일 — 1순위) + 선택적 `.envrc` `PULUMI_BACKEND_URL` / `PULUMI_ACCESS_TOKEN`.
 
@@ -107,8 +109,8 @@ Cursor 는 `.envrc` 로 라우팅할 env var 가 **없다**. 멀티 계정은 `c
 
 ### 3.5 작업 분리 권장
 
-- PR 1 — Phase 1 (Claude). 깨끗하고 독립적.
-- PR 2 — Phase 2 (Pulumi). `pulumi_project.py` 변경 포함.
+- ~~PR 1 — Phase 1 (Claude)~~ ✅ 완료 (PR #9). 깨끗하고 독립적.
+- ~~PR 2 — Phase 2 (Pulumi)~~ ✅ 완료. `pulumi_project.py` 변경 포함.
 - ~~PR 3 — Phase 3 (Cursor)~~ — §3.3 에서 옵션 A(제외) 확정. PR 진행 안 함.
 
 ---
