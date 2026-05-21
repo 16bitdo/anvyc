@@ -32,6 +32,7 @@ class ProjectInfo:
     path: str
     aws_profile: str | None
     gh_account: str | None
+    claude_account: str | None
     github: list[dict[str, Any]] | None
     pulumi: dict[str, Any] | None
     dev_env: dict[str, str] = field(default_factory=dict)
@@ -52,6 +53,37 @@ def _derive_gh_account(gh_config_dir: str | None) -> str | None:
         return None
     account = base[len("gh-"):]
     return account or None
+
+
+def _derive_claude_account(claude_config_dir: str | None) -> str | None:
+    """`CLAUDE_CONFIG_DIR` 경로 값 → Claude Code 계정 이름.
+
+    convention: `$HOME/.claude-<account>` → `<account>` (basename 의 `.claude-`
+    prefix 제거). 기본 `$HOME/.claude` (suffix 없음) → None.
+    basename 이 `.claude-<name>` / `claude-<name>` 형식이 아니면 None.
+    `_derive_gh_account` 패턴과 동일 — 경로 값이므로 basename 추출 후 prefix strip.
+    """
+    if not claude_config_dir:
+        return None
+    base = PurePosixPath(claude_config_dir.rstrip("/")).name
+    for prefix in (".claude-", "claude-"):
+        if base.startswith(prefix):
+            return base[len(prefix) :] or None
+    return None
+
+
+def expand_envrc_path(raw: str) -> Path:
+    """`.envrc` 값의 `$HOME` / `${HOME}` / `~` 를 확장해 Path 로 변환.
+
+    `_parse_envrc` 는 shell 확장 전 raw 문자열을 캡처하므로, `CLAUDE_CONFIG_DIR`
+    같은 디렉터리 경로를 존재 검증하기 전에 leading `$HOME`/`~` 의 직접 확장이
+    필요하다. (값 중간의 변수 참조는 다루지 않는다 — convention 상 leading 만.)
+    """
+    expanded = raw.strip()
+    for token in ("${HOME}", "$HOME"):
+        if expanded.startswith(token):
+            return Path(str(Path.home()) + expanded[len(token) :])
+    return Path(expanded).expanduser()
 
 
 def _parse_envrc(envrc: Path) -> dict[str, str]:
@@ -116,6 +148,8 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
     aws_profile = raw_dev_env.get("AWS_PROFILE")  # AWS_PROFILE 자체는 secret 아님
     # GH_CONFIG_DIR 경로 값 → gh 계정 (per-project gh routing). 경로 자체는 secret 아님.
     gh_account = _derive_gh_account(raw_dev_env.get("GH_CONFIG_DIR"))
+    # CLAUDE_CONFIG_DIR 경로 값 → Claude Code 계정 (per-project routing). 경로 자체는 secret 아님.
+    claude_account = _derive_claude_account(raw_dev_env.get("CLAUDE_CONFIG_DIR"))
 
     github_remotes: list[GitRemoteInfo] = []
     git_dir = p / ".git"
@@ -129,6 +163,7 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
         path=str(p),
         aws_profile=aws_profile,
         gh_account=gh_account,
+        claude_account=claude_account,
         github=github,
         pulumi=pulumi,
         dev_env=dev_env,

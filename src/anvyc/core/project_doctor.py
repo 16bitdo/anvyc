@@ -1,15 +1,16 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-5 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+7 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
 2. github_remote_parseable    origin URL parse 가능 여부
 3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
-4. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
-5. dev_env_secret_safety      .envrc 안 raw secret without op://
-6. tool_versions_installed    python/node binary 의 PATH 존재
+4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
+5. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
+6. dev_env_secret_safety      .envrc 안 raw secret without op://
+7. tool_versions_installed    python/node binary 의 PATH 존재
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity
-from anvyc.core.project_info import ProjectInfo, collect_project_info
+from anvyc.core.project_info import ProjectInfo, collect_project_info, expand_envrc_path
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 from anvyc.utils.aws_config import load_aws_profile_names
 
@@ -145,6 +146,51 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
     ]
 
 
+def _check_claude_account_dir_exists(info: ProjectInfo) -> list[CheckResult]:
+    """`.envrc` 의 CLAUDE_CONFIG_DIR 가 가리키는 config 디렉터리 존재 검증.
+
+    per-project Claude routing: `.envrc` 가
+    `export CLAUDE_CONFIG_DIR="$HOME/.claude-<account>"` 를 선언하면 Claude Code 가
+    project 별 계정(config + auth 토큰)을 사용한다. cross-check 할 "remote" 가
+    없으므로 1-way 디렉터리 존재 확인만 한다 (global `project-claude-account-mapping`
+    check 의 path-aware 버전).
+
+    - CLAUDE_CONFIG_DIR 미선언 → 검증 대상 X (silent, 0 결과)
+    - 디렉터리 존재 → INFO
+    - 디렉터리 부재 → WARNING
+    """
+    raw = info.dev_env.get("CLAUDE_CONFIG_DIR")
+    if not raw:
+        return []
+    resolved = expand_envrc_path(raw)
+    label = f" (계정 '{info.claude_account}')" if info.claude_account else ""
+    if resolved.is_dir():
+        return [
+            CheckResult(
+                check_name="claude_account_dir_exists",
+                severity=Severity.INFO,
+                message=(
+                    f"Claude 계정 라우팅 OK{label} — "
+                    f"CLAUDE_CONFIG_DIR config 디렉터리 존재: {resolved}"
+                ),
+            )
+        ]
+    return [
+        CheckResult(
+            check_name="claude_account_dir_exists",
+            severity=Severity.WARNING,
+            message=(
+                f".envrc CLAUDE_CONFIG_DIR{label} 가 가리키는 "
+                f"config 디렉터리 부재: {resolved}"
+            ),
+            suggestion=(
+                f"CLAUDE_CONFIG_DIR={resolved} 로 Claude Code 를 1회 실행해 "
+                "계정 config 디렉터리 생성 (claude 로그인)"
+            ),
+        )
+    ]
+
+
 def _check_pulumi_stacks_valid(info: ProjectInfo) -> list[CheckResult]:
     if not info.pulumi:
         return []
@@ -237,12 +283,13 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """6 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """7 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
     report.results.extend(_check_github_remote_parseable(info))
     report.results.extend(_check_gh_account_routing(info))
+    report.results.extend(_check_claude_account_dir_exists(info))
     report.results.extend(_check_pulumi_stacks_valid(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))

@@ -61,6 +61,7 @@ def test_bare_project_all_null(tmp_path: Path) -> None:
     data = json.loads(proc.stdout)
     assert data["aws_profile"] is None
     assert data["gh_account"] is None
+    assert data["claude_account"] is None
     assert data["github"] is None
     assert data["pulumi"] is None
     assert data["dev_env"] == {}
@@ -129,6 +130,30 @@ def test_gh_account_non_convention_dir_is_null(tmp_path: Path) -> None:
     assert data["gh_account"] is None
     # 경로 값 자체는 dev_env 에 그대로 남음 (secret 아님)
     assert data["dev_env"]["GH_CONFIG_DIR"] == "$HOME/.config/gh"
+
+
+def test_claude_account_derived(tmp_path: Path) -> None:
+    """`.envrc` 의 CLAUDE_CONFIG_DIR 경로 → claude_account 도출 (basename .claude- strip)."""
+    proj = tmp_path / "claude"
+    _write(proj / ".envrc", 'export CLAUDE_CONFIG_DIR="$HOME/.claude-edward"\n')
+
+    proc = _anvyc("project", "show", "--path", str(proj), "--json")
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["claude_account"] == "edward"
+    # 경로 값 자체는 dev_env 에 그대로 남음 (secret 아님)
+    assert data["dev_env"]["CLAUDE_CONFIG_DIR"] == "$HOME/.claude-edward"
+
+
+def test_claude_account_default_dir_is_null(tmp_path: Path) -> None:
+    """suffix 없는 기본 `~/.claude` → claude_account 는 null."""
+    proj = tmp_path / "claude-default"
+    _write(proj / ".envrc", 'export CLAUDE_CONFIG_DIR="$HOME/.claude"\n')
+
+    proc = _anvyc("project", "show", "--path", str(proj), "--json")
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["claude_account"] is None
 
 
 def test_missing_path_fails(tmp_path: Path) -> None:

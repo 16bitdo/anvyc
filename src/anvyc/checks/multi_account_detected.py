@@ -1,7 +1,8 @@
 """multi-account-detected check.
 
-다중 계정 환경 (AWS 다 profile, GitHub ssh alias, Cursor user alias symlink) 을 감지하여
-INFO 로 안내. 각 영역은 독립적으로 평가 — 셋 다 발견되면 결과 3건.
+다중 계정 환경 (AWS 다 profile, GitHub ssh alias, Cursor user alias symlink,
+Claude Code 계정별 config 디렉터리) 을 감지하여 INFO 로 안내. 각 영역은 독립적으로
+평가 — 넷 다 발견되면 결과 4건.
 
 scope: anvyc 가 multi-account runtime 처리를 하진 않지만, 사용자가 표준 패턴
 (direnv/aws-vault/ssh alias) 을 사용하고 있는지 확인하도록 안내.
@@ -16,6 +17,7 @@ from anvyc.utils.aws_config import load_aws_profile_names
 
 DEFAULT_SSH_CONFIG = Path("~/.ssh/config").expanduser()
 DEFAULT_CURSOR_PROJECTS = Path("~/.cursor/projects").expanduser()
+DEFAULT_CLAUDE_HOME = Path("~").expanduser()
 
 _GITHUB_HOST_RE = re.compile(r"^\s*Host\s+(github\.com-\S+)\s*$", re.IGNORECASE)
 # Cursor user-keyed project dir: `Users-<user>-<path>` (마지막 세그먼트 무관 — SoT 이전 안전)
@@ -101,6 +103,36 @@ def _detect_cursor_aliases(cursor_projects: Path) -> CheckResult | None:
     )
 
 
+def _detect_claude_dirs(home: Path) -> CheckResult | None:
+    """`~/.claude-<account>` 계정별 config 디렉터리 감지.
+
+    per-project Claude routing convention (`.claude-<account>`) 사용 흔적 —
+    suffix 가 붙은 디렉터리가 1개라도 있으면 멀티 계정 의도로 본다
+    (GitHub ssh alias / Cursor user alias 와 동일하게 ≥1 에서 발화).
+    """
+    if not home.is_dir():
+        return None
+    found: list[str] = []
+    try:
+        for entry in home.glob(".claude-*"):
+            if entry.is_dir():
+                found.append(entry.name)
+    except (OSError, PermissionError):
+        return None
+    if not found:
+        return None
+    found.sort()
+    return CheckResult(
+        check_name=MultiAccountDetectedCheck.name,
+        severity=Severity.INFO,
+        message=f"Claude Code 계정별 config 디렉터리 감지: {_sample(found)}",
+        location=home,
+        suggestion=(
+            "프로젝트별 .envrc 에 export CLAUDE_CONFIG_DIR 라우팅 권장 (README §11.7)"
+        ),
+    )
+
+
 class MultiAccountDetectedCheck:
     name = "multi-account-detected"
 
@@ -118,5 +150,9 @@ class MultiAccountDetectedCheck:
         cursor_res = _detect_cursor_aliases(DEFAULT_CURSOR_PROJECTS)
         if cursor_res:
             results.append(cursor_res)
+
+        claude_res = _detect_claude_dirs(DEFAULT_CLAUDE_HOME)
+        if claude_res:
+            results.append(claude_res)
 
         return results

@@ -151,6 +151,46 @@ def test_gh_account_routing_silent_for_plain_origin(tmp_path: Path) -> None:
     assert gh == []
 
 
+def test_claude_account_dir_exists_ok(tmp_path: Path) -> None:
+    """CLAUDE_CONFIG_DIR 가 존재하는 디렉터리 → claude_account_dir_exists INFO."""
+    proj = tmp_path / "claude-ok"
+    cfg = tmp_path / ".claude-edward"
+    cfg.mkdir()
+    _write(proj / ".envrc", f'export CLAUDE_CONFIG_DIR="{cfg}"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    c = [r for r in data["results"] if r["check_name"] == "claude_account_dir_exists"]
+    assert len(c) == 1
+    assert c[0]["severity"] == "info"
+    assert "edward" in c[0]["message"]
+
+
+def test_claude_account_dir_missing(tmp_path: Path) -> None:
+    """CLAUDE_CONFIG_DIR 디렉터리 부재 → claude_account_dir_exists WARNING."""
+    proj = tmp_path / "claude-missing"
+    cfg = tmp_path / ".claude-ghost"  # 생성 안 함
+    _write(proj / ".envrc", f'export CLAUDE_CONFIG_DIR="{cfg}"\n')
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    c = [r for r in data["results"] if r["check_name"] == "claude_account_dir_exists"]
+    assert len(c) == 1
+    assert c[0]["severity"] == "warning"
+    assert "부재" in c[0]["message"]
+
+
+def test_claude_account_silent_without_config_dir(tmp_path: Path) -> None:
+    """CLAUDE_CONFIG_DIR 미선언 → claude_account_dir_exists 결과 0건 (silent)."""
+    proj = tmp_path / "claude-none"
+    _write(proj / ".envrc", "export AWS_PROFILE=x\n")
+
+    proc = _anvyc("project", "doctor", "--path", str(proj), "--json")
+    data = json.loads(proc.stdout)
+    c = [r for r in data["results"] if r["check_name"] == "claude_account_dir_exists"]
+    assert c == []
+
+
 def test_pulumi_invalid_stack_name(tmp_path: Path) -> None:
     """stack 이름에 공백 → pulumi_stacks_valid WARNING."""
     proj = tmp_path / "p"

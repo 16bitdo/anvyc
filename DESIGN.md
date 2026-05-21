@@ -1024,7 +1024,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (12종, v0.11.0)
+#### 27.1.1 등록된 check 목록 (13종, v0.12.0)
 
 | check_name | 영역 | 추가 |
 |---|---|---|
@@ -1037,9 +1037,10 @@ touch src/anvyc/cli.py
 | `mcp-tokens-warn` | mcp.json 의 raw token 패턴 | v0.2.1 |
 | `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
 | `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
-| `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias | v0.6.1 |
+| `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias + `~/.claude-*` | v0.6.1 |
 | `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
 | `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ GitHub origin ssh alias | v0.11.0 |
+| `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 
 ### 27.2 모듈 구조
 
@@ -1211,15 +1212,16 @@ contributor 환경에서 이를 *복구*하는 메커니즘이 dev wrapper 다.
 ### 27.8 프로젝트 루트 SoT (v0.11.0)
 
 anvyc 가 "사용자 프로젝트 루트" 아래를 스캔하는 모든 경로 — doctor 의
-`project-aws-profile-mapping`·`project-gh-account-mapping`·`unused-aws-profiles`
-세 check, `anvyc project list` (및 MCP `project_list`), `dev_env` 어댑터,
-`cursor-projects-suggest` check — 는 `core/project_roots.py` 를 SoT 로 참조한다.
+`project-aws-profile-mapping`·`project-gh-account-mapping`·`project-claude-account-mapping`
+·`unused-aws-profiles` 네 check, `anvyc project list` (및 MCP `project_list`),
+`dev_env` 어댑터, `cursor-projects-suggest` check — 는 `core/project_roots.py` 를
+SoT 로 참조한다.
 
 - `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값. 정적 fallback 이
   필요한 곳(`discover_projects`·`dev_env`·`cursor-projects-suggest`)이 직접 참조.
 - `resolve_project_roots(config)` — anvyc.yaml 의 top-level `project_roots` 를 읽고,
   없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback. config 인지가 필요한 진입점
-  (doctor 3 check, `project list`, MCP `project_list`)이 호출.
+  (doctor 4 check, `project list`, MCP `project_list`)이 호출.
 
 설정 예:
 
@@ -1512,6 +1514,7 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `path` | string | no | 입력 path 의 resolve 된 절대 경로 |
 | `aws_profile` | string | yes | `.envrc` 의 `export AWS_PROFILE=X` 값 (편의 single-field) |
 | `gh_account` | string | yes | `.envrc` 의 `export GH_CONFIG_DIR=X` 경로에서 도출한 gh 계정 (§32.4a) |
+| `claude_account` | string | yes | `.envrc` 의 `export CLAUDE_CONFIG_DIR=X` 경로에서 도출한 Claude Code 계정 (§32.4b) |
 | `github` | array | yes | parse 된 git remote 목록 (없으면 null) |
 | `pulumi` | object | yes | Pulumi project info (Pulumi.yaml 없으면 null) |
 | `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
@@ -1555,6 +1558,23 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
 - 경로 값 자체는 secret 이 아니므로 `dev_env` 에 그대로 남고, 편의 single-field
   `gh_account` 는 도출된 계정만 노출 (`aws_profile` 과 동일 패턴).
 
+### 32.4b claude_account 도출 (v0.12.0)
+
+per-project Claude Code routing convention: `.envrc` 가
+`export CLAUDE_CONFIG_DIR="$HOME/.claude-<account>"` 를 export 하면 Claude Code
+가 project 별 올바른 계정(config + auth 토큰)을 사용한다 (`CLAUDE_CONFIG_DIR`
+은 `GH_CONFIG_DIR` 의 직접 analog — Claude Code 가 네이티브로 읽는 env var).
+`claude_account` 는 이 routing 의 계정 이름이다.
+
+- 도출: `CLAUDE_CONFIG_DIR` 경로 값의 basename 에서 `.claude-` / `claude-` prefix 제거.
+  - `$HOME/.claude-16bitdo` → `16bitdo`
+  - `$HOME/.claude-edward` → `edward`
+- `gh_account` 와 동일하게 경로 값이므로 basename 추출 한 단계를 더 거친다.
+- `CLAUDE_CONFIG_DIR` 부재 / basename 이 `.claude-<name>` 형식 아님 (기본
+  `$HOME/.claude` 포함) → `null`.
+- 경로 값 자체는 secret 이 아니므로 `dev_env` 에 그대로 남고, 편의 single-field
+  `claude_account` 는 도출된 계정만 노출.
+
 ### 32.5 dev_env redaction (D11c)
 
 - 각 (KEY, VALUE) 페어에 대해 가상 line `KEY=VALUE` 를 생성하고 anvyc 의
@@ -1572,6 +1592,7 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
   "path": "/Users/edward/dev/proj",
   "aws_profile": "company-dev",
   "gh_account": "16bitdo",
+  "claude_account": "16bitdo",
   "github": [
     {
       "name": "origin",
@@ -1592,6 +1613,8 @@ project 별 올바른 GitHub 계정을 사용한다 (`gh` 의 single global acti
   },
   "dev_env": {
     "AWS_PROFILE": "company-dev",
+    "GH_CONFIG_DIR": "$HOME/.config/gh-16bitdo",
+    "CLAUDE_CONFIG_DIR": "$HOME/.claude-16bitdo",
     "NODE_ENV": "development",
     "GITHUB_TOKEN": "***REDACTED***"
   },
@@ -1637,13 +1660,14 @@ discovery 규칙:
 `results` 는 doctor `--json` 의 result entry 와 동일 6 field (check_name, severity,
 message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절대 경로.
 
-### 33.3 project doctor check 명세 (6 check)
+### 33.3 project doctor check 명세 (7 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
 | `aws_profile_defined` | `.envrc` 의 AWS_PROFILE 있을 때만 | WARNING |
 | `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
 | `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
+| `claude_account_dir_exists` | `.envrc` 의 CLAUDE_CONFIG_DIR 있을 때만 | WARNING |
 | `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
@@ -1655,6 +1679,12 @@ alias 를 쓰면, `.envrc` 의 `GH_CONFIG_DIR` 에서 도출한 gh 계정 (§32.
 그 alias 와 일치하는지 검증. `GH_CONFIG_DIR` 부재 / 계정 불일치 → WARNING,
 일치 → INFO. plain `github.com` origin (alias 없음) 은 검증 대상 아님 (silent).
 global `project-gh-account-mapping` check (§27.1.1) 의 path-aware 버전.
+
+`claude_account_dir_exists` (v0.12.0): `.envrc` 가 `CLAUDE_CONFIG_DIR` 을
+선언하면, 그 경로가 가리키는 config 디렉터리가 실제 존재하는지 검증한다.
+존재 → INFO, 부재 → WARNING. cross-check 할 "remote" 가 없으므로 gh 와 달리
+**1-way (디렉터리 존재 확인)** 만 한다. `CLAUDE_CONFIG_DIR` 미선언 → 검증 대상
+아님 (silent). global `project-claude-account-mapping` check 의 path-aware 버전.
 
 이 check 들은 기존 `anvyc doctor` 와 별개 — `project doctor` 는 path-aware.
 
