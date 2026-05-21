@@ -37,7 +37,10 @@ def _write_envrc_gh(project: Path, account: str) -> Path:
 def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "Documents"
     root.mkdir()
-    monkeypatch.setattr("anvyc.checks.project_gh_account.DEFAULT_PROJECT_ROOT", root)
+    monkeypatch.setattr(
+        "anvyc.checks.project_gh_account.resolve_project_roots",
+        lambda config=None: (str(root),),
+    )
     return root
 
 
@@ -148,6 +151,29 @@ def test_envrc_with_quoted_value(docs: Path) -> None:
     res = ProjectGhAccountMappingCheck().run(CheckContext())
     assert len(res) == 1
     assert res[0].severity is Severity.INFO
+
+
+def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve_project_roots 가 2개 루트를 주면 양쪽 .git 모두 스캔."""
+    root_a = tmp_path / "dev"
+    root_b = tmp_path / "Documents"
+    root_a.mkdir()
+    root_b.mkdir()
+    proj_a = root_a / "proj-a"
+    _write_origin(proj_a, "git@github.com-16bitdo:16bitdo/proj-a.git")
+    _write_envrc_gh(proj_a, "16bitdo")
+    proj_b = root_b / "proj-b"
+    _write_origin(proj_b, "git@github.com-heisgone:whatap/proj-b.git")
+    _write_envrc_gh(proj_b, "heisgone")
+    monkeypatch.setattr(
+        "anvyc.checks.project_gh_account.resolve_project_roots",
+        lambda config=None: (str(root_a), str(root_b)),
+    )
+
+    res = ProjectGhAccountMappingCheck().run(CheckContext())
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "2개" in res[0].message
 
 
 def test_envrc_without_gh_config_dir_yields_warning(docs: Path) -> None:

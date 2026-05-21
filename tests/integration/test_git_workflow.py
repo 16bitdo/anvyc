@@ -38,7 +38,12 @@ def test_status_after_init_lists_untracked(isolated_env: dict[str, Path]) -> Non
     assert "anvyc.yaml" in out or "backups" in out
 
 
-def test_commit_creates_revision(isolated_env: dict[str, Path]) -> None:
+def test_commit_creates_revision(
+    isolated_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # dev wrapper 우회 — hook 이 venv anvyc 를 직접 호출 (HOME 격리 무관).
+    heal_editable_pth()
+    monkeypatch.setenv("ANVYC_BIN", str(Path(sys.executable).parent / "anvyc"))
     init_repo(isolated_env["root"])
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     _git_user_for_test(isolated_env["root"])
@@ -54,7 +59,12 @@ def test_commit_creates_revision(isolated_env: dict[str, Path]) -> None:
     assert len(result.stdout.strip()) == 40
 
 
-def test_commit_with_no_changes_does_not_error(isolated_env: dict[str, Path]) -> None:
+def test_commit_with_no_changes_does_not_error(
+    isolated_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # dev wrapper 우회 — hook 이 venv anvyc 를 직접 호출 (HOME 격리 무관).
+    heal_editable_pth()
+    monkeypatch.setenv("ANVYC_BIN", str(Path(sys.executable).parent / "anvyc"))
     init_repo(isolated_env["root"])
     run_backup(root=isolated_env["root"], config_path=isolated_env["config"])
     _git_user_for_test(isolated_env["root"])
