@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from anvyc.core.config import AnvycConfig, DoctorConfig, load_anvyc_config
+from anvyc.core.config import AnvycConfig, load_anvyc_config
 from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS, resolve_project_roots
 
 
@@ -27,34 +27,34 @@ def test_resolve_load_failure_uses_default(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_resolve_config_with_roots() -> None:
-    """doctor.project_roots 가 채워지면 그 값을 그대로 반환."""
-    cfg = AnvycConfig(doctor=DoctorConfig(project_roots=["~/work", "~/x"]))
+    """project_roots 가 채워지면 그 값을 그대로 반환."""
+    cfg = AnvycConfig(project_roots=["~/work", "~/x"])
     assert resolve_project_roots(cfg) == ("~/work", "~/x")
 
 
 def test_resolve_empty_roots_fallback() -> None:
-    """doctor.project_roots: [] 는 DEFAULT 로 fallback."""
-    cfg = AnvycConfig(doctor=DoctorConfig(project_roots=[]))
+    """project_roots: [] 는 DEFAULT 로 fallback."""
+    cfg = AnvycConfig(project_roots=[])
     assert resolve_project_roots(cfg) == DEFAULT_PROJECT_ROOTS
 
 
 def test_resolve_strips_blank_entries() -> None:
     """공백/빈 문자열 항목은 strip·제거된다."""
-    cfg = AnvycConfig(doctor=DoctorConfig(project_roots=["  ~/work  ", "", "  "]))
+    cfg = AnvycConfig(project_roots=["  ~/work  ", "", "  "])
     assert resolve_project_roots(cfg) == ("~/work",)
 
 
-def test_load_config_parses_doctor_project_roots(tmp_path: Path) -> None:
-    """anvyc.yaml 의 doctor.project_roots 가 AnvycConfig 로 파싱된다."""
+def test_load_config_parses_project_roots(tmp_path: Path) -> None:
+    """anvyc.yaml 의 top-level project_roots 가 AnvycConfig 로 파싱된다."""
     cfg_file = tmp_path / "anvyc.yaml"
-    cfg_file.write_text("doctor:\n  project_roots:\n    - ~/work\n    - ~/side\n")
+    cfg_file.write_text("project_roots:\n  - ~/work\n  - ~/side\n")
     cfg = load_anvyc_config(cfg_file)
-    assert cfg.doctor.project_roots == ["~/work", "~/side"]
+    assert cfg.project_roots == ["~/work", "~/side"]
 
 
-def test_load_config_no_doctor_project_roots(tmp_path: Path) -> None:
-    """doctor.project_roots 미지정 시 빈 리스트 (cross_user 파싱과 독립)."""
+def test_load_config_no_project_roots(tmp_path: Path) -> None:
+    """project_roots 미지정 시 빈 리스트."""
     cfg_file = tmp_path / "anvyc.yaml"
     cfg_file.write_text("storage:\n  root: .anvyc\n")
     cfg = load_anvyc_config(cfg_file)
-    assert cfg.doctor.project_roots == []
+    assert cfg.project_roots == []

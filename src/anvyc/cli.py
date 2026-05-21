@@ -1332,7 +1332,7 @@ def project_doctor(
 def project_list(
     roots: list[str] | None = typer.Option(
         None, "--root",
-        help="scan root (반복 가능, default: ~/Documents).",
+        help="scan root (반복 가능, 미지정 시 anvyc.yaml project_roots 또는 표준 루트).",
     ),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
     reveal_secrets: bool = typer.Option(
@@ -1345,10 +1345,11 @@ def project_list(
     각 entry 는 `anvyc project show` 와 동일 schema (DESIGN §32).
     D11c redaction 동일 적용 — `--reveal-secrets` 명시 시 raw 값.
     """
-    from anvyc.core.project_discovery import DEFAULT_ROOTS, discover_projects
+    from anvyc.core.project_discovery import discover_projects
     from anvyc.core.project_info import collect_project_info, to_dict
+    from anvyc.core.project_roots import resolve_project_roots
 
-    roots_arg = roots if roots else list(DEFAULT_ROOTS)
+    roots_arg = roots if roots else list(resolve_project_roots())
     projects = discover_projects(roots_arg)
     infos = [
         collect_project_info(p, redact_secrets=not reveal_secrets)

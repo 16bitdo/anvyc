@@ -76,7 +76,7 @@ def _tool_defs() -> list[Tool]:
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "scan roots (default: ~/Documents).",
+                        "description": "scan roots (미지정 시 anvyc.yaml project_roots 또는 표준 루트).",
                     },
                     "reveal_secrets": {
                         "type": "boolean",
@@ -155,10 +155,11 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         return to_dict(info)
 
     if name == "project_list":
-        from anvyc.core.project_discovery import DEFAULT_ROOTS, discover_projects
+        from anvyc.core.project_discovery import discover_projects
         from anvyc.core.project_info import collect_project_info, to_dict
+        from anvyc.core.project_roots import resolve_project_roots
 
-        roots = args.get("roots") or list(DEFAULT_ROOTS)
+        roots = args.get("roots") or list(resolve_project_roots())
         projs = discover_projects(roots)
         reveal = bool(args.get("reveal_secrets", False))
         return [

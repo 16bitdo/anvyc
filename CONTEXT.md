@@ -76,6 +76,7 @@
 | 2026-05-19 | macOS UF_HIDDEN 이슈 README 안내 완료, self-heal wrapper 패턴 권장 | 2026-05-18 결정의 후속 — `chflags -R nohidden` 1회로는 영구 fix 불가 (백그라운드가 주기적 재적용). `~/.local/bin/anvyc` wrapper 가 매 호출 시 `chflags nohidden $PTH` + exec 으로 self-heal. docs/troubleshooting-macos.md 신설, README §5.6 cross-link. doctor 자동 안내는 미구현 |
 | 2026-05-20 | v0.11.0 per-project gh 계정 라우팅 인식 — `project_show.gh_account` 필드 + doctor 검사 `project-gh-account-mapping` (+ `project_doctor` cwd 단위 검사) | `gh` 의 single global active account 가 16bitdo/whatap 계정 전환 시 whack-a-mole 유발. `.envrc` 의 `GH_CONFIG_DIR`(`~/.config/gh-<account>`) 라우팅을 anvyc 가 인식·검증. `aws_profile` 패턴의 GitHub 아날로그 |
 | 2026-05-21 | v0.11.0 프로젝트 루트 SoT 단일화 — `core/project_roots.py`(`DEFAULT_PROJECT_ROOTS` `~/dev` 선두 7-루트 + `resolve_project_roots`), `doctor.project_roots` config 키 도입 | `~/Documents`→`~/dev` 이전으로 `project-aws-profile-mapping`·`project-gh-account-mapping` 이 빈 결과/stale. 두 체크는 config override 경로가 없던 실버그 — `load_anvyc_config()` 직접 호출(`cursor-projects-suggest` 선례)로 멀티 루트 config-aware 전환. docs/improvement-plan-scan-root.md §3.1·§3.2 (PR 1) |
+| 2026-05-21 | v0.11.0 프로젝트 루트 SoT 수렴 완결 (PR 1-b) — `project_discovery`·`dev_env`·`cursor-projects-suggest` 의 중복 `~/Documents` 상수를 `DEFAULT_PROJECT_ROOTS` 로 수렴, `project list`/MCP `project_list` 를 `resolve_project_roots()` config-aware 로 전환, config 키 `doctor.project_roots` → top-level `project_roots` 승격 | PR 1(`e00b00d`)이 §3.1 소비처 수렴을 누락 — `anvyc project list` 무인자가 24개 대신 1개만 반환하는 버그 잔존. v0.11.0 미릴리스라 키 승격 마이그레이션 비용 0. docs/improvement-plan-scan-root.md §3.1 완결 |
 
 ---
 

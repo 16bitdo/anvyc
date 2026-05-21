@@ -1,6 +1,6 @@
 """unused-aws-profiles check (v0.7.0).
 
-`~/.aws/config` 에 정의됐지만 프로젝트 루트(`doctor.project_roots`) 아래 `.envrc`
+`~/.aws/config` 에 정의됐지만 프로젝트 루트(`project_roots`) 아래 `.envrc`
 의 `AWS_PROFILE` 값으로 사용되지 않는 profile 을 INFO 로 안내. cleanup 용 정보 (강제력 없음).
 
 A1 (project-aws-profile-mapping) 의 reverse — A1 은 .envrc 에서 시작해 config

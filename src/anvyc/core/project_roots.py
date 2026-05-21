@@ -24,11 +24,11 @@ DEFAULT_PROJECT_ROOTS: tuple[str, ...] = (
 
 
 def resolve_project_roots(config: AnvycConfig | None = None) -> tuple[str, ...]:
-    """anvyc.yaml 의 `doctor.project_roots` 를 읽고, 없으면 DEFAULT 로 fallback.
+    """anvyc.yaml 의 top-level `project_roots` 를 읽고, 없으면 DEFAULT 로 fallback.
 
     config 가 None 이면 load_anvyc_config() 지연 import 후 로드. 로드/파싱
     실패 시 DEFAULT 반환. 반환은 `~` 미확장 문자열 튜플(호출부에서 expanduser).
-    빈 리스트(`doctor.project_roots: []`)도 DEFAULT 로 fallback.
+    빈 리스트(`project_roots: []`)도 DEFAULT 로 fallback.
     """
     cfg = config
     if cfg is None:
@@ -39,7 +39,7 @@ def resolve_project_roots(config: AnvycConfig | None = None) -> tuple[str, ...]:
         except Exception:
             return DEFAULT_PROJECT_ROOTS
 
-    roots = getattr(cfg.doctor, "project_roots", None)
+    roots = getattr(cfg, "project_roots", None)
     if not roots:
         return DEFAULT_PROJECT_ROOTS
 
