@@ -86,6 +86,9 @@ extend-immutable-calls = ["typer.Option", "typer.Argument", "pathlib.Path"]
 
 [tool.mypy]
 python_version = "3.11"
+# anvyc 는 macOS 전용 — CI 가 ubuntu 에서 mypy 를 돌려도 os.chflags 등
+# macOS-only API 를 인식하도록 type-check 플랫폼을 darwin 으로 고정한다.
+platform = "darwin"
 strict = true
 warn_unused_ignores = true
 ignore_missing_imports = true
