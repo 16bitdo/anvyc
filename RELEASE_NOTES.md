@@ -1,5 +1,46 @@
 # anvyc 릴리즈 노트
 
+## v0.13.0 — 2026-05-22 (shell prompt 통합 + 개발 환경/CI 정비)
+
+[shell prompt 통합] anvyc 의 per-project 계정 라우팅(AWS/GitHub/Claude/Pulumi)을
+shell prompt 에 바로 노출하고, prompt 도구(starship/powerlevel10k) 의 설정
+파일도 백업 대상에 추가한다.
+
+### `anvyc prompt` — 계정 라우팅 세그먼트 명령
+
+현재 디렉터리의 계정 라우팅을 shell prompt 용 한 줄로 출력한다 — `project show`
+를 매번 실행하지 않고도 prompt 에 상시 표시.
+
+- 설정된 필드만 공백 구분 `key:value` 출력 (`aws` / `gh` / `claude` / `pulumi`),
+  없으면 빈 출력. `--json` 보조.
+- prompt 컨텍스트라 **어떤 오류도 셸을 깨지 않는다** — 빈 출력 + exit 0.
+- starship custom command / powerlevel10k 세그먼트 연동: `docs/shell-prompt.md`.
+
+```bash
+$ anvyc prompt
+aws:company-dev gh:16bitdo claude:edward
+```
+
+### `shell_prompt` 어댑터 — starship/p10k 설정 백업
+
+starship(`~/.config/starship.toml`)·powerlevel10k(`~/.p10k.zsh`) 의 prompt
+설정 파일을 백업/동기화 대상에 추가한다 (어댑터 9 → 10). 두 도구를 단일
+`shell_prompt` 어댑터로 묶어 존재하는 파일만 collect 한다 (`enabled: true`).
+
+### 개발 환경 / CI 정비
+
+- **dev wrapper PYTHONPATH 전환** — `~/.local/bin/anvyc` dev wrapper 가 editable
+  `.pth` 대신 `PYTHONPATH` 로 `src/` 를 주입하고 `python -m anvyc` 로 실행 →
+  macOS UF_HIDDEN trap 을 근본 회피 (chflags self-heal 제거). `src/anvyc/__main__.py`
+  진입점 추가.
+- **`dev-install.sh` 인터프리터 탐지 보강** — `python3.13` bare 명령 부재 시
+  `uv python find 3.13` 으로 폴백해 의도치 않은 Python 버전 다운그레이드 방지.
+- **CI macOS 과금 ~65% 절감** — lint·test matrix 를 `ubuntu-latest` 로 이전하고
+  macOS 는 test 3.13 한 잡만 유지. mypy `platform = "darwin"` 고정으로 ubuntu
+  에서도 `os.chflags` 등 macOS-only API 를 정상 인식.
+
+---
+
 ## v0.12.0 — 2026-05-22 (per-project Claude/Pulumi 계정 라우팅)
 
 [account-routing 확장 — anvyc 의 per-project 계정 라우팅 인식을 Claude Code 와
