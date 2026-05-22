@@ -223,6 +223,8 @@ anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
                                # cwd connection 정합성 8 check (v0.8.1+)
+anvyc prompt [--path P] [--json]
+                               # cwd 계정 라우팅을 shell prompt 용 한 줄로 (v0.13.0+)
 
 anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
 
@@ -621,6 +623,20 @@ anvyc project doctor              # cwd 에 pulumi_backend_routing 포함 8 chec
 명시 선언만 추적한다. `PULUMI_ACCESS_TOKEN` 은 secret 이라 `dev_env` 에서 자동
 마스킹되고, anvyc 은 값을 추적하지 않는다.
 
+### 11.9 shell prompt 에 라우팅 표시 (`anvyc prompt`, v0.13.0+)
+
+`anvyc prompt` 는 현재 디렉터리의 계정 라우팅(§11.5~11.8)을 shell prompt 용
+한 줄로 출력한다 — `project show` 를 매번 치지 않고 prompt 에서 바로 확인.
+
+```bash
+$ anvyc prompt
+aws:company-dev gh:16bitdo claude:edward
+```
+
+설정된 필드만 공백 구분 `key:value` 로 출력하고 없으면 빈 출력이다. starship
+custom command / powerlevel10k 세그먼트 연동 방법은
+[docs/shell-prompt.md](./docs/shell-prompt.md) 참고.
+
 ---
 
 ## 12. 호스트별 overlay (v0.6.4+)
@@ -692,7 +708,7 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.10.0** ✓ — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
 - **v0.11.0** — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전) — 별도 태깅 없이 v0.12.0 으로 통합 배포
 - **v0.12.0** ✓ — per-project Claude Code·Pulumi backend 계정 라우팅 인식 ([plan](./docs/archive/improvement-plan-account-routing.md))
-- **v0.13.0** (다음) — shell prompt 통합 (starship/p10k)
+- **v0.13.0** (현재) — shell prompt 통합 — `anvyc prompt` 세그먼트 명령 + starship/p10k config 어댑터
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.

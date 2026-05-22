@@ -1276,6 +1276,46 @@ def serve(
     mcp_run()
 
 
+@app.command()
+def prompt(
+    path: Path = typer.Option(
+        Path.cwd(), "--path", help="대상 디렉터리 (default: cwd)."
+    ),
+    json_out: bool = typer.Option(
+        False, "--json", help="machine-readable JSON 출력 (key→value)."
+    ),
+) -> None:
+    """현재 디렉터리의 계정 라우팅을 shell prompt 용 한 줄로 출력 (v0.13.0+).
+
+    설정된 필드만 공백 구분 `key:value` 로 출력하고, 없으면 빈 출력.
+    starship custom command / powerlevel10k 세그먼트 연동 — docs/shell-prompt.md.
+    prompt 컨텍스트라 어떤 오류도 셸을 깨지 않도록 조용히 빈 출력 + exit 0 한다.
+    """
+    segments: list[tuple[str, str]] = []
+    try:
+        if path.is_dir():
+            from anvyc.core.project_info import collect_project_info
+
+            # prompt 출력은 파생 계정 필드만 쓰므로 dev_env redaction 불필요.
+            info = collect_project_info(path, redact_secrets=False)
+            for label, value in (
+                ("aws", info.aws_profile),
+                ("gh", info.gh_account),
+                ("claude", info.claude_account),
+                ("pulumi", info.pulumi.get("backend") if info.pulumi else None),
+            ):
+                if value:
+                    segments.append((label, str(value)))
+    except Exception:
+        # prompt 컨텍스트 — 어떤 실패도 셸 prompt 를 깨지 않도록 빈 출력으로 흡수.
+        segments = []
+
+    if json_out:
+        typer.echo(jsonlib.dumps(dict(segments), ensure_ascii=False))
+    elif segments:
+        typer.echo(" ".join(f"{key}:{value}" for key, value in segments))
+
+
 @project_app.command("doctor")
 def project_doctor(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
