@@ -30,7 +30,7 @@ cd anvyc
 bash scripts/dev-install.sh
 ```
 
-`scripts/dev-install.sh` 가 venv·editable 설치·self-heal wrapper 를 멱등하게
+`scripts/dev-install.sh` 가 venv·editable 설치·dev wrapper 를 멱등하게
 처리합니다. 인터프리터를 고정하려면 `ANVYC_PYTHON=python3.13 bash scripts/dev-install.sh`,
 extras 를 늘리려면 `ANVYC_EXTRAS="dev,encryption,mcp" bash scripts/dev-install.sh`.
 
@@ -52,7 +52,8 @@ anvyc --version
 > ```
 >
 > `anvyc doctor --only venv-hidden-flag` 가 이 문제를 자동 감지합니다. 이 수동
-> 경로는 self-heal wrapper 를 설치하지 않습니다 — 위의 `dev-install.sh` 사용을 권장합니다.
+> 경로는 dev wrapper 를 설치하지 않습니다 — `.pth` 트랩을 거치지 않는
+> `dev-install.sh` 사용을 권장합니다.
 
 </details>
 

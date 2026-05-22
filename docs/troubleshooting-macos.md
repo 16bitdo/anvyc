@@ -85,18 +85,20 @@ chflags nohidden .venv/lib/python*/site-packages/_editable_impl_anvyc.pth
 
 이 한 줄로 즉시 복구된다. `chflags` 는 root 권한 불필요, 파일 메타데이터만 변경.
 
-### 4.2 영구 fix (self-heal wrapper)
+### 4.2 영구 fix (dev wrapper)
 
 `uv pip install -e .` 으로 임시 복구해도 macOS 가 다시 hidden flag 를
-재적용한다. 가장 견고한 패턴은 **호출 시점에 자동 self-heal 하는 wrapper** 이며,
+재적용한다. 가장 견고한 패턴은 **`.pth` 를 아예 거치지 않는 wrapper** 이며,
 anvyc 저장소가 정본을 제공한다 — `scripts/anvyc-wrapper.sh`. contributor 는 직접
 만들지 말고 `bash scripts/dev-install.sh` 로 설치한다 (venv·editable 설치도 함께
 처리).
 
-스크립트가 설치하는 wrapper 는 venv 경로·Python 마이너 버전에 비의존이다
-(`$HOME` + glob + `ANVYC_VENV` override) — 디렉터리 이전이나 Python 업그레이드에도
-깨지지 않는다. `~/.local/bin` 이 PATH 에 있으면 `which anvyc` 가 wrapper 를
-가리킨다. 호출당 overhead ~2ms.
+이 wrapper 는 editable `.pth` 대신 repo 의 `src/` 를 `PYTHONPATH` 로 직접
+주입하고 `python -m anvyc` 로 실행한다 — UF_HIDDEN trap 의 대상인 `.pth` 를
+거치지 않으므로 hidden flag 재적용과 무관하게 항상 동작한다 (chflags self-heal
+불필요). venv 경로·Python 마이너 버전에도 비의존이다 (`$HOME` + `ANVYC_VENV`
+override) — 디렉터리 이전이나 Python 업그레이드에도 깨지지 않는다. `~/.local/bin`
+이 PATH 에 있으면 `which anvyc` 가 wrapper 를 가리킨다.
 
 **MCP 사용자도 wrapper 경로로 등록 권장:**
 

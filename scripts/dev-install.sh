@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# anvyc — contributor 개발 환경 설치 (macOS editable + self-heal wrapper).
+# anvyc — contributor 개발 환경 설치 (editable + PYTHONPATH dev wrapper).
 #
 # Usage:
 #   bash scripts/dev-install.sh

@@ -1,10 +1,11 @@
 # anvyc 개선 계획 — dev wrapper 의 경로·Python 버전 하드코딩 제거
 
+> 📦 **Archived 2026-05-22** — 계획 내용이 릴리스로 소진되어 이력 보존용으로 보관 (활성 계획 아님).
 > 작성일: 2026-05-21
 > 대상 버전: v0.11.0 기준
 > 검토 범위: `~/.local/bin/anvyc` self-heal wrapper + 이를 안내·문서화한 문서 (`docs/troubleshooting-macos.md` §4, README §5.6, CONTRIBUTING.md §2.2, `docs/mcp-integration.md`)
 > 배경: 프로젝트 `~/Documents/anvyc` → `~/dev/anvyc` 이전 시 wrapper 의 절대경로 하드코딩(`VENV=/Users/edward/Documents/anvyc/.venv`)이 끊겨 `anvyc` 명령 전체가 `No such file or directory` 로 실행 불능이 됨. 2026-05-21 재설치(`~/dev/anvyc/.venv` editable 재생성 + wrapper `VENV` 경로 수정)로 응급 복구 완료. 본 문서는 재발 방지를 위한 구조 개선 계획.
-> 상태: **리뷰 완료 / 수정 미착수** — 본 문서를 인계 기준으로 후속 PR 진행.
+> 상태: **구현 완료** — §3.1·§3.2 (PR 1, `e518a7f`), §3.3 (PR 2, `ed29755`), §3.4 PYTHONPATH 우회 (PR 3, v0.13.0) 적용 완료. 본 문서는 이력 보존용.
 
 ---
 
