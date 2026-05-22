@@ -1,0 +1,141 @@
+version: 1
+
+storage:
+  root: ".anvyc"
+  keep_backups: 5
+  keep_local_backups: 5
+
+security:
+  secret_scan: true
+  block_on_secret: true
+  allow_encrypted_secrets: true
+
+tools:
+  shell:
+    enabled: true
+    files:
+      - "~/.zshrc"
+      - "~/.zprofile"
+
+  git:
+    enabled: true
+    files:
+      - "~/.gitconfig"
+      - "~/.gitignore_global"
+
+  aws:
+    enabled: true
+    include:
+      - "~/.aws/config"
+    exclude:
+      - "~/.aws/credentials"
+
+  gh:
+    enabled: true
+    include:
+      - "~/.config/gh/config.yml"
+    exclude:
+      - "~/.config/gh/hosts.yml"
+
+  cursor:
+    enabled: true
+
+    # Layer A — ~/.cursor (user-global rules/skills/mcp/plugins)
+    # include 키 생략 → DEFAULT 수집 / "include: []" → 이 Layer backup 비활성.
+    global:
+      include:
+        - "~/.cursor/rules"
+        - "~/.cursor/skills"
+        - "~/.cursor/skills-cursor"
+        - "~/.cursor/mcp.json"
+        - "~/.cursor/plugins/local"
+        - "~/.cursor/plans"
+      exclude:
+        - "~/.cursor/cli-config.json"
+        - "~/.cursor/argv.json"
+        - "~/.cursor/ide_state.json"
+        - "~/.cursor/extensions"
+        - "~/.cursor/projects"
+        - "~/.cursor/workers"
+        - "~/.cursor/ai-tracking"
+        - "~/.cursor/chats"
+        - "~/.cursor/plugins/cache"
+        - "~/.cursor/prompt_history.json"
+      follow_symlinks: false
+      backup_metadata_for_symlinks: true
+      mask_mcp_tokens: true
+
+    # Layer B — Cursor IDE user config (settings/keybindings/snippets/profiles)
+    # include 키 생략 → DEFAULT 수집 / "include: []" → 이 Layer backup 비활성.
+    ide:
+      include:
+        - "~/Library/Application Support/Cursor/User/settings.json"
+        - "~/Library/Application Support/Cursor/User/keybindings.json"
+        - "~/Library/Application Support/Cursor/User/snippets"
+        - "~/Library/Application Support/Cursor/User/profiles"
+      exclude:
+        - "~/Library/Application Support/Cursor/User/History"
+        - "~/Library/Application Support/Cursor/User/workspaceStorage"
+        - "~/Library/Application Support/Cursor/User/globalStorage"
+      include_bak_files: false
+      global_storage_allowlist: []   # 예: ["anysphere.cursor-mcp"]
+
+    # Layer C — project-local .cursor (opt-in)
+    projects:
+      enabled: false
+      roots: []                       # 예: ["~/dev/anvyc"]
+      patterns:
+        - ".cursor/rules"
+        - ".cursor/skills"
+        - ".cursor/mcp.json"
+        - ".cursorrules"
+
+  claude:
+    enabled: true
+    include:
+      - "~/.claude/settings.json"
+      - "~/.claude/hooks"
+      - "~/.claude/plugins"
+    exclude:
+      - "~/.claude/sessions"
+      - "~/.claude/tokens"
+      - "~/.claude/cache"
+      - "~/.claude/logs"
+
+  iterm2:
+    enabled: true
+    mode: "safe"
+    include:
+      - "profiles"
+      - "key_mappings"
+      - "color_presets"
+    exclude:
+      - "window_state"
+      - "recent_sessions"
+
+  pulumi:
+    enabled: true
+    include:
+      - "~/.pulumi/config.json"
+    exclude:
+      - "~/.pulumi/credentials.json"
+
+doctor:
+  cross_user:
+    enabled: true
+    # /Users/<key> 가 /Users/<value> 로 resolve 되는 alias 선언.
+    # 예: macOS 사용자명 변경 후 호환성용 symlink 가 있는 경우.
+    known_user_aliases: {}
+    # 예: known_user_aliases: { aliasuser: edward }
+    scan_targets:
+      - "~/.cursor/projects"
+      - "~/.zshrc"
+      - "~/.zprofile"
+      - "~/.gitconfig"
+      - "~/.ssh/config"
+      - "~/.ssh/config.d"
+      - "~/Library/Application Support/Cursor/User/settings.json"
+      - "~/Library/Application Support/Cursor/User/keybindings.json"
+      - "~/.claude/settings.json"
+      - "~/.claude/CLAUDE.md"
+    severity_overrides: {}     # path glob → "info"|"warning"|"critical"

@@ -1,0 +1,68 @@
+name: Release
+
+# Trigger: `git push origin vX.Y.Z` (tag) 가 push 되면 자동으로 wheel + sdist +
+# SHA256SUMS 빌드 후 GitHub Release 를 생성한다.
+#
+# runner 는 ubuntu-latest (1× 과금) — anvyc 는 순수 Python 패키지라
+# `uv build` 산출물(anvyc-*-py3-none-any.whl + sdist)이 플랫폼 무관이다.
+#
+# tap repo 의 Formula 갱신은 docs/homebrew-publishing.md 의 follow-up 절차로
+# 사용자가 수동 수행한다 (PAT 권한 보안 검토 후 자동화는 v0.7+).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Build wheel and sdist
+        run: |
+          rm -rf dist/anvyc-*.whl dist/anvyc-*.tar.gz
+          uv build
+
+      - name: Compute SHA256 sums
+        run: |
+          cd dist
+          shasum -a 256 anvyc-*.whl anvyc-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/anvyc-*.whl
+            dist/anvyc-*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: false
+          body: |
+            See [RELEASE_NOTES.md](https://github.com/16bitdo/anvyc/blob/main/RELEASE_NOTES.md) for details.
+
+            Artifacts:
+            - `anvyc-*.whl` — installable wheel (pipx / uv tool)
+            - `anvyc-*.tar.gz` — source distribution (Homebrew Formula source)
+            - `SHA256SUMS` — verification hashes
+
+            Install (uv tool):
+            ```bash
+            uv tool install https://github.com/16bitdo/anvyc/releases/download/${{ github.ref_name }}/anvyc-${{ github.ref_name }}-py3-none-any.whl
+            ```

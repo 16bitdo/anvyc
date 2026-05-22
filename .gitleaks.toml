@@ -1,0 +1,23 @@
+title = "anvyc gitleaks config"
+
+# Inherit gitleaks default rules (AWS keys, GitHub tokens, private keys, etc.)
+[extend]
+useDefault = true
+
+# Project-level allowlist — patterns intentionally retained per policy
+[allowlist]
+description = "Patterns intentionally retained per project policy"
+
+# (1) /Users/edward — macOS username, 본인 결정으로 유지 (B안, 2026-05-19)
+# (2) Synthetic test fixtures — AKIA1234567890ABCDEF, AKIA9999999999999999
+#     CONTRIBUTING.md §테스트 fixture 에서 명시한 합성값
+regexes = [
+  '''/Users/edward''',
+  '''AKIA1234567890ABCDEF''',
+  '''AKIA9999999999999999''',
+]
+
+# Test fixture 파일은 합성 secret 을 의도적으로 포함
+paths = [
+  '''tests/.*\.py$''',
+]

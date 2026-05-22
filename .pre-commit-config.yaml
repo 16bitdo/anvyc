@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: gitleaks (anvyc allowlist)
+
+  # ruff / mypy 는 프로젝트 .venv 의 [dev] extra 를 재사용 (CI 와 버전 일관).
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: .venv/bin/ruff check
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (src)
+        entry: .venv/bin/mypy src/anvyc/
+        language: system
+        types: [python]
+        pass_filenames: false

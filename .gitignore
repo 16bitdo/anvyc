@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+.env
+.env.*
+.envrc
+.direnv/
+dist/
+build/
+
+# Test/coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE / 에디터
+.idea/
+.vscode/
+
+# Cursor IDE artifact — 로컬 작업 참조용 보존, 추적 차단
+.cursor/
+.cursorindexingignore
+.cursorindexingignore.bak-*
+
+# Claude Code artifact — 자동 생성, 로컬 참조용
+CLAUDE.md
+.claude/
+
+# 내부 작업 문서 — 결정 로그/진행 상태, 로컬 전용 (공개 저장소 미포함)
+CONTEXT.md
+
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# anvyc runtime state (사용자 환경)
+.anvyc/local-backups/
+.anvyc/reports/
+
+# secret 영역은 절대 commit 금지
+.anvyc-secrets/
+~/.anvyc-secrets/
