@@ -99,6 +99,13 @@ tools:
       - "**/.git/**"
       - "**/__pycache__/**"
 
+  # shell_prompt adapter (v0.13.0+) — starship / powerlevel10k prompt 설정 파일.
+  shell_prompt:
+    enabled: true
+    include:
+      - "~/.config/starship.toml"
+      - "~/.p10k.zsh"
+
 doctor:
   cross_user:
     enabled: true

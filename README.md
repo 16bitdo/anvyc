@@ -49,6 +49,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 | iTerm2 | profiles, key mappings, color presets | window state, recent sessions, local path |
 | Pulumi | `config.json` | `credentials.json` |
 | **dev_env** (v0.7.0+) | `.envrc`, `.tool-versions`, `.python-version`, `.nvmrc` (project root scan, default disabled) | `node_modules/`, `.venv/`, `.git/`, `__pycache__/` |
+| **shell_prompt** (v0.13.0+) | `~/.config/starship.toml`, `~/.p10k.zsh` | p10k instant-prompt 캐시 (재생성 가능, 미수집) |
 
 ---
 
