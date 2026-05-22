@@ -21,6 +21,7 @@ from anvyc.adapters.git import GitAdapter
 from anvyc.adapters.iterm2 import Iterm2Adapter
 from anvyc.adapters.pulumi import PulumiAdapter
 from anvyc.adapters.shell import ShellAdapter
+from anvyc.adapters.shell_prompt import ShellPromptAdapter
 from anvyc.core.config import AnvycConfig, load_anvyc_config
 from anvyc.core.inventory import Inventory, build_source_inventory
 from anvyc.core.metadata import FileEntry, build_metadata, write_metadata
@@ -41,11 +42,14 @@ ADAPTERS: dict[str, type[Adapter]] = {
     "iterm2": Iterm2Adapter,
     "pulumi": PulumiAdapter,
     "dev_env": DevEnvAdapter,
+    "shell_prompt": ShellPromptAdapter,
 }
 
 # 단순 파일 기반 adapter — 생성자가 files tuple 만 받는다.
 # anvyc.yaml 에서 tools.<name>.files 또는 tools.<name>.include 키로 override 가능.
-_FILE_BASED_ADAPTERS = frozenset({"shell", "git", "aws", "gh", "pulumi"})
+_FILE_BASED_ADAPTERS = frozenset(
+    {"shell", "git", "aws", "gh", "pulumi", "shell_prompt"}
+)
 
 
 class BackupBlockedError(RuntimeError):

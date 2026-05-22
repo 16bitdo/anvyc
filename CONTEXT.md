@@ -10,7 +10,7 @@
 | 항목 | 상태 |
 |---|---|
 | 버전 | v0.13.0 개발 중 — 최신 release 는 git tag `v0.12.0` (GitHub Release) |
-| 어댑터 | 9개 (shell·git·aws·gh·cursor·claude·iterm2·pulumi·dev_env) |
+| 어댑터 | 10개 (shell·git·aws·gh·cursor·claude·iterm2·pulumi·dev_env·shell_prompt) |
 | CLI | init·doctor·backup·status·diff·apply·restore·list·scan-secrets·config·tools·project(show/list/doctor)·prompt·serve·git·sops |
 | Doctor checks | 14개 (cross-user / op-references / sops-keys / project-aws·gh·claude·pulumi-mapping 등) |
 | Secret scanner | 구현 완료 — 패턴 매칭 + 1Password `op://` + SOPS 통합 |
@@ -82,7 +82,7 @@
 | 2026-05-21 | v0.12.0 per-project Claude Code 계정 라우팅 인식 (account-routing Phase 1, PR 1) — `project_info.claude_account` 필드(`_derive_claude_account` — `CLAUDE_CONFIG_DIR` basename 의 `.claude-` prefix strip) + global doctor check `project-claude-account-mapping` + per-cwd check `claude_account_dir_exists` + `multi-account-detected` 의 `~/.claude-*` 감지 + `expand_envrc_path` 공용 헬퍼 | `CLAUDE_CONFIG_DIR` 은 Claude Code 가 네이티브로 읽는 env var (`GH_CONFIG_DIR` 직접 analog). gh 와 달리 cross-check 할 remote 부재 → 검증은 디렉터리 존재 확인(1-way). 핵심 가치는 `project show`/MCP 에 `claude_account` 노출. docs/archive/improvement-plan-account-routing.md §3.1 |
 | 2026-05-21 | v0.12.0 per-project Pulumi backend 라우팅 인식 (account-routing Phase 2, PR 2) — `pulumi_project.PulumiProjectInfo.backend_url`(`Pulumi.yaml` 의 `backend.url` 파싱) → `pulumi["backend"]` 노출 + `normalize_backend_url` 공용 헬퍼 + per-cwd check `pulumi_backend_routing` + global check `project-pulumi-backend-mapping` | Pulumi "계정" = backend(state 저장 위치 + org). `Pulumi.yaml backend.url`(1순위) ↔ `.envrc PULUMI_BACKEND_URL`(env override) 2-way 정합성 검증. `backend` 키 부재 = Pulumi Cloud default — 명시 선언만 추적. `PULUMI_ACCESS_TOKEN` 은 D11c `pulumi_token` 패턴으로 자동 마스킹. credentials.json cross-check 는 safety-first 로 제외. docs/archive/improvement-plan-account-routing.md §3.2 |
 | 2026-05-22 | v0.12.0 릴리스 = v0.10.0 이후 단일 통합 릴리스 — 버전 0.11.0→0.12.0 bump (pyproject·`__init__`·test_smoke), RELEASE_NOTES v0.12.0 섹션 추가 | v0.11.0 은 버전 파일·RELEASE_NOTES 만 준비되고 git 태그 없이 미릴리스 상태였음 → v0.12.0 하나로 v0.10.0 이후 전체(scan-root SoT·gh·Claude·Pulumi routing) 통합 배포. shell prompt 통합은 미착수 → v0.13.0 으로 분리, v0.12.0 은 account-routing 만으로 릴리스. 태그 push·GitHub Release 게시(`release.yml`)는 release-prep PR 머지 후 별도 게이트 |
-| 2026-05-22 | v0.13.0 shell prompt 통합 scope = 둘 다 (anvyc prompt 세그먼트 명령 + starship/p10k config 어댑터), PR 2개 분리 | 원래 P9(`docs/archive/improvement-plan-ai-agent.md`)의 Q4 scope 가 TBD 였음 — 사용자 확정. PR 1(완료): `anvyc prompt` — `collect_project_info` 재사용해 cwd 의 aws/gh/claude/pulumi 라우팅을 prompt 용 `key:value` 한 줄 출력 (~70ms, 오류 시 빈 출력+exit 0). starship/p10k 연동은 `docs/shell-prompt.md`. PR 2(대기): `shell_prompt` 어댑터 — `~/.config/starship.toml`+`~/.p10k.zsh` 를 어댑터 1개로 묶음 |
+| 2026-05-22 | v0.13.0 shell prompt 통합 scope = 둘 다 (anvyc prompt 세그먼트 명령 + starship/p10k config 어댑터), PR 2개 분리 | 원래 P9(`docs/archive/improvement-plan-ai-agent.md`)의 Q4 scope 가 TBD 였음 — 사용자 확정. PR 1(완료): `anvyc prompt` — `collect_project_info` 재사용해 cwd 의 aws/gh/claude/pulumi 라우팅을 prompt 용 `key:value` 한 줄 출력 (~70ms, 오류 시 빈 출력+exit 0). starship/p10k 연동은 `docs/shell-prompt.md`. PR 2(완료): `shell_prompt` 어댑터 — `~/.config/starship.toml`+`~/.p10k.zsh` 를 어댑터 1개로 묶음 (`GhAdapter` 패턴, file-based, `enabled: true`). 어댑터 10개 |
 | 2026-05-22 | anvyc 저장소 private 유지 — Homebrew tap 은 최신 버전으로 정렬만 (실제 brew install 비동작 수용) | `16bitdo/anvyc` 가 private 이라 GitHub Release asset 익명 다운로드가 HTTP 404 → `brew install`·`install.sh`·`uv tool install <release-url>` 등 익명 다운로드 설치 경로가 모두 비동작. Phase C 에서 in-repo formula(`packaging/homebrew/Formula/anvyc.rb`)와 tap repo(`16bitdo/homebrew-anvyc`) Formula 를 v0.12.0(`url`/`sha256`)으로 정렬 — public 전환 시 즉시 동작. 실제 공개 배포는 repo public 전환 또는 PyPI 배포(v1.0) 결정 필요 |
 
 ---
@@ -125,7 +125,7 @@
 
 릴리스 로드맵의 SoT 는 README §13. 본 절은 단기 우선순위만 추적한다.
 
-- **진행 중 작업**: v0.13.0 shell prompt 통합 — PR 1(`anvyc prompt` 세그먼트 명령) 완료, PR 2(`shell_prompt` 어댑터) 대기. (v0.12.0 릴리스는 완결 — Homebrew formula 까지 v0.12.0; ⚠️ anvyc repo private 라 익명 설치 경로 비동작, §2 2026-05-22 결정 참조.)
+- **진행 중 작업**: v0.13.0 shell prompt 통합 PR 1·2 완료 (`anvyc prompt` + `shell_prompt` 어댑터) — feature-complete. 다음: v0.13.0 release-prep (버전 bump + RELEASE_NOTES v0.13.0 섹션, v0.12.0 절차 재사용). (⚠️ anvyc repo private 라 익명 설치 경로 비동작, §2 2026-05-22 결정 참조.)
 - **다음 후보 (우선순위 낮음)**: 없음 — 소진된 구 개선 계획 문서 4종(ai-agent·ux-review·account-routing·scan-root)은 `docs/archive/` 로 이동 완료 (2026-05-22).
 - **로드맵**: README §13 — v0.12.0(Claude·Pulumi 계정 라우팅) → v0.13.0(shell prompt 통합) → v1.0(API stable, PyPI 배포).
 
