@@ -28,18 +28,33 @@ EXTRAS="${ANVYC_EXTRAS:-dev}"
 [[ -f "$REPO_ROOT/pyproject.toml" ]] || die "pyproject.toml 없음 — anvyc 저장소 루트에서 실행하세요 ($REPO_ROOT)"
 [[ -f "$WRAPPER_SRC" ]] || die "wrapper 정본 없음: $WRAPPER_SRC"
 
-# ----- 1) Python 인터프리터 선택: ANVYC_PYTHON > python3.13 > python3 -----
+# ----- 1) Python 인터프리터 선택 -----
+# 우선순위: ANVYC_PYTHON > python3.13(bare) > uv 관리 3.13 > python3(bare).
+# python3.13 이 bare 명령으로 없을 때 uv 가 관리하는 3.13 으로 폴백한다 — pyenv
+# shim 의 python3(구 마이너 버전)으로 의도치 않게 다운그레이드되는 것을 방지.
 pick_python() {
   if [[ -n "${ANVYC_PYTHON:-}" ]]; then
     command -v "$ANVYC_PYTHON" >/dev/null 2>&1 || die "ANVYC_PYTHON 인터프리터 없음: $ANVYC_PYTHON"
     echo "$ANVYC_PYTHON"
-  elif command -v python3.13 >/dev/null 2>&1; then
-    echo "python3.13"
-  elif command -v python3 >/dev/null 2>&1; then
-    echo "python3"
-  else
-    die "python3 를 찾지 못했습니다."
+    return
   fi
+  if command -v python3.13 >/dev/null 2>&1; then
+    echo "python3.13"
+    return
+  fi
+  if command -v uv >/dev/null 2>&1; then
+    local uv_py
+    uv_py="$(uv python find 3.13 2>/dev/null || true)"
+    if [[ -n "$uv_py" && -x "$uv_py" ]]; then
+      echo "$uv_py"
+      return
+    fi
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return
+  fi
+  die "python3 를 찾지 못했습니다."
 }
 PYTHON="$(pick_python)"
 PY_MINOR="$("$PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
