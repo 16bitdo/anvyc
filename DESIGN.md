@@ -1503,7 +1503,7 @@ tools:
 
 ### 32.1 배경
 
-[improvement-plan-ai-agent.md](./improvement-plan-ai-agent.md) Wave 7. AI agent
+[improvement-plan-ai-agent.md](./docs/archive/improvement-plan-ai-agent.md) Wave 7. AI agent
 (Claude Code / Cursor / ChatGPT) 가 cwd 의 모든 connection 정보 (AWS profile /
 GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로 받기
 위한 정식 schema. `anvyc project show --json` 출력의 외부 호환 보장.
@@ -1737,7 +1737,7 @@ INFO / INFO_ALIASED 는 strict 모드에서도 exit 0.
 
 ### 34.1 배경
 
-[improvement-plan-ai-agent.md](./improvement-plan-ai-agent.md) Wave 9. AI agent
+[improvement-plan-ai-agent.md](./docs/archive/improvement-plan-ai-agent.md) Wave 9. AI agent
 (Claude Code / Cursor) 가 anvyc 의 5 read-only tool 을 Model Context Protocol
 (stdio transport) 로 직접 호출. subprocess 호출 + stdout parse 우회.
 

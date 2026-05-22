@@ -1,5 +1,6 @@
 # anvyc 개선 계획 — AI agent 의 multi-project connection 활용
 
+> 📦 **Archived 2026-05-22** — 계획 내용이 릴리스로 소진되어 이력 보존용으로 보관 (활성 계획 아님).
 > 작성일: 2026-05-19
 > 대상 버전: v0.7.2 (현재 release) 기준 → v0.7.x / v0.8.x / v0.9.x 로드맵
 > 검토 범위: AI agent (Claude / Cursor / ChatGPT) 가 anvyc 를 통해 multi-project

@@ -4,7 +4,7 @@
 > read-only tool 을 stdio Model Context Protocol 로 직접 호출.
 
 자매 문서:
-- [improvement-plan-ai-agent.md](./improvement-plan-ai-agent.md) — Wave 9 plan
+- [improvement-plan-ai-agent.md](./archive/improvement-plan-ai-agent.md) — Wave 9 plan
 - [DESIGN.md §34](../DESIGN.md) — MCP server architecture
 
 ---
