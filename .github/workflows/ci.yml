@@ -1,8 +1,14 @@
 name: CI
 
 # main push / PR 마다 lint + type-check + test 를 실행해 회귀를 잡는다.
-# lint: src/+tests/ ruff, src/ mypy (Python 3.13 단일).
-# test: pytest 를 requires-python(>=3.11) 범위 전체 matrix 로.
+#
+# 비용 최적화: anvyc 는 macOS 전용 도구지만 테스트는 sys.platform monkeypatch +
+# skipif 로 플랫폼 가드돼 있어 대부분 Linux 에서도 동일하게 검증된다. 따라서
+# lint 와 Python 버전 matrix 는 ubuntu-latest(1× 과금)에서 돌리고, 실제 macOS
+# 동작 회귀는 test 의 Python 3.13 잡 하나만 macos-latest(10× 과금)에서 추가
+# 실행해 잡는다 (잡당 과금: 4×10× → 1×+1×+1×+1×+10×).
+#   lint: src/+tests/ ruff, src/+tests/ mypy (Python 3.13, ubuntu)
+#   test: pytest — ubuntu 에서 3.11/3.12/3.13, macOS 에서 3.13
 
 on:
   push:
@@ -12,7 +18,7 @@ on:
 jobs:
   lint:
     name: Lint and type-check
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -35,12 +41,21 @@ jobs:
         run: mypy src/anvyc/ tests/
 
   test:
-    name: Test (Python ${{ matrix.python-version }})
-    runs-on: macos-latest
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        # ubuntu: 전 Python 버전 (1× 과금) / macOS: 3.13 만 (10× 과금, 실 플랫폼 회귀)
+        include:
+          - os: ubuntu-latest
+            python-version: '3.11'
+          - os: ubuntu-latest
+            python-version: '3.12'
+          - os: ubuntu-latest
+            python-version: '3.13'
+          - os: macos-latest
+            python-version: '3.13'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
