@@ -1067,7 +1067,7 @@ anvyc doctor --only project-aws-profile-mapping \
 
 - Co-Authored-By: Claude 트레일러 제거 (K2 결정, 30 commits)
 - `<company>-*` 식별자 → `<company>-*` 익명화 (L1=c)
-- author identity → `16bitdo <16bitdo@gmail.com>` 단일 통합
+- author identity → `16bitdo` 단일 통합
 - 모든 tag (v0.1.0~v0.5.3) 새 commit hash 로 재발행
 - **기존 clone 사용자는 rebase 필요** — `git fetch && git reset --hard origin/main`
 
