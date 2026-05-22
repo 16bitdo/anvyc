@@ -1,5 +1,6 @@
 # anvyc 개선 계획 — Claude / Cursor / Pulumi 계정 라우팅 추가
 
+> 📦 **Archived 2026-05-22** — 계획 내용이 릴리스로 소진되어 이력 보존용으로 보관 (활성 계획 아님).
 > 작성일: 2026-05-21
 > 대상 버전: v0.11.0 기준 → v0.12+ 후보
 > 검토 범위: anvyc 의 per-project 계정 라우팅을 Claude Code / Cursor / Pulumi 로 확장

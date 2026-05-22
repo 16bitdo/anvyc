@@ -1167,7 +1167,7 @@ def tools_list(
     console.print(table)
     console.print(
         "[dim]미지원 (v0.7+ 계획): vscode, helix, neovim — "
-        "docs/improvement-plan-ux-review.md 참조[/]"
+        "docs/archive/improvement-plan-ux-review.md 참조[/]"
     )
 
 

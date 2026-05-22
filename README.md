@@ -496,7 +496,7 @@ anvyc doctor --only aws-profile-status
 anvyc doctor --only multi-account-detected
 ```
 
-자세한 UX 개선 계획은 [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
+자세한 UX 개선 계획은 [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고 (아카이브).
 
 ### 11.6 다수 GitHub 계정 관리 (per-project gh routing, v0.11.0+)
 
@@ -685,16 +685,16 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.7.0** ✓ — `dev_env` 어댑터 (.envrc/.tool-versions/.nvmrc 추적) + `unused-aws-profiles` doctor check
 - **v0.7.1** ✓ — `anvyc init --interactive` wizard + `install.sh` one-liner
 - **v0.7.2** ✓ — pydantic 의존 제거 (Homebrew install fix)
-- **v0.8.0** ✓ — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/improvement-plan-ai-agent.md))
+- **v0.8.0** ✓ — `anvyc project show` (AI agent multi-project view) + JSON output 확장 ([plan](./docs/archive/improvement-plan-ai-agent.md))
 - **v0.8.1** ✓ — `anvyc project list` + `anvyc project doctor` (cross-project matrix + 정합성 5 check)
 - **v0.9.0** ✓ — MCP server (`anvyc serve --mcp`, Claude Code/Cursor 직접 호출)
 - **v0.10.0** ✓ — MCP tool naming cleanup (`anvyc_` prefix 제거, breaking)
 - **v0.11.0** — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전) — 별도 태깅 없이 v0.12.0 으로 통합 배포
-- **v0.12.0** ✓ — per-project Claude Code·Pulumi backend 계정 라우팅 인식 ([plan](./docs/improvement-plan-account-routing.md))
+- **v0.12.0** ✓ — per-project Claude Code·Pulumi backend 계정 라우팅 인식 ([plan](./docs/archive/improvement-plan-account-routing.md))
 - **v0.13.0** (다음) — shell prompt 통합 (starship/p10k)
 - **v1.0** — API stable, PyPI 배포
 
-자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/improvement-plan-ux-review.md](./docs/improvement-plan-ux-review.md) 참고.
+자세한 내용은 [CONTEXT.md](./CONTEXT.md), [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.
 
 ---
 
