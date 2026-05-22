@@ -3,6 +3,9 @@ name: Release
 # Trigger: `git push origin vX.Y.Z` (tag) 가 push 되면 자동으로 wheel + sdist +
 # SHA256SUMS 빌드 후 GitHub Release 를 생성한다.
 #
+# runner 는 ubuntu-latest (1× 과금) — anvyc 는 순수 Python 패키지라
+# `uv build` 산출물(anvyc-*-py3-none-any.whl + sdist)이 플랫폼 무관이다.
+#
 # tap repo 의 Formula 갱신은 docs/homebrew-publishing.md 의 follow-up 절차로
 # 사용자가 수동 수행한다 (PAT 권한 보안 검토 후 자동화는 v0.7+).
 
@@ -17,7 +20,7 @@ permissions:
 jobs:
   release:
     name: Build and publish release artifacts
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6

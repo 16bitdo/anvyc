@@ -9,11 +9,24 @@ name: CI
 # 실행해 잡는다 (잡당 과금: 4×10× → 1×+1×+1×+1×+10×).
 #   lint: src/+tests/ ruff, src/+tests/ mypy (Python 3.13, ubuntu)
 #   test: pytest — ubuntu 에서 3.11/3.12/3.13, macOS 에서 3.13
+#
+# 추가 절감: (1) 문서 전용 변경(**.md, docs/**)은 CI skip, (2) concurrency 로
+# PR 에 push 가 연달아 들어오면 추월된 run 을 취소 (main push 는 항상 완주).
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
