@@ -9,7 +9,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| 버전 | v0.13.0 릴리스 준비 — 버전 bump·RELEASE_NOTES 완료, 태그 push 대기 (최신 release v0.12.0) |
+| 버전 | v0.13.0 — git tag `v0.13.0` 릴리스 게시 완료 (GitHub Release, 직전 release v0.12.0) |
 | 어댑터 | 10개 (shell·git·aws·gh·cursor·claude·iterm2·pulumi·dev_env·shell_prompt) |
 | CLI | init·doctor·backup·status·diff·apply·restore·list·scan-secrets·config·tools·project(show/list/doctor)·prompt·serve·git·sops |
 | Doctor checks | 14개 (cross-user / op-references / sops-keys / project-aws·gh·claude·pulumi-mapping 등) |
@@ -126,7 +126,7 @@
 
 릴리스 로드맵의 SoT 는 README §13. 본 절은 단기 우선순위만 추적한다.
 
-- **진행 중 작업**: v0.13.0 릴리스 준비 — 버전 bump·RELEASE_NOTES·문서 동기화 완료(release-prep PR). 남은 단계: PR 머지 → `git tag v0.13.0` push → `release.yml` 자동 게시 → (doc-sync) README §13 `(현재)`→`✓`. (⚠️ anvyc repo private 라 익명 설치 경로 비동작, §2 2026-05-22 결정 참조.)
+- **진행 중 작업**: v0.13.0 릴리스 게시 완료 — `git tag v0.13.0` → `release.yml` 가 wheel/sdist/SHA256SUMS 빌드 + GitHub Release 게시. 남은 단계: Homebrew tap(`16bitdo/homebrew-anvyc`) Formula `url`/`sha256` 을 v0.13.0 으로 갱신. sdist sha256 = `9ea00338e2eb8673a354f634718c16345a2d8bbb4ea131075bb1458615e07c00`. (⚠️ anvyc repo private 라 익명 설치 경로 비동작, §2 2026-05-22 결정 참조.)
 - **다음 후보 (우선순위 낮음)**: 없음 — 소진된 구 개선 계획 문서 4종(ai-agent·ux-review·account-routing·scan-root)은 `docs/archive/` 로 이동 완료 (2026-05-22).
 - **로드맵**: README §13 — v0.12.0(Claude·Pulumi 계정 라우팅) → v0.13.0(shell prompt 통합) → v1.0(API stable, PyPI 배포).
 
