@@ -196,5 +196,5 @@ ANVYC_VENV=$PWD/.venv anvyc --version
 ## 6. 부록 — 출처
 
 - 발단: 2026-05-21 `anvyc` 재설치 작업 — `~/Documents/anvyc/.venv` 부재로 wrapper 실행 불능 확인, `~/dev/anvyc/.venv` editable 재생성 + wrapper `VENV` 경로 수정으로 응급 복구.
-- 관련 문서: `docs/troubleshooting-macos.md` (UF_HIDDEN 원인·self-heal 패턴), `docs/improvement-plan-scan-root.md` (동일 `~/Documents`→`~/dev` 이전 맥락, 문서 치환 범위 공유).
+- 관련 문서: `docs/troubleshooting-macos.md` (UF_HIDDEN 원인·self-heal 패턴), `docs/archive/improvement-plan-scan-root.md` (동일 `~/Documents`→`~/dev` 이전 맥락, 문서 치환 범위 공유).
 - 조사 시점 anvyc: v0.11.0, branch `main`, HEAD `1bc1f84`.
