@@ -2,6 +2,7 @@
 
 MVP 단계에서는 명령어 시그니처와 흐름만 정의하고, 실제 동작은 core/adapters 구현 후 연결한다.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -16,6 +17,7 @@ from rich.table import Table
 
 from anvyc import __version__
 from anvyc.checks.base import Severity
+from anvyc.core.activity import collect_sessions
 from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
 from anvyc.core.backup import BackupBlockedError, run_backup
 from anvyc.core.diff import compute_diff
@@ -108,9 +110,7 @@ def init(
 
     if from_git:
         if anvyc_dir.exists():
-            console.print(
-                f"[red]error[/] {anvyc_dir} 이미 존재 — 다른 --root 사용 또는 수동 제거"
-            )
+            console.print(f"[red]error[/] {anvyc_dir} 이미 존재 — 다른 --root 사용 또는 수동 제거")
             raise typer.Exit(code=1)
         try:
             proc = subprocess.run(
@@ -132,10 +132,7 @@ def init(
             )
             raise typer.Exit(code=1)
         console.print(f"[green]cloned[/] {from_git} → {anvyc_dir}")
-        console.print(
-            "[bold]next[/] "
-            "anvyc doctor  &&  anvyc apply --dry-run  &&  anvyc apply"
-        )
+        console.print("[bold]next[/] anvyc doctor  &&  anvyc apply --dry-run  &&  anvyc apply")
         return
 
     config_path = anvyc_dir / "anvyc.yaml"
@@ -151,10 +148,10 @@ def init(
 
 # wizard 의 도구별 default 값 (file-based adapter 만 file path 입력 필요)
 _WIZARD_FILE_DEFAULTS: dict[str, list[str]] = {
-    "shell":  ["~/.zshrc", "~/.zprofile"],
-    "git":    ["~/.gitconfig", "~/.gitignore_global"],
-    "aws":    ["~/.aws/config"],
-    "gh":     ["~/.config/gh/config.yml"],
+    "shell": ["~/.zshrc", "~/.zprofile"],
+    "git": ["~/.gitconfig", "~/.gitignore_global"],
+    "aws": ["~/.aws/config"],
+    "gh": ["~/.config/gh/config.yml"],
     "pulumi": ["~/.pulumi/config.json"],
 }
 _WIZARD_DEV_ENV_DEFAULTS = {
@@ -162,8 +159,15 @@ _WIZARD_DEV_ENV_DEFAULTS = {
     "patterns": [".envrc", ".tool-versions", ".python-version", ".nvmrc"],
 }
 _WIZARD_TOOLS_ORDER = (
-    "shell", "git", "aws", "gh", "pulumi",
-    "cursor", "claude", "iterm2", "dev_env",
+    "shell",
+    "git",
+    "aws",
+    "gh",
+    "pulumi",
+    "cursor",
+    "claude",
+    "iterm2",
+    "dev_env",
 )
 
 
@@ -182,9 +186,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
 
     config_path = anvyc_dir / "anvyc.yaml"
     if config_path.exists() and not force:
-        console.print(
-            f"[red]error[/] {config_path} 이미 존재 — 다른 --root 사용 또는 --force"
-        )
+        console.print(f"[red]error[/] {config_path} 이미 존재 — 다른 --root 사용 또는 --force")
         raise typer.Exit(code=1)
 
     console.print("[bold]anvyc init wizard[/] — 9개 도구 설정\n")
@@ -216,9 +218,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
                 "  patterns",
                 default=", ".join(_WIZARD_DEV_ENV_DEFAULTS["patterns"]),
             )
-            entry["patterns"] = _parse_csv(
-                patterns_ans, _WIZARD_DEV_ENV_DEFAULTS["patterns"]
-            )
+            entry["patterns"] = _parse_csv(patterns_ans, _WIZARD_DEV_ENV_DEFAULTS["patterns"])
         tools_cfg[tool] = entry
 
     yaml_dict = {
@@ -306,8 +306,7 @@ def _print_summary(report: DoctorReport) -> None:
             loc = _short_path(r.location)
             line = f":{r.line}" if r.line else ""
             console.print(
-                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] "
-                f"{loc}{line} — {r.message}"
+                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] {loc}{line} — {r.message}"
             )
         if len(report.results) > 5:
             console.print(f"  ... and {len(report.results) - 5} more (use --verbose)")
@@ -390,6 +389,7 @@ def backup(
     console.print(table)
     # SOPS 로 암호화된 secret_files 도 metadata 에서 표시
     import json as _jl
+
     meta_path = result.backup_dir / "metadata.json"
     if meta_path.is_file():
         try:
@@ -412,7 +412,9 @@ def backup(
 @app.command()
 def status(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: str | None = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current 또는 최신."),
+    backup_id: str | None = typer.Option(
+        None, "--backup-id", help="비교 대상 backup. 미지정 시 current 또는 최신."
+    ),
 ) -> None:
     """current(target) vs backup 의 drift 를 요약한다."""
     try:
@@ -449,7 +451,9 @@ def status(
 @app.command()
 def diff(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: str | None = typer.Option(None, "--backup-id", help="비교 대상 backup. 미지정 시 current/최신."),
+    backup_id: str | None = typer.Option(
+        None, "--backup-id", help="비교 대상 backup. 미지정 시 current/최신."
+    ),
     only_changed: bool = typer.Option(True, "--only-changed/--all", help="변경된 파일만 출력."),
 ) -> None:
     """backup → 현재 target unified diff 를 출력한다."""
@@ -492,7 +496,9 @@ def diff(
 def apply(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
     config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
-    backup_id: str | None = typer.Option(None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."),
+    backup_id: str | None = typer.Option(
+        None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."
+    ),
     only: list[str] | None = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 적용 시나리오만 출력."),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
@@ -647,11 +653,17 @@ def list_(
 
 @app.command(name="scan-secrets")
 def scan_secrets(
-    paths: list[Path] | None = typer.Argument(None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."),
-    staged: bool = typer.Option(False, "--staged", help="현재 cwd 의 git 저장소에서 staged 파일만 스캔."),
+    paths: list[Path] | None = typer.Argument(
+        None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."
+    ),
+    staged: bool = typer.Option(
+        False, "--staged", help="현재 cwd 의 git 저장소에서 staged 파일만 스캔."
+    ),
     root: Path | None = typer.Option(None, "--root", help="--staged 의 git repo 경로 override."),
     json_out: bool = typer.Option(False, "--json", help="JSON 출력."),
-    quiet: bool = typer.Option(False, "--quiet", help="발견 시에도 메시지 최소화 (pre-commit hook 용)."),
+    quiet: bool = typer.Option(
+        False, "--quiet", help="발견 시에도 메시지 최소화 (pre-commit hook 용)."
+    ),
     force: bool = typer.Option(False, "--force", help="medium 까지 허용 (비-block)."),
 ) -> None:
     """secret 패턴을 스캔한다.
@@ -719,9 +731,12 @@ def scan_secrets(
             table.add_column("location")
             table.add_column("line", justify="right")
             for f in findings:
-                style = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}.get(
-                    f.severity, "white"
-                )
+                style = {
+                    "critical": "red bold",
+                    "high": "red",
+                    "medium": "yellow",
+                    "low": "dim",
+                }.get(f.severity, "white")
                 table.add_row(
                     f"[{style}]{f.severity}[/]",
                     f.pattern,
@@ -743,6 +758,7 @@ def git_init(
 ) -> None:
     """.anvyc 영역을 Git 저장소로 초기화. .gitignore + pre-commit hook 자동 설치."""
     from anvyc.storage.git import GitError, init_repo
+
     try:
         init_repo(root.resolve())
     except GitError as e:
@@ -758,6 +774,7 @@ def git_status(
 ) -> None:
     """.anvyc 영역의 git status (--short)."""
     from anvyc.storage.git import GitError, status
+
     try:
         out = status(root.resolve())
     except GitError as e:
@@ -776,6 +793,7 @@ def git_commit(
 ) -> None:
     """.anvyc 영역의 git commit. pre-commit hook 이 secret scan 강제."""
     from anvyc.storage.git import GitError, commit
+
     try:
         out = commit(root.resolve(), message)
     except GitError as e:
@@ -793,6 +811,7 @@ def git_push(
 ) -> None:
     """.anvyc 영역의 git push."""
     from anvyc.storage.git import GitError, push
+
     try:
         out = push(root.resolve(), remote=remote, branch=branch)
     except GitError as e:
@@ -806,7 +825,9 @@ def git_push(
 def sops_encrypt(
     src: Path = typer.Argument(..., help="암호화할 파일 (평문)."),
     output: Path | None = typer.Option(None, "-o", "--output", help="출력 경로. 미지정 시 자동."),
-    mode: str | None = typer.Option(None, "--mode", help="binary | inplace. 미지정 시 yaml 의 format."),
+    mode: str | None = typer.Option(
+        None, "--mode", help="binary | inplace. 미지정 시 yaml 의 format."
+    ),
     config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """파일을 SOPS 로 암호화. anvyc.yaml security.sops 의 recipients 사용."""
@@ -836,7 +857,9 @@ def sops_encrypt(
 @sops_app.command("decrypt")
 def sops_decrypt(
     src: Path = typer.Argument(..., help="SOPS 암호화 파일."),
-    output: Path | None = typer.Option(None, "-o", "--output", help="평문 출력 경로. 미지정 시 stdout."),
+    output: Path | None = typer.Option(
+        None, "-o", "--output", help="평문 출력 경로. 미지정 시 stdout."
+    ),
     config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """SOPS 파일을 복호화. anvyc.yaml security.sops.age_identity_file 사용.
@@ -882,9 +905,13 @@ def sops_decrypt(
 @sops_app.command("rotate-keys")
 def sops_rotate_keys(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
-    backup_id: str | None = typer.Option(None, "--backup-id", help="특정 backup 만. 미지정 시 모든 backup."),
+    backup_id: str | None = typer.Option(
+        None, "--backup-id", help="특정 backup 만. 미지정 시 모든 backup."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="변경 없이 처리 대상만 출력."),
-    strict: bool = typer.Option(False, "--strict", help="1건 실패 시 즉시 exit 1 (default: continue)."),
+    strict: bool = typer.Option(
+        False, "--strict", help="1건 실패 시 즉시 exit 1 (default: continue)."
+    ),
     config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
     """모든 backup 의 SOPS 파일을 anvyc.yaml 의 현재 age_recipients 로 재암호화."""
@@ -1077,8 +1104,7 @@ def config_show(
     if not effective:
         if json_out:
             console.print(
-                "[yellow]warning[/] --json 은 --effective 와 함께 사용 권장 "
-                "(raw yaml 그대로 출력)"
+                "[yellow]warning[/] --json 은 --effective 와 함께 사용 권장 (raw yaml 그대로 출력)"
             )
         typer.echo(yaml_path.read_text(encoding="utf-8"))
         return
@@ -1124,13 +1150,15 @@ def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
             detected = adapter.detect()
         except Exception:
             detected = False
-        rows.append({
-            "tool": name,
-            "enabled": enabled,
-            "detected": detected,
-            "files": files_count,
-            "secrets": secrets_count,
-        })
+        rows.append(
+            {
+                "tool": name,
+                "enabled": enabled,
+                "detected": detected,
+                "files": files_count,
+                "secrets": secrets_count,
+            }
+        )
     return rows
 
 
@@ -1178,9 +1206,7 @@ def tools_list(
 
 @project_app.command("show")
 def project_show(
-    path: Path = typer.Option(
-        Path.cwd(), "--path", help="대상 project root (default: cwd)."
-    ),
+    path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
     reveal_secrets: bool = typer.Option(
         False,
@@ -1208,15 +1234,9 @@ def project_show(
 
     # human rendering
     console.print(f"[bold]path[/] {payload['path']}")
-    console.print(
-        f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}"
-    )
-    console.print(
-        f"[bold]gh_account[/] {payload['gh_account'] or '[dim](unset)[/]'}"
-    )
-    console.print(
-        f"[bold]claude_account[/] {payload['claude_account'] or '[dim](unset)[/]'}"
-    )
+    console.print(f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}")
+    console.print(f"[bold]gh_account[/] {payload['gh_account'] or '[dim](unset)[/]'}")
+    console.print(f"[bold]claude_account[/] {payload['claude_account'] or '[dim](unset)[/]'}")
     gh = payload.get("github") or []
     if gh:
         console.print("[bold]github[/]")
@@ -1278,12 +1298,8 @@ def serve(
 
 @app.command()
 def prompt(
-    path: Path = typer.Option(
-        Path.cwd(), "--path", help="대상 디렉터리 (default: cwd)."
-    ),
-    json_out: bool = typer.Option(
-        False, "--json", help="machine-readable JSON 출력 (key→value)."
-    ),
+    path: Path = typer.Option(Path.cwd(), "--path", help="대상 디렉터리 (default: cwd)."),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력 (key→value)."),
 ) -> None:
     """현재 디렉터리의 계정 라우팅을 shell prompt 용 한 줄로 출력 (v0.13.0+).
 
@@ -1320,9 +1336,7 @@ def prompt(
 def project_doctor(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON."),
-    strict: bool = typer.Option(
-        False, "--strict", help="warning 이상 발견 시 exit 1."
-    ),
+    strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
     """cwd (또는 --path) 의 connection 정합성 8 check.
 
@@ -1351,7 +1365,9 @@ def project_doctor(
     else:
         console.print(f"[bold]project doctor[/] {report.path}")
         if not report.results:
-            console.print("[dim]no checks applicable (no .envrc / .git / Pulumi.yaml / tool_versions)[/]")
+            console.print(
+                "[dim]no checks applicable (no .envrc / .git / Pulumi.yaml / tool_versions)[/]"
+            )
         else:
             table = Table(show_header=True, header_style="bold")
             table.add_column("severity")
@@ -1377,12 +1393,14 @@ def project_doctor(
 @project_app.command("list")
 def project_list(
     roots: list[str] | None = typer.Option(
-        None, "--root",
+        None,
+        "--root",
         help="scan root (반복 가능, 미지정 시 anvyc.yaml project_roots 또는 표준 루트).",
     ),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
     reveal_secrets: bool = typer.Option(
-        False, "--reveal-secrets",
+        False,
+        "--reveal-secrets",
         help="dev_env secret 패턴 매칭 값을 raw 노출 (default: ***REDACTED***).",
     ),
 ) -> None:
@@ -1397,10 +1415,7 @@ def project_list(
 
     roots_arg = roots if roots else list(resolve_project_roots())
     projects = discover_projects(roots_arg)
-    infos = [
-        collect_project_info(p, redact_secrets=not reveal_secrets)
-        for p in projects
-    ]
+    infos = [collect_project_info(p, redact_secrets=not reveal_secrets) for p in projects]
     payload = [to_dict(i) for i in infos]
 
     if json_out:
@@ -1437,6 +1452,56 @@ def project_list(
             gh_summary,
             pul_summary,
             str(len(entry["dev_env"])),
+        )
+    console.print(table)
+
+
+@app.command()
+def activity(
+    json_out: bool = typer.Option(False, "--json", help="JSON 출력"),
+    limit: int | None = typer.Option(None, "--limit", help="최대 표시 session 수"),
+) -> None:
+    """Claude Code session 활동 요약 (`~/.claude*/projects/*/*.jsonl`).
+
+    멀티계정 환경의 모든 session transcript 를 수집해 session 별 메타데이터와
+    tool 호출 카운트를 출력한다. 데이터 수집은 read-only — write 작업 없음.
+    CP-1 (audit / observability) 의 2/3 — collector 는 core/activity.py, MCP tool
+    노출은 후속 PR.
+    """
+    sessions = collect_sessions()
+    if limit is not None:
+        sessions = sessions[:limit]
+
+    if json_out:
+        payload = [s.to_dict() for s in sessions]
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if not sessions:
+        console.print("[dim]no Claude Code session found under ~/.claude*/projects/[/]")
+        return
+
+    console.print(f"[bold]{len(sessions)} session(s) found[/]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("session", style="cyan")
+    table.add_column("cwd")
+    table.add_column("git", style="dim")
+    table.add_column("events", justify="right")
+    table.add_column("tool calls", justify="right")
+    table.add_column("duration (s)", justify="right")
+    table.add_column("top tools")
+    for s in sessions:
+        top_tools = ", ".join(f"{name}={cnt}" for name, cnt in s.tools_used.most_common(3))
+        dur = f"{s.duration_seconds:.0f}" if s.duration_seconds is not None else "—"
+        cwd_display = _short_path(Path(s.cwd)) if s.cwd else "—"
+        table.add_row(
+            s.session_id[:8],
+            cwd_display,
+            s.git_branch or "—",
+            str(s.event_count),
+            str(s.tool_call_count),
+            dur,
+            top_tools or "—",
         )
     console.print(table)
 
