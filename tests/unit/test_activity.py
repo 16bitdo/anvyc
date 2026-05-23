@@ -185,3 +185,65 @@ def test_session_duration_none_when_no_timestamps(tmp_path: Path) -> None:
     assert s.duration_seconds is None
     assert s.started_at is None
     assert s.ended_at is None
+
+
+# --------------- aggregate_sessions / tool_call_ranking (CP-1 3/3) ---------------
+
+
+def test_aggregate_sessions_basic(fake_claude_home: Path) -> None:
+    from anvyc.core.activity import aggregate_sessions
+
+    roots = discover_session_roots(home=fake_claude_home)
+    sessions = collect_sessions(roots)
+    agg = aggregate_sessions(sessions)
+
+    assert agg["total_sessions"] == 2
+    # A: 3 events / 2 tool calls, B: 2 events / 1 tool call
+    assert agg["total_events"] == 5
+    assert agg["total_tool_calls"] == 3
+    # A duration = 20s, B duration = 5s
+    assert agg["total_duration_seconds"] == 25.0
+    assert agg["tools_used"] == {"Read": 2, "Bash": 1}
+    assert agg["oldest_session_started_at"] == "2026-05-01T00:00:00+00:00"
+    assert agg["newest_session_ended_at"] == "2026-05-02T01:00:05+00:00"
+
+
+def test_aggregate_sessions_empty() -> None:
+    from anvyc.core.activity import aggregate_sessions
+
+    agg = aggregate_sessions([])
+    assert agg["total_sessions"] == 0
+    assert agg["total_events"] == 0
+    assert agg["total_tool_calls"] == 0
+    assert agg["total_duration_seconds"] == 0.0
+    assert agg["tools_used"] == {}
+    assert agg["oldest_session_started_at"] is None
+    assert agg["newest_session_ended_at"] is None
+
+
+def test_tool_call_ranking_full(fake_claude_home: Path) -> None:
+    from anvyc.core.activity import tool_call_ranking
+
+    roots = discover_session_roots(home=fake_claude_home)
+    sessions = collect_sessions(roots)
+    ranking = tool_call_ranking(sessions)
+
+    # Read=2 (>Bash=1) so Read first
+    assert ranking == [{"name": "Read", "count": 2}, {"name": "Bash", "count": 1}]
+
+
+def test_tool_call_ranking_top(fake_claude_home: Path) -> None:
+    from anvyc.core.activity import tool_call_ranking
+
+    roots = discover_session_roots(home=fake_claude_home)
+    sessions = collect_sessions(roots)
+    ranking = tool_call_ranking(sessions, top=1)
+
+    assert ranking == [{"name": "Read", "count": 2}]
+
+
+def test_tool_call_ranking_empty() -> None:
+    from anvyc.core.activity import tool_call_ranking
+
+    assert tool_call_ranking([]) == []
+    assert tool_call_ranking([], top=5) == []

@@ -202,3 +202,44 @@ def collect_sessions(roots: list[Path] | None = None) -> list[Session]:
         if s is not None:
             sessions.append(s)
     return sessions
+
+
+def aggregate_sessions(sessions: list[Session]) -> dict[str, Any]:
+    """Session list 의 통합 통계 — `activity_summary` MCP tool 의 payload.
+
+    반환 dict 의 모든 값은 JSON-serializable.
+    """
+    total_events = sum(s.event_count for s in sessions)
+    total_tool_calls = sum(s.tool_call_count for s in sessions)
+    total_duration = sum(s.duration_seconds or 0.0 for s in sessions)
+
+    tools_used: Counter[str] = Counter()
+    for s in sessions:
+        tools_used.update(s.tools_used)
+
+    starts = [s.started_at for s in sessions if s.started_at]
+    ends = [s.ended_at for s in sessions if s.ended_at]
+    oldest = min(starts) if starts else None
+    newest = max(ends) if ends else None
+
+    return {
+        "total_sessions": len(sessions),
+        "total_events": total_events,
+        "total_tool_calls": total_tool_calls,
+        "total_duration_seconds": total_duration,
+        "oldest_session_started_at": oldest.isoformat() if oldest else None,
+        "newest_session_ended_at": newest.isoformat() if newest else None,
+        "tools_used": dict(tools_used),
+    }
+
+
+def tool_call_ranking(sessions: list[Session], top: int | None = None) -> list[dict[str, Any]]:
+    """Tool 별 사용 카운트를 most_common 정렬된 list 로 반환.
+
+    `top` 미지정 시 전체 반환. `tool_call_stats` MCP tool 의 payload.
+    """
+    total: Counter[str] = Counter()
+    for s in sessions:
+        total.update(s.tools_used)
+    items = total.most_common(top) if top else total.most_common()
+    return [{"name": name, "count": count} for name, count in items]
