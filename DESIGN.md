@@ -195,7 +195,9 @@ anvyc/
 ├── src/
 │   └── anvyc/
 │       ├── __init__.py
+│       ├── __main__.py            # python -m anvyc 진입점 (v0.13.0+, §27.7)
 │       ├── cli.py
+│       ├── templates.py
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── inventory.py
@@ -203,7 +205,12 @@ anvyc/
 │       │   ├── diff.py
 │       │   ├── apply.py
 │       │   ├── restore.py
-│       │   └── metadata.py
+│       │   ├── metadata.py
+│       │   ├── project_info.py    # §32 ProjectInfo
+│       │   ├── project_doctor.py  # §33 per-cwd doctor
+│       │   ├── project_discovery.py
+│       │   ├── project_roots.py   # §27.8 프로젝트 루트 SoT
+│       │   └── doctor.py
 │       ├── adapters/
 │       │   ├── __init__.py
 │       │   ├── base.py
@@ -214,7 +221,27 @@ anvyc/
 │       │   ├── cursor.py
 │       │   ├── claude.py
 │       │   ├── iterm2.py
-│       │   └── pulumi.py
+│       │   ├── pulumi.py
+│       │   ├── dev_env.py         # v0.7.0+ — .envrc / .tool-versions / .python-version / .nvmrc
+│       │   └── shell_prompt.py    # v0.13.0+ — starship / powerlevel10k 설정 (§17a)
+│       ├── checks/                # doctor check 모듈 (§27.1.1)
+│       │   ├── cross_user.py
+│       │   ├── venv_hidden.py
+│       │   ├── project_aws_profile.py
+│       │   ├── project_gh_account.py
+│       │   ├── project_claude_account.py
+│       │   ├── project_pulumi_backend.py
+│       │   ├── multi_account_detected.py
+│       │   ├── aws_profile_status.py
+│       │   ├── unused_aws_profiles.py
+│       │   ├── cursor_projects_suggest.py
+│       │   ├── adapter_validate.py
+│       │   ├── op_references.py
+│       │   ├── sops_keys.py
+│       │   └── mcp_tokens.py
+│       ├── mcp/                   # v0.9.0+ — anvyc serve --mcp ([mcp] extra, §34)
+│       │   ├── __init__.py
+│       │   └── server.py
 │       ├── security/
 │       │   ├── __init__.py
 │       │   ├── scanner.py
@@ -748,6 +775,57 @@ Claude Code는 개인 세션과 토큰 유출 가능성이 있으므로, `doctor
 
 ---
 
+## 17a. shell_prompt Adapter 설계 (v0.13.0)
+
+shell prompt 도구(starship, powerlevel10k)의 **설정 파일**을 백업·동기화한다.
+`anvyc prompt` 명령(§27.10)이 prompt 에 anvyc 라우팅 세그먼트를 노출한다면,
+이 어댑터는 prompt 도구 자신의 설정(컬러·세그먼트 정의 등)을 다른 머신에
+재현할 수 있게 한다.
+
+### 17a.1 포함 / 제외 정책
+
+| 경로 | 정책 | 이유 |
+|---|---|---|
+| `~/.config/starship.toml` | 기본 포함 | starship 의 단일 설정 파일 — 순수 텍스트, 머신 비의존 |
+| `~/.p10k.zsh` | 기본 포함 | powerlevel10k wizard 결과 — `~/.zshrc` 가 `source` 하는 표준 위치 |
+| `~/.cache/p10k-*` | **제외** | instant-prompt 캐시 — 재생성 가능한 머신 로컬 파일 |
+| p10k 테마 fork | 미추적 | `~/.zsh/themes/` 등 사용자 정의 위치는 명시 적용 필요 |
+
+두 도구는 동일 도메인(shell prompt 설정)이고 사용자는 보통 하나만 쓰므로
+**단일 `shell_prompt` 어댑터**로 묶는다 — `collect()` 가 존재하는 파일만
+포함해, 두 도구 동시 설치를 강제하지 않는다.
+
+### 17a.2 어댑터 표면
+
+```python
+class ShellPromptAdapter:
+    name = "shell_prompt"
+    DEFAULT_FILES = ("~/.config/starship.toml", "~/.p10k.zsh")
+
+    def detect(self) -> bool:        # 둘 중 하나라도 존재하면 True
+    def collect(self) -> [ManagedFile]:  # 존재하는 파일만 ManagedFile 로
+    def validate(self) -> []:        # 추가 검증 없음 (텍스트 파일)
+```
+
+`apply` / `diff` / `target_hash` 는 기본 텍스트 어댑터 패턴(§11)을 따른다 —
+별도 plist/JSON 파싱 없이 raw 텍스트 동기화. starship.toml 의 TOML 파싱 오류
+검증은 starship 자체에 위임한다 (anvyc 가 도구 동작을 추측하지 않음).
+
+### 17a.3 secret 영역
+
+starship/p10k 설정 파일은 일반적으로 secret 을 포함하지 않는다. 단, 사용자가
+custom command 에 raw token 을 박을 가능성이 있으므로 secret scanner 의
+일반 패턴(§13)을 그대로 적용한다 — 별도 allowlist 없음.
+
+### 17a.4 호환성 / 마이그레이션
+
+- 신규 어댑터 추가 — 어댑터 수 9 → **10** (`anvyc tools list` 카운트 변경).
+- 기존 사용자: `~/.config/starship.toml` 또는 `~/.p10k.zsh` 가 없으면 silent
+  (`enabled: true` 가 기본이지만 `detect()` False).
+- yaml 명시 비활성화 가능: `tools.shell_prompt.enabled: false`.
+
+---
+
 ## 18. Metadata 설계
 
 ### 18.1 metadata.json 예시
@@ -1238,6 +1316,42 @@ doctor 세 check 와 `project list`/MCP 진입점은 `resolve_project_roots()` �
 루트를 순회하며 `Path.resolve()` 로 중복 디렉터리를 제거한다. `dev_env` 어댑터는
 별도로 `tools.dev_env.project_roots` config 를 쓰고 SoT 상수는 fallback 으로만 쓴다.
 
+### 27.10 `anvyc prompt` 명령 (v0.13.0)
+
+`anvyc prompt` 는 현재 디렉터리의 per-project 계정 라우팅(§32.4a/b/c) 을 shell
+prompt 용 한 줄로 출력한다. `project show` 를 매번 실행하지 않고도 라우팅
+상태를 prompt 에 상시 표시할 수 있게 한다. starship custom command / p10k
+세그먼트 연동 가이드는 `docs/shell-prompt.md`.
+
+**출력 형식**:
+
+| 모드 | 출력 | 빈 결과 |
+|---|---|---|
+| default | `aws:<v> gh:<v> claude:<v> pulumi:<v>` (설정된 키만 공백 구분) | 빈 출력 |
+| `--json` | `{"aws":"...", "gh":"...", ...}` | `{}` |
+
+**필드 매핑** — 모두 `ProjectInfo` 파생 값:
+
+| key | 출처 |
+|---|---|
+| `aws` | `.envrc` 의 `AWS_PROFILE` (§32.4) |
+| `gh` | `.envrc` 의 `GH_CONFIG_DIR` → 계정 (§32.4a) |
+| `claude` | `.envrc` 의 `CLAUDE_CONFIG_DIR` → 계정 (§32.4b) |
+| `pulumi` | `Pulumi.yaml` 의 `backend.url` (§32.4c) |
+
+**설계 결정**:
+
+| 결정 | 내용 | 근거 |
+|---|---|---|
+| **never break the shell** | 어떤 예외도 잡아 빈 출력 + exit 0 | prompt 호출이 셸을 깨면 사용자 경험이 무너짐 — read-only 명령이라 안전 |
+| 파생 필드만 출력 | `ProjectInfo.aws_profile` 등 라우팅 값만, raw secret 없음 | dev_env redaction 불필요 → `redact_secrets=False` 로 호출 후 secret 필드 미참조 |
+| 도구 비의존 — stdout 한 줄 | starship/p10k 모두 stdout 텍스트를 그대로 임베드하는 인터페이스 | 어댑터 매뉴얼 분리 — anvyc 는 텍스트만 책임, 스타일링은 prompt 도구 |
+| `--path` 옵션 | default `Path.cwd()` | 테스트·tab 전환 시 임의 디렉터리 조회 가능 |
+| 호출 비용 ~70ms | starship `command_timeout` 기본 500ms 이내 | 매 prompt 호출 — `project show` 보다 가벼운 read-only path 만 사용 |
+
+`prompt` 자체는 어떤 파일도 쓰지 않으며 secret 을 출력하지 않는다 — apply/backup
+경로의 secret 정책(§13)과 직교한다.
+
 ---
 
 ## 28. 최종 의사결정
@@ -1260,75 +1374,40 @@ MVP는 Python으로 빠르게 구현하고, 실제 Mac 2대에서 end-to-end 검
 
 ---
 
-## 29. Post-PoC 로드맵 (2026-05-18 기준)
+## 29. 릴리스 로드맵
 
-§21 의 1~3주차 원안은 일부 완료. 본 섹션이 v0.1.0 MVP 까지의 갱신된 작업 계획이다.
+릴리스별 변경 내역의 **단일 소스**는 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 다.
+본 섹션은 마일스톤 수준의 진행 상태만 요약하고, 상세 변경 내역·근거·migration
+은 RELEASE_NOTES 를 참조한다.
 
-### 29.1 완료된 영역
+### 29.1 출시된 마일스톤
 
-| 영역 | 완료 내역 |
-|---|---|
-| CLI | doctor, init, backup, list, status, diff |
-| Adapter | shell, git |
-| Doctor checks | cross-user, venv-hidden-flag |
-| Core | backup orchestrator, secret scanner, status, diff |
-
-### 29.2 Phase 분류 (Q1~Q4 결정 반영, 2026-05-18 확정)
-
-| Phase | 범위 | 우선순위 | 추정 |
-|---|---|---|---|
-| 1 | apply / restore (round-trip) | HIGH (v0.1.0 필수) | 4~6h |
-| 2 | 어댑터 6개 (aws/gh/pulumi/claude/iterm2/cursor) | HIGH (v0.1.0 필수) | 5~7h |
-| 3 | Git 동기화 (.anvyc → remote, pre-commit hook) | **HIGH (v0.1.0 필수, Q1 확정)** | 3~4h |
-| 4 | Doctor 보강 (#17, adapter validate 통합, cursor-projects-suggest, --fix v0.2) | MEDIUM | 2~3h |
-| 5 | **1Password Secret Reference (v0.1.0) / SOPS (v0.2)** — Q4 확정 | HIGH (v0.1.0 일부 필수) | 2~3h |
-| 6 | 테스트 + 패키징 + v0.1.0 릴리즈 | 필수 | 4~6h |
-
-### 29.3 의존성
-
-```
-P1 → P2 (apply 기본 구현이 있어야 새 어댑터가 즉시 backup+apply 양쪽 동작)
-P2 → P6
-P3, P4, P5 — P1 이후 어디서든 병렬
-```
-
-### 29.4 v0.1.0 MVP 최단 경로 (확정 후)
-
-**v0.1.0 필수**: Phase 1 + Phase 2 + Phase 3 + Phase 5 (1Password 부분) + Phase 6
-**v0.1.0 권장 (시간 허용 시)**: Phase 4 — 사용자 신뢰도용 doctor 보강
-**v0.2 로 연기**: Phase 5 SOPS 통합 (encryption-at-rest)
-
-**근거 (Q1~Q4 확정)**:
-- Q1: Git sync 는 사용자 핵심 사용 시나리오 → v0.1.0 포함
-- Q4: 1Password Secret Reference (`op://`) 는 v0.1.0 에서 secret 분리 정책의 1차 솔루션. backup 에는 reference 만 남고 실제 secret 은 1Password 에 보관 → SOPS 없이도 안전
-
-**총 추정 (필수 경로)**: 18~26 시간 = 3~4일.
-
-### 29.5 권장 진행 순서 (확정 후)
-
-```
-Day 1  P1.1 → P1.7   apply/restore 라운드 트립 완성
-Day 1  P5.1 → P5.3   1Password Secret Reference 인식 + scan-secrets 통합 (op:// 안전 허용 + 다른 secret 강제)
-Day 1  P2.1 ~ P2.3   aws / gh / pulumi
-Day 2  P2.4          claude (디렉터리 재귀 패턴 첫 케이스)
-Day 2  P2.5          iterm2 (plistlib + §14.2/§14.3 실측 키 목록)
-Day 2  P2.6          cursor (#6~#11, 3-layer)
-Day 3  P3.1 ~ P3.5   .anvyc Git 동기화 + pre-commit hook
-Day 3  P4.4          cursor-projects-suggest doctor check (Q3)
-Day 4  P4.1 ~ P4.2   doctor 보강 (iTerm2 cross-user, adapter validate 통합)
-Day 4  P6.1 ~ P6.5   unit/integration test + pipx + v0.1.0 tag
-```
-
-각 phase 끝에 commit + push, 큰 phase 는 sub-commit.
-
-### 29.6 결정 확정 (2026-05-18)
-
-| # | 항목 | 결정 |
+| 버전 | 핵심 변경 | 관련 §·문서 |
 |---|---|---|
-| Q1 | Phase 3 (Git sync) v0.1.0 포함 | **포함** — `anvyc git init/commit/push` + pre-commit hook 모두 v0.1.0 |
-| Q2 | iterm2 safe subset 확정 방법 | **사용자 환경 기준 재조정** — §14.2/§14.3 실측 plist 기반으로 확정 완료 |
-| Q3 | Cursor projects 모드 default roots | **자동 감지 후 제안** — doctor 의 `cursor-projects-suggest` check 가 ~/dev 등 스캔, INFO 로 출력하고 사용자 yaml 편집 권유 |
-| Q4 | v0.1.0 secret 분리 솔루션 | **1Password Secret Reference (`op://`)** — v0.1.0. **SOPS** 는 v0.2 로 연기 |
+| v0.1.0 | MVP — apply/restore + 8 adapter + Git sync + 1Password reference | §10~17, §30 |
+| v0.2 | SOPS encryption-at-rest | §31 |
+| v0.5.x | iTerm2 status 정합화 + SOPS per-file override + sops 단독 CLI | §14, §31 |
+| v0.6.x | Homebrew tap + `--from-git` + multi-account doctor checks + 호스트별 overlay | §27.1.1 |
+| v0.7.x | `dev_env` 어댑터 + interactive wizard + `install.sh` one-liner | §17a 인접 |
+| v0.8.x | `project show/list/doctor` (AI agent multi-project view) | §32, §33 |
+| v0.9.0 | MCP server (`anvyc serve --mcp`, 5 read-only tool) | §34 |
+| v0.10.0 | MCP tool naming cleanup (`anvyc_` prefix 제거, breaking) | §34.9 |
+| v0.11.0 / v0.12.0 | per-project gh/Claude/Pulumi 계정 라우팅 인식 + 프로젝트 루트 SoT | §27.8, §32.4a/b/c |
+| v0.13.0 | shell prompt 통합 — `anvyc prompt` 세그먼트 + `shell_prompt` 어댑터 + dev wrapper PYTHONPATH | §17a, §27.7, §27.10 |
+
+§21·구 Post-PoC 로드맵의 phase 분류·일일 일정은 v0.1.0 MVP 단계에서 소진되어
+RELEASE_NOTES 의 버전별 릴리스 노트로 대체되었다.
+
+### 29.2 진행 중 / 후속 작업
+
+본 섹션은 RELEASE_NOTES 와 중복되지 않게, **DESIGN 차원에서 추적 가치가 있는**
+미해결 항목만 명시한다.
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| v1.0 API stable + PyPI 배포 | 계획 | §32.7 / §34.9 schema 안정성 정책 그대로 — major 변경만 허용 |
+| MCP write 영역 노출 (backup/apply 등) | 의도적 보류 | §34.5 — destructive 자동 실행 위험, 사용자 명시 CLI 유지 |
+| MCP SSE / multi-client transport | 향후 | §34.8 — stdio 단일 client 한계 |
 
 ---
 
