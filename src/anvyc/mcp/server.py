@@ -4,16 +4,19 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
 
   {"mcpServers": {"anvyc": {"command": "anvyc", "args": ["serve", "--mcp"]}}}
 
-5 read-only tool 노출 (D21):
+7 read-only tool 노출 (D21 + CP-1 3/3):
   project_show       cwd 의 단일 project connection
   project_list       root 아래 모든 project matrix
   project_doctor     cwd 의 정합성 8 check
   doctor             anvyc 환경 진단 (14 check)
   tools_list         9 도구 enabled / detect
+  activity_summary   Claude Code session 통합 통계 (CP-1)
+  tool_call_stats    tool 별 사용 카운트 ranking (CP-1)
 
 write 영역 (backup/apply/restore) 은 의도적 미포함 — agent 가 destructive
 실행 못 함. 사용자가 CLI 로 명시 실행.
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -57,8 +60,7 @@ def _tool_defs() -> list[Tool]:
                         "type": "boolean",
                         "default": False,
                         "description": (
-                            "dev_env 의 secret 패턴 매칭 값을 raw 노출 "
-                            "(default: ***REDACTED***)."
+                            "dev_env 의 secret 패턴 매칭 값을 raw 노출 (default: ***REDACTED***)."
                         ),
                     },
                 },
@@ -87,10 +89,7 @@ def _tool_defs() -> list[Tool]:
         ),
         Tool(
             name="project_doctor",
-            description=(
-                "cwd (또는 명시 path) 의 connection 정합성 8 check. "
-                "DESIGN §33.2/§33.3."
-            ),
+            description=("cwd (또는 명시 path) 의 connection 정합성 8 check. DESIGN §33.2/§33.3."),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -126,6 +125,32 @@ def _tool_defs() -> list[Tool]:
             ),
             inputSchema={"type": "object", "properties": {}},
         ),
+        Tool(
+            name="activity_summary",
+            description=(
+                "Claude Code session 의 통합 통계 (CP-1). "
+                "~/.claude*/projects/*/*.jsonl 를 read-only 로 집계 — "
+                "total_sessions / total_events / total_tool_calls / "
+                "total_duration_seconds / oldest~newest range / tools_used dict."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="tool_call_stats",
+            description=(
+                "tool 별 사용 카운트 ranking (CP-1). "
+                "most_common 정렬, `top` N 으로 상위 N 개만 반환 가능."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "top": {
+                        "type": "integer",
+                        "description": "상위 N 개 반환 (미지정 시 전체).",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -149,9 +174,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         from anvyc.core.project_info import collect_project_info, to_dict
 
         p = Path(args.get("path") or ".")
-        info = collect_project_info(
-            p, redact_secrets=not args.get("reveal_secrets", False)
-        )
+        info = collect_project_info(p, redact_secrets=not args.get("reveal_secrets", False))
         return to_dict(info)
 
     if name == "project_list":
@@ -162,10 +185,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         roots = args.get("roots") or list(resolve_project_roots())
         projs = discover_projects(roots)
         reveal = bool(args.get("reveal_secrets", False))
-        return [
-            to_dict(collect_project_info(p, redact_secrets=not reveal))
-            for p in projs
-        ]
+        return [to_dict(collect_project_info(p, redact_secrets=not reveal)) for p in projs]
 
     if name == "project_doctor":
         from anvyc.core.project_doctor import run_project_doctor
@@ -189,6 +209,17 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         from anvyc.cli import _collect_tools_rows
 
         return _collect_tools_rows(None)
+
+    if name == "activity_summary":
+        from anvyc.core.activity import aggregate_sessions, collect_sessions
+
+        return aggregate_sessions(collect_sessions())
+
+    if name == "tool_call_stats":
+        from anvyc.core.activity import collect_sessions, tool_call_ranking
+
+        top = args.get("top")
+        return tool_call_ranking(collect_sessions(), top=top if isinstance(top, int) else None)
 
     raise ValueError(f"unknown tool: {name}")
 
@@ -219,9 +250,7 @@ async def call_tool(  # pragma: no cover - thin wrapper
 
 async def _main() -> None:  # pragma: no cover - I/O loop
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream, write_stream, server.create_initialization_options()
-        )
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
 def run() -> None:
