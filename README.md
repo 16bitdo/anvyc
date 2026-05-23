@@ -185,9 +185,13 @@ anvyc/
 ├── DESIGN.md
 ├── pyproject.toml
 ├── src/anvyc/
+│   ├── __main__.py  # python -m anvyc 진입점 (v0.13.0+)
 │   ├── cli.py
-│   ├── core/        # inventory, backup, diff, apply, restore, metadata
-│   ├── adapters/    # shell, git, aws, gh, cursor, claude, iterm2, pulumi
+│   ├── templates.py
+│   ├── core/        # inventory, backup, diff, apply, restore, metadata, project_info, project_roots
+│   ├── adapters/    # shell, git, aws, gh, cursor, claude, iterm2, pulumi, dev_env, shell_prompt
+│   ├── checks/      # doctor checks (cross_user, project_*_account, venv_hidden, ...)
+│   ├── mcp/         # MCP server (anvyc serve --mcp, v0.9.0+, [mcp] extra)
 │   ├── security/    # scanner, patterns, policy
 │   ├── storage/     # local, git, encryption
 │   └── utils/
@@ -215,7 +219,7 @@ anvyc scan-secrets             # secret 패턴 스캔
 
 anvyc config edit              # $EDITOR 로 anvyc.yaml 편집 + schema 검증 (v0.6.3+)
 anvyc config show [--effective] [--json]   # raw 또는 default 적용된 yaml/json (v0.6.3+/v0.8.0)
-anvyc tools list [--json]      # 9 도구의 enabled / detect / file-count (v0.6.3+/v0.8.0)
+anvyc tools list [--json]      # 10 도구의 enabled / detect / file-count (v0.6.3+/v0.13.0)
 
 anvyc project show [--path P] [--json] [--reveal-secrets]
                                # cwd 의 AWS/GitHub/Pulumi/dev_env 통합 view (v0.8.0+)
