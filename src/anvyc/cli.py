@@ -24,6 +24,7 @@ from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
+from anvyc.core.snapshot import create_snapshot
 from anvyc.core.status import compute_status
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
@@ -48,6 +49,12 @@ app.add_typer(tools_app, name="tools")
 
 project_app = typer.Typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
 app.add_typer(project_app, name="project")
+
+snapshot_app = typer.Typer(
+    name="snapshot",
+    help="작업 회복 — git stash + meta 묶음 snapshot (CP-4, v2 진입).",
+)
+app.add_typer(snapshot_app, name="snapshot")
 
 console = Console()
 
@@ -1504,6 +1511,68 @@ def activity(
             top_tools or "—",
         )
     console.print(table)
+
+
+@snapshot_app.command("create")
+def snapshot_create(
+    label: str | None = typer.Option(
+        None,
+        "--label",
+        "-l",
+        help="사람 가독 label (선택). 의미 있는 마커 권장 (예: 'before-refactor').",
+    ),
+    session_id: str | None = typer.Option(
+        None,
+        "--session-id",
+        help="Claude session id 명시 override. 미지정 시 CLAUDE*_SESSION_ID env 추출.",
+    ),
+    repo: Path = typer.Option(
+        Path.cwd(),
+        "--repo",
+        help="git working tree 루트 (기본 cwd).",
+    ),
+    anvyc_root: Path | None = typer.Option(
+        None,
+        "--anvyc-root",
+        help="`.anvyc/` 디렉터리 경로 override (기본 <repo>/.anvyc).",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """현재 workspace snapshot 1건 생성 (`git stash create` + meta).
+
+    autopilot 의 reckless 변경 직전 명시적 marker 로 사용. working tree 가
+    clean 이어도 시점 anchor 로 생성됨 (`working_clean=true`).
+
+    저장 위치: `<anvyc_root>/snapshots/<id>/meta.json`
+    git stash anchor: `refs/anvyc-snapshots/<id>` (GC 방지)
+
+    CP-4 1/3 — list/diff (2/3), restore (3/3) 는 후속 PR.
+    """
+    anvyc_dir = anvyc_root or (repo / ".anvyc")
+    try:
+        meta = create_snapshot(
+            repo, anvyc_dir, label=label, session_id=session_id
+        )
+    except ValueError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    if json_out:
+        typer.echo(jsonlib.dumps(meta.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    console.print(f"[bold green]snapshot created[/]  id={meta.id}")
+    if meta.label:
+        console.print(f"  label:             {meta.label}")
+    console.print(f"  branch:            {meta.git_branch or '—'}")
+    console.print(f"  claude session:    {meta.claude_session_id or '—'}")
+    console.print(f"  uncommitted files: {meta.uncommitted_count}")
+    if meta.working_clean:
+        console.print("  [dim]working tree clean — anchor marker only[/]")
+    else:
+        console.print(f"  git stash ref:     {meta.git_stash_ref or '—'}")
+        console.print(f"  git stash sha:     {meta.git_stash_sha or '—'}")
+    console.print(f"  meta:              {anvyc_dir / 'snapshots' / meta.id / 'meta.json'}")
 
 
 if __name__ == "__main__":

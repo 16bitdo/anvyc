@@ -15,7 +15,7 @@ from anvyc.core.activity import (
 )
 
 
-def _write_session(path: Path, events: list[dict]) -> None:
+def _write_session(path: Path, events: list[dict[str, object]]) -> None:
     path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
 
 
