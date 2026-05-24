@@ -1887,3 +1887,88 @@ src/anvyc/
   - v0.9.0 의 `anvyc_*` prefix 는 cleanup deferred 였음 (v0.10.0 에서 제거)
 - minor 변경 (key 추가 / 새 tool 추가) 만 backward-compat
 - breaking 변경 (key 제거 / 이름 변경 / 타입 변경) 은 major (v1.0+) 에서만
+
+## 35. Snapshot / Rollback 설계 (CP-4)
+
+> Control Plane v2 의 첫 axis. autopilot 의 실수 (예: 브랜치 30 파일 수정) 를
+> 명시적 marker → 복원 가능하게 한다. 본 PR (1/3) 은 capture (`create`) 만;
+> list/diff (2/3), restore (3/3) 는 후속 PR. SoT 트리오는
+> `role-based-ruleset` 측 (ROADMAP §4 CP-4 / DESIGN §7 / manifest).
+
+### 35.1 설계 원칙
+
+- **Non-disruptive capture**: `git stash create` 로 commit object 만 생성 —
+  working tree 미변경. `git update-ref refs/anvyc-snapshots/<id>` 로 GC 방지
+  anchor. 사용자가 `git stash drop` 같은 명령을 실행해도 영향 없음.
+- **Workspace-local storage**: `<repo>/.anvyc/snapshots/<id>/meta.json` —
+  기존 `.anvyc/backups/` 와 분리된 sub-tree. portability 가 필요하면 후속
+  polish (예: `~/.anvyc/snapshots/` global mirror).
+- **Schema 우선 안정화** (v1 cut-over 학습 L7 적용): 1/3 머지 시점에
+  `schema_version: 1` 확정 → 2/3 의 list/diff, 3/3 의 restore 가 이 schema
+  를 입력 contract 로 가정.
+
+### 35.2 Snapshot Meta Schema v1
+
+```json
+{
+  "schema_version": 1,
+  "id": "20260524T013000Z-a1b2c3",
+  "label": "before-refactor",
+  "claude_session_id": "abc-def-...",
+  "git_branch": "feat/foo",
+  "git_stash_ref": "refs/anvyc-snapshots/20260524T013000Z-a1b2c3",
+  "git_stash_sha": "<commit-sha>",
+  "created_at": "2026-05-24T01:30:00Z",
+  "uncommitted_count": 5,
+  "working_clean": false
+}
+```
+
+| key | 타입 | 의미 |
+|---|---|---|
+| `schema_version` | int | 현재 `1`. breaking change 시 증가. |
+| `id` | str | `<UTC-timestamp>-<6-hex>` (sortable + unique). |
+| `label` | str \| null | 사람 가독 marker (선택). |
+| `claude_session_id` | str \| null | `--session-id` 명시 우선 → `CLAUDE*_SESSION_ID` env fallback. |
+| `git_branch` | str \| null | 현재 branch (detached HEAD 시 sha). |
+| `git_stash_ref` | str \| null | `refs/anvyc-snapshots/<id>` (clean tree 시 null). |
+| `git_stash_sha` | str \| null | stash commit SHA (clean tree 시 null). |
+| `created_at` | str | ISO8601 UTC. |
+| `uncommitted_count` | int | tracked 변경 + untracked 파일 수. |
+| `working_clean` | bool | `uncommitted_count == 0`. |
+
+### 35.3 명령 contract (CP-4 시리즈)
+
+| 명령 | PR | 안전 등급 | 책임 |
+|---|---|---|---|
+| `anvyc snapshot create [--label X] [--session-id Y]` | **1/3 (본 PR)** | read+create | git stash + meta 적재. clean tree 도 anchor marker. |
+| `anvyc snapshot list [--json]` | 2/3 | read-only | `.anvyc/snapshots/*/meta.json` 인덱스. |
+| `anvyc snapshot diff <id> [--against <other-id>]` | 2/3 | read-only | snapshot vs 현재 (또는 두 snapshot 간) diff. `git diff <stash-sha> <ref>` 위. |
+| `anvyc snapshot restore <id> [--dry-run] [--force]` | 3/3 | **destructive** | working tree 를 snapshot 시점으로 복원. dry-run 기본, `--force` 명시 + confirm prompt. |
+
+### 35.4 git stash anchor 의 의미
+
+`git update-ref refs/anvyc-snapshots/<id> <sha>` 로 stash commit 을 anchor
+하면:
+- `git stash list` 에는 안 보임 (전용 refspace)
+- `git gc` 가 unreachable 로 판정 안 함 (ref 가 있음)
+- `git stash apply <ref>` 또는 `git checkout <ref>` 로 복원 가능 (3/3 PR)
+- 사용자 의도 명시 (rm refs/anvyc-snapshots/<id>) 시 정리 가능
+
+이 분리는 사용자의 native `git stash` workflow 와 anvyc snapshot 의
+namespace 충돌을 방지한다.
+
+### 35.5 Out of scope (1/3 본 PR)
+
+- `list` / `diff` / `restore` 명령 (→ 2/3, 3/3)
+- snapshot 자동 expiration (예: 30일 후 자동 삭제) — 후속 polish
+- portable export (snapshot 을 다른 머신/repo 로 이동) — 후속 polish
+- snapshot meta 에 anvyc doctor 결과 캡처 — CP-5 (creds) 와 cross-link 시 검토
+
+### 35.6 보안 경계
+
+- snapshot meta 에 **token 저장 금지** — `claude_session_id` 는 식별자라
+  본문 아님; CP-5 `creds status` 결과는 별도 read-only API 참조로만 cross-link.
+- `.anvyc/snapshots/` 의 stash sha 는 git object — 일반 git 파일 권한 적용.
+  민감 정보가 working tree 에 있던 시점이면 stash 에도 포함됨 — 사용자
+  책임 (rule `26-secrets-1password` 의 1Password 사용 원칙 유지).

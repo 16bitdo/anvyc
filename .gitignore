@@ -44,6 +44,7 @@ CONTEXT.md
 # anvyc runtime state (사용자 환경)
 .anvyc/local-backups/
 .anvyc/reports/
+.anvyc/snapshots/    # CP-4 snapshot meta (워크스페이스 state, 커밋 비대상)
 
 # secret 영역은 절대 commit 금지
 .anvyc-secrets/
