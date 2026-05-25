@@ -24,6 +24,8 @@ Shell / Git / AWS / GitHub / Cursor / Claude Code / iTerm2 / Pulumi + dev_env / 
 
 anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** + **apply 전 diff/dry-run** + **restore 전 local backup**으로 풀어낸다.
 
+[chezmoi](https://chezmoi.io) 의 안전 원칙 (source/target 분리 · dry-run · age 암호화) 에서 영감을 받았다. 자세한 비교: [DESIGN.md §2 선행 사례](./DESIGN.md).
+
 ---
 
 ## 3. 핵심 원칙
