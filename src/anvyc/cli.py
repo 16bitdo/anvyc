@@ -47,6 +47,15 @@ from anvyc.core.snapshot import (
     restore_snapshot,
 )
 from anvyc.core.status import compute_status
+from anvyc.core.sync import (
+    STATUS_DIFF,
+    STATUS_LOCAL_ONLY,
+    STATUS_REMOTE_ONLY,
+    STATUS_SAME,
+    compute_sync_status,
+    load_remote_manifest,
+    scan_local_manifest,
+)
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
 app = typer.Typer(
@@ -82,6 +91,12 @@ creds_app = typer.Typer(
     help="자격 lifecycle — AWS SSO / GitHub / Claude OAuth 만료 상태 (CP-5).",
 )
 app.add_typer(creds_app, name="creds")
+
+sync_app = typer.Typer(
+    name="sync",
+    help="cross-machine state sync — control plane 자산 (CP-3 health / CP-4 snapshot) 머신 간 동기화 (CP-6, v3).",
+)
+app.add_typer(sync_app, name="sync")
 
 console = Console()
 
@@ -1932,6 +1947,89 @@ def creds_rotate(
         console.print(f"  [dim]stderr (tail):[/]\n{result.stderr_tail}")
     if result.return_code != 0:
         raise typer.Exit(code=result.return_code or 1)
+
+
+@sync_app.command("status")
+def sync_status(
+    target: Path = typer.Option(
+        ...,
+        "--target",
+        help="remote target filesystem path (mount / git clone / sync 폴더 — manifest 와 payload 가 위치).",
+    ),
+    machine_id: str | None = typer.Option(
+        None,
+        "--machine-id",
+        help="local machine id override (기본: env ANVYC_MACHINE_ID > <user>@<hostname>).",
+    ),
+    home: Path | None = typer.Option(
+        None,
+        "--home",
+        help="검사 root 디렉터리 override (기본 $HOME). 테스트 / 다른 머신 mount 시.",
+    ),
+    dev_root: Path | None = typer.Option(
+        None,
+        "--dev-root",
+        help="workspace 루트 override (기본 <home>/dev). CP-4 snapshot meta scan 대상.",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """local control plane state vs remote sync target diff (read-only).
+
+    CP-6 1/3 — schema v1 + drift detection. push/pull (2/3) 는 후속 PR.
+
+    Remote layout: \\<target\\>/anvyc-sync-manifest.json (단일 machine 기준
+    1/3 MVP). 부재 시 모든 local item 이 `local_only` 로 표시 — push 후보.
+    """
+    h = home or Path.home()
+    local = scan_local_manifest(home=h, dev_root=dev_root, machine_id=machine_id)
+    remote = load_remote_manifest(target) if target.is_dir() else None
+    report = compute_sync_status(local, remote, remote_target=target)
+
+    if json_out:
+        typer.echo(jsonlib.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    console.print(f"[bold]sync status[/]  machine_id={report.machine_id}")
+    console.print(f"  remote target:   {report.remote_target}")
+    console.print(f"  checked_at:      {report.checked_at}")
+
+    s = report.summary
+    total = sum(s.values())
+    if total == 0:
+        console.print("  [dim]no items local or remote — nothing to sync.[/]")
+        return
+
+    if remote is None:
+        console.print(f"  [yellow]remote manifest 부재[/] — 모든 {s[STATUS_LOCAL_ONLY]} local item 이 push 후보 (CP-6 2/3).")
+
+    console.print(
+        f"  summary:         same={s[STATUS_SAME]}  local_only={s[STATUS_LOCAL_ONLY]}  "
+        f"remote_only={s[STATUS_REMOTE_ONLY]}  diff={s[STATUS_DIFF]}"
+    )
+
+    actionable = [e for e in report.diff_entries if e.status != STATUS_SAME]
+    if not actionable:
+        console.print("  [green]✓ in sync[/]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("status", style="cyan")
+    table.add_column("relative_path")
+    table.add_column("local size", justify="right")
+    table.add_column("remote size", justify="right")
+    status_color = {
+        STATUS_LOCAL_ONLY: "[yellow]local_only[/]",
+        STATUS_REMOTE_ONLY: "[magenta]remote_only[/]",
+        STATUS_DIFF: "[bold red]diff[/]",
+    }
+    for e in actionable:
+        table.add_row(
+            status_color.get(e.status, e.status),
+            e.relative_path,
+            str(e.local.size) if e.local else "—",
+            str(e.remote.size) if e.remote else "—",
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":

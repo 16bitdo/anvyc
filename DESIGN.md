@@ -2150,3 +2150,109 @@ rotate 는 destructive — snapshot/restore (§35.7) 의 4-layer 안전 패턴 �
 **1Password 통합 (`--from-op REF`)** 은 후속 polish — 사용자가 PAT 를
 `op://...` 에 보관한 경우만 의미. AWS SSO + gh OAuth 같은 다수 케이스는
 browser refresh 가 더 안전 (token 자체가 OS keychain / 표준 cache 에 저장).
+
+## 37. Cross-Machine State Sync 설계 (CP-6)
+
+> Control Plane **v3 의 첫 axis**. 여러 머신 간 control plane mutable
+> state (CP-4 snapshot meta + CP-3 health JSON + CP-5 creds expiry timestamp)
+> 동기화. 1/3 본 PR 은 schema v1 + `sync status` (read-only drift detection)
+> 만; push/pull (2/3), conflict resolution (3/3) 은 후속 PR. SoT 트리오는
+> `role-based-ruleset` 측 (ROADMAP §4 CP-6 / DESIGN §7 / manifest).
+
+### 37.1 설계 원칙
+
+- **L12 cross-axis schema 일관성 입증 시점**: CP-3 health JSON + CP-4
+  snapshot meta + CP-5 CredentialsReport 가 모두 `schema_version: 1` 이라
+  sync target adapter 가 일반화 가능. 본 axis 는 L12 의 sync 단위 안정성
+  가치 입증.
+- **단일 schema v1 (local/remote 양쪽 동일)**: SyncTargetManifest 가 local
+  filesystem scan 으로 생성되고, remote target 에 동일 format 으로 저장.
+  diff 는 두 manifest 의 set 연산 + sha256 비교만으로 결정 — 단순성.
+- **kind 별 adapter** (1/3 MVP): `snapshot_meta` + `health_json` 만 지원.
+  creds expiry timestamp 는 live computation 이라 후속 polish.
+- **Remote target = filesystem path** (1/3): local mount (NFS/SMB) / git
+  clone 디렉터리 / sync 폴더 (Dropbox / iCloud / Syncthing). HTTPS/S3
+  backend abstraction 은 후속 polish — 본 axis 는 backend 결정 위임.
+- **단방향 read-only first** (1/3): `sync status` 만. write (push/pull) 는
+  2/3 으로 분리해 schema 안정화 후 진입.
+- **machine_id 명시**: 사용자 명시 (`anvyc.yaml`) > env (`ANVYC_MACHINE_ID`)
+  > default `<user>@<hostname>`.
+
+### 37.2 SyncTargetManifest schema v1
+
+```json
+{
+  "schema_version": 1,
+  "machine_id": "edward@mbp-edward",
+  "generated_at": "2026-05-25T10:00:00Z",
+  "items": [
+    {
+      "kind": "snapshot_meta" | "health_json",
+      "relative_path": "anvyc/snapshots/foo-<id>/meta.json",
+      "size": 512,
+      "sha256": "abc123...",
+      "mtime": "2026-05-25T09:30:00Z"
+    },
+    ...
+  ]
+}
+```
+
+### 37.3 명령 contract (CP-6 시리즈)
+
+| 명령 | PR | 안전 등급 | 책임 |
+|---|---|---|---|
+| `anvyc sync status --target <path> [--machine-id X] [--json]` | **1/3 (본 PR)** | read-only | local manifest 생성 + remote manifest 비교 → SyncStatusReport (summary + diff_entries). remote 부재 시 모든 local item 이 `local_only`. |
+| `anvyc sync push <target>` | 2/3 | read+write | local items 를 remote target 에 mirror + remote manifest 갱신. conflict 검출 시 안내 (auto-resolve 없음). |
+| `anvyc sync pull <target>` | 2/3 | read+write | remote items 를 local 에 mirror. conflict 검출 시 사용자 prompt. |
+| `anvyc sync conflict ...` | 3/3 | destructive | conflict resolution 명령. rbr rule `<TBD>` paired. |
+
+### 37.4 Diff 알고리즘 (compute_sync_status)
+
+local + remote manifest 를 `relative_path` key 로 dict 변환 후 set 연산:
+- `local & remote`: 양쪽 모두 — sha256 일치 = `same`, 불일치 = `diff`
+- `local - remote`: local 만 = `local_only` (push 후보)
+- `remote - local`: remote 만 = `remote_only` (pull 후보)
+
+복잡한 trie / 부분 매칭 없음 — relative_path 정확 일치만. mtime 은 정보용
+(diff 판정 안 함 — sha256 이 권위).
+
+### 37.5 Source 별 scan 전략 (1/3)
+
+| Kind | Source path | Relative path 형태 |
+|---|---|---|
+| `snapshot_meta` | `<home>/dev/*/.anvyc/snapshots/<id>/meta.json` | `anvyc/snapshots/<workspace>-<id>/meta.json` |
+| `health_json` | `<home>/.config/cc-inspect/health/*.json` | `cc-inspect/health/<date>.json` |
+
+workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
+
+### 37.6 Remote target layout (1/3)
+
+```
+<remote_target>/
+├── anvyc-sync-manifest.json    # 단일 machine 의 manifest (1/3 MVP)
+├── anvyc/snapshots/<workspace>-<id>/meta.json
+└── cc-inspect/health/<date>.json
+```
+
+**1/3 MVP 는 단일 machine 기준** — 다중 machine 통합 (예: `<remote>/<machine_id>/...`)
+은 2/3 polish.
+
+### 37.7 Out of scope (1/3 본 PR 기준)
+
+- `sync push` / `pull` 명령 (→ 2/3, read+write)
+- conflict resolution + rule (→ 3/3, destructive)
+- creds expiry timestamp sync (live computation — 후속 polish)
+- HTTPS / S3 / git remote backend abstraction (현재는 filesystem path 만)
+- 다중 machine_id 통합 (현재는 단일 remote 기준)
+- token / secret 본문 sync (rule 26 위반 — 의도적 영구 제외)
+
+### 37.8 보안 경계
+
+- sync 대상은 **content hash + 메타** 만 manifest 에 노출. 본문은 별 파일
+  로 remote 에 저장 (path 기반).
+- **token / secret 본문 sync 금지** — creds.json 같은 자격 본문은 sync
+  대상 외 (rule 26-secrets-1password 준수).
+- snapshot meta 의 `claude_session_id` 는 식별자라 본문 아님 — sync 안전.
+- remote_target 은 사용자 책임 — Dropbox 같은 cloud sync 는 cloud 운영사
+  policy 준수.
