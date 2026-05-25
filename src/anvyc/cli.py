@@ -27,9 +27,12 @@ from anvyc.core.restore import run_restore
 from anvyc.core.snapshot import (
     SnapshotDiffError,
     SnapshotNotFoundError,
+    SnapshotRestoreError,
     create_snapshot,
     diff_snapshot,
     list_snapshots,
+    plan_restore,
+    restore_snapshot,
 )
 from anvyc.core.status import compute_status
 from anvyc.templates import DEFAULT_ANVYC_YAML
@@ -1662,6 +1665,95 @@ def snapshot_diff(
     if diff_text:
         typer.echo(diff_text)
     # 빈 diff 는 silent — git diff 표준 동작과 일치.
+
+
+@snapshot_app.command("restore")
+def snapshot_restore(
+    snapshot_id: str = typer.Argument(..., help="복원할 snapshot id."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="실제 복원 수행. 미지정 시 dry-run (계획만 출력, working tree 무변경).",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="--force 시의 confirm prompt 자동 수락 (CI / 자동화용).",
+    ),
+    repo: Path = typer.Option(Path.cwd(), "--repo", help="git working tree 루트."),
+    anvyc_root: Path | None = typer.Option(
+        None,
+        "--anvyc-root",
+        help="`.anvyc/` 디렉터리 경로 override (기본 <repo>/.anvyc).",
+    ),
+) -> None:
+    """snapshot 시점의 working tree 변경분을 현재 위에 apply (**destructive**).
+
+    안전 절차:
+    - 기본 dry-run — 변경 계획 + 경고만 출력 (working tree 무변경).
+    - `--force` 시 실 실행. confirm prompt 가 한 번 더 요구 (`--yes` 로 자동 수락).
+    - 실 실행 직전 **auto pre-restore snapshot** 자동 생성 (label=
+      `pre-restore-<target-id>`) — restore 가 실패하거나 사용자가 되돌리고
+      싶을 때 회복 채널.
+    - `git stash apply` 가 conflict 면 raise — pre-restore snapshot id 안내.
+
+    CP-4 3/3 — axis 완결. paired: rbr rule `18-git-codebase-sync` 갱신.
+    """
+    anvyc_dir = anvyc_root or (repo / ".anvyc")
+
+    try:
+        plan = plan_restore(repo, anvyc_dir, snapshot_id)
+    except SnapshotNotFoundError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold]restore plan[/]  target={plan.target_id}")
+    if plan.target_label:
+        console.print(f"  label:                {plan.target_label}")
+    console.print(f"  target branch:        {plan.target_branch or '—'}")
+    console.print(f"  target stash sha:     {plan.target_stash_sha or '—'}")
+    console.print(f"  target working clean: {plan.target_working_clean}")
+    console.print(f"  current branch:       {plan.current_branch or '—'}")
+    console.print(f"  current uncommitted:  {plan.current_uncommitted_count}")
+    pre_msg = (
+        f"yes (label=pre-restore-{plan.target_id})"
+        if plan.will_create_pre_restore_snapshot
+        else "no (target is clean marker)"
+    )
+    console.print(f"  auto pre-restore:     {pre_msg}")
+    if plan.git_apply_command:
+        console.print(f"  git apply command:    {' '.join(plan.git_apply_command)}")
+
+    for w in plan.warnings:
+        console.print(f"  [yellow]warning:[/] {w}")
+
+    if not force:
+        console.print("[dim]\n(dry-run — no changes. add --force to actually restore.)[/]")
+        return
+
+    if not yes and not typer.confirm("\n실제로 restore 를 수행할까요?"):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = restore_snapshot(repo, anvyc_dir, snapshot_id)
+    except SnapshotRestoreError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    if not result.applied:
+        console.print(
+            f"[dim]no-op — target snapshot {result.target_id} 은 clean marker.[/]"
+        )
+        return
+
+    console.print(f"\n[bold green]restored[/]  target={result.target_id}")
+    console.print(f"  pre-restore snapshot: {result.pre_restore_snapshot_id}")
+    if result.git_apply_stdout:
+        console.print(f"  [dim]git stdout:[/]\n{result.git_apply_stdout}")
+    if result.git_apply_stderr:
+        console.print(f"  [dim]git stderr:[/]\n{result.git_apply_stderr}")
 
 
 if __name__ == "__main__":
