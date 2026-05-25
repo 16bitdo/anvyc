@@ -47,6 +47,8 @@ chezmoi는 age 기반 파일 암호화와 password manager integration을 지원
 
 다만 anvyc는 범용 dotfiles manager가 아니라 **Claude Code, Cursor, AWS, GitHub CLI, Pulumi, iTerm2 중심의 개발환경 특화 동기화 도구**다.
 
+> 사용자 hero 의 압축 인용: [README §2 왜 만들었나](./README.md). README 는 외부 사용자 진입점, 본 DESIGN §2 는 비교 표 5항목 + 차별점의 정식 frame.
+
 ---
 
 ## 3. 제품 정의
