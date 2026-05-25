@@ -52,8 +52,11 @@ from anvyc.core.sync import (
     STATUS_LOCAL_ONLY,
     STATUS_REMOTE_ONLY,
     STATUS_SAME,
+    SyncError,
     compute_sync_status,
     load_remote_manifest,
+    pull_to_local,
+    push_to_remote,
     scan_local_manifest,
 )
 from anvyc.templates import DEFAULT_ANVYC_YAML
@@ -2030,6 +2033,171 @@ def sync_status(
             str(e.remote.size) if e.remote else "—",
         )
     console.print(table)
+
+
+@sync_app.command("push")
+def sync_push(
+    target: Path = typer.Option(..., "--target", help="remote target filesystem path."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="conflict (sha256 불일치) 발생 시 local 본문으로 overwrite. 미지정 시 skip.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="dry-run 출력 후 자동 진행 (confirm prompt skip).",
+    ),
+    machine_id: str | None = typer.Option(None, "--machine-id"),
+    home: Path | None = typer.Option(None, "--home"),
+    dev_root: Path | None = typer.Option(None, "--dev-root"),
+) -> None:
+    """local control plane state 를 remote target 에 mirror (**write**).
+
+    안전 절차 (CP-4 restore §35.7 패턴 미러):
+    - dry-run plan 출력 (status entries)
+    - confirm prompt (--yes 자동 수락)
+    - per-file atomic copy (tempfile + os.replace)
+    - manifest atomic write
+    - conflict (sha256 불일치) 기본 skip — --force 명시 시 overwrite
+    - remote-only items 는 보존 (push 가 삭제 안 함 — destructive 회피)
+
+    CP-6 2/3 — schema v1 위에 write 단. conflict resolution (3/3) 후속.
+    """
+    h = home or Path.home()
+    local = scan_local_manifest(home=h, dev_root=dev_root, machine_id=machine_id)
+    remote = load_remote_manifest(target) if target.is_dir() else None
+    report = compute_sync_status(local, remote, remote_target=target)
+
+    s = report.summary
+    console.print(f"[bold]push plan[/]  target={target}")
+    console.print(
+        f"  summary: same={s[STATUS_SAME]}  local_only={s[STATUS_LOCAL_ONLY]}  "
+        f"remote_only={s[STATUS_REMOTE_ONLY]}  diff={s[STATUS_DIFF]}"
+    )
+    will_copy = s[STATUS_LOCAL_ONLY] + (s[STATUS_DIFF] if force else 0)
+    will_skip_conflict = 0 if force else s[STATUS_DIFF]
+    console.print(
+        f"  will copy: {will_copy} (local_only + diff*force) | "
+        f"skip-conflict: {will_skip_conflict} | preserved remote-only: {s[STATUS_REMOTE_ONLY]}"
+    )
+    if s[STATUS_DIFF] > 0 and not force:
+        console.print("  [yellow]warning:[/] diff entries 가 있음 — --force 없이 skip 됨")
+
+    if will_copy == 0 and s[STATUS_REMOTE_ONLY] == 0:
+        console.print("[dim](nothing to do — already in sync)[/]")
+        return
+
+    if not yes and not typer.confirm("\nproceed?"):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = push_to_remote(local, target, home=h, dev_root=dev_root, force=force)
+    except SyncError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    color = typer.colors.GREEN if result.items_failed == 0 else typer.colors.YELLOW
+    typer.secho(
+        f"\npush done — copied={result.items_copied} "
+        f"skipped_same={result.items_skipped_same} "
+        f"skipped_conflict={result.items_skipped_conflict} "
+        f"failed={result.items_failed} "
+        f"manifest_written={result.manifest_written}",
+        fg=color,
+        bold=True,
+    )
+    if result.failed_paths:
+        console.print("  failed paths:")
+        for p in result.failed_paths[:10]:
+            console.print(f"    - {p}")
+
+
+@sync_app.command("pull")
+def sync_pull(
+    target: Path = typer.Option(..., "--target", help="remote target filesystem path."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="conflict (sha256 불일치) 발생 시 remote 본문으로 local overwrite. 미지정 시 skip.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="dry-run 출력 후 자동 진행.",
+    ),
+    machine_id: str | None = typer.Option(None, "--machine-id"),
+    home: Path | None = typer.Option(None, "--home"),
+    dev_root: Path | None = typer.Option(None, "--dev-root"),
+) -> None:
+    """remote target 의 state 를 local 에 mirror (**write**).
+
+    안전 절차 (push 와 대칭):
+    - dry-run plan 출력
+    - confirm prompt (--yes 자동 수락)
+    - per-file atomic copy
+    - conflict (sha256 불일치) 기본 skip — --force 명시 시 local overwrite
+    - local-only items 는 보존 (pull 이 삭제 안 함)
+
+    CP-6 2/3.
+    """
+    h = home or Path.home()
+    local = scan_local_manifest(home=h, dev_root=dev_root, machine_id=machine_id)
+    remote = load_remote_manifest(target) if target.is_dir() else None
+    if remote is None:
+        typer.secho(
+            f"error: remote manifest 부재 또는 손상: {target}/anvyc-sync-manifest.json",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    report = compute_sync_status(local, remote, remote_target=target)
+
+    s = report.summary
+    console.print(f"[bold]pull plan[/]  target={target}")
+    console.print(
+        f"  summary: same={s[STATUS_SAME]}  local_only={s[STATUS_LOCAL_ONLY]}  "
+        f"remote_only={s[STATUS_REMOTE_ONLY]}  diff={s[STATUS_DIFF]}"
+    )
+    will_copy = s[STATUS_REMOTE_ONLY] + (s[STATUS_DIFF] if force else 0)
+    will_skip_conflict = 0 if force else s[STATUS_DIFF]
+    console.print(
+        f"  will copy: {will_copy} (remote_only + diff*force) | "
+        f"skip-conflict: {will_skip_conflict} | preserved local-only: {s[STATUS_LOCAL_ONLY]}"
+    )
+    if s[STATUS_DIFF] > 0 and not force:
+        console.print("  [yellow]warning:[/] diff entries 가 있음 — --force 없이 skip 됨")
+
+    if will_copy == 0:
+        console.print("[dim](nothing to pull)[/]")
+        return
+
+    if not yes and not typer.confirm("\nproceed?"):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = pull_to_local(target, home=h, dev_root=dev_root, machine_id=machine_id, force=force)
+    except SyncError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    color = typer.colors.GREEN if result.items_failed == 0 else typer.colors.YELLOW
+    typer.secho(
+        f"\npull done — copied={result.items_copied} "
+        f"skipped_same={result.items_skipped_same} "
+        f"skipped_conflict={result.items_skipped_conflict} "
+        f"failed={result.items_failed}",
+        fg=color,
+        bold=True,
+    )
+    if result.failed_paths:
+        console.print("  failed paths:")
+        for p in result.failed_paths[:10]:
+            console.print(f"    - {p}")
 
 
 if __name__ == "__main__":
