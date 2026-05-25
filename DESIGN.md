@@ -2057,8 +2057,8 @@ restore 는 destructive — 본 절차로 회복성/재현성 모두 보장한�
 
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
-| `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | **1/3 (본 PR)** | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override (테스트 / 다른 머신 mount). |
-| doctor `creds_expiry_within_7d` check | 2/3 | read-only | `core/doctor.py` 의 check dict 에 신규 entry 합류 — 1/3 의 `collect_credentials()` 호출. CP-3 scheduler 가 `anvyc doctor --strict --json` 일1회 호출 시 자동 포함. |
+| `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | 1/3 (#37, merged) | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override. |
+| doctor `creds-expiry-within-7d` check | **2/3 (본 PR)** | read-only | `core/doctor.py` 의 `_REGISTRY` 에 신규 entry — `collect_credentials(probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. 7d threshold 는 check 이름 contract. CP-3 scheduler 가 `anvyc doctor --strict --json` 일1회 호출 시 **자동 포함** (별 wire 작업 불요). |
 | `anvyc creds rotate <kind> [--dry-run] [--force]` | 3/3 | **destructive** | `op` (1Password CLI) wrapper. confirm prompt + dry-run 기본 + auto pre-rotate backup. rule 26-secrets-1password 준수. |
 
 ### 36.4 Source 별 detection 전략 (1/3)
