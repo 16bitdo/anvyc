@@ -722,7 +722,7 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 
 ## 14. 기여
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) 참고.
+[CONTRIBUTING.md](./CONTRIBUTING.md) 참고. 기여자 간 상호작용은 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) ([Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) 기반) 를 따릅니다.
 
 ## 15. 보안
 

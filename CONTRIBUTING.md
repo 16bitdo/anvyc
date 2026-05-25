@@ -166,7 +166,7 @@ mypy src                            # 타입 체크 (best-effort)
 
 ## 7. 행동 강령
 
-기여자 간 상호 존중. 기술 외 토론은 Issue 보다 적절한 채널에서.
+기여자 간 상호 존중. 기술 외 토론은 Issue 보다 적절한 채널에서. 본 프로젝트는 [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) 을 기반으로 한 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) 를 채택합니다. 위반 신고는 `16bitdo@gmail.com` (제목 prefix `[anvyc-conduct]`) 로 비공개로 보내주세요.
 
 ## 8. 라이선스
 
