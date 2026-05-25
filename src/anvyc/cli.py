@@ -24,7 +24,13 @@ from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
-from anvyc.core.snapshot import create_snapshot
+from anvyc.core.snapshot import (
+    SnapshotDiffError,
+    SnapshotNotFoundError,
+    create_snapshot,
+    diff_snapshot,
+    list_snapshots,
+)
 from anvyc.core.status import compute_status
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
@@ -1573,6 +1579,89 @@ def snapshot_create(
         console.print(f"  git stash ref:     {meta.git_stash_ref or '—'}")
         console.print(f"  git stash sha:     {meta.git_stash_sha or '—'}")
     console.print(f"  meta:              {anvyc_dir / 'snapshots' / meta.id / 'meta.json'}")
+
+
+@snapshot_app.command("list")
+def snapshot_list(
+    anvyc_root: Path | None = typer.Option(
+        None,
+        "--anvyc-root",
+        help="`.anvyc/` 디렉터리 경로 override (기본 <cwd>/.anvyc).",
+    ),
+    limit: int | None = typer.Option(None, "--limit", help="최대 표시 snapshot 수."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """`.anvyc/snapshots/` 인덱스를 created_at 내림차순으로 출력.
+
+    CP-4 2/3 — 1/3 의 schema v1 위에 read-only query.
+    """
+    anvyc_dir = anvyc_root or (Path.cwd() / ".anvyc")
+    snapshots = list_snapshots(anvyc_dir)
+    if limit is not None:
+        snapshots = snapshots[:limit]
+
+    if json_out:
+        typer.echo(jsonlib.dumps([m.to_dict() for m in snapshots], ensure_ascii=False, indent=2))
+        return
+
+    if not snapshots:
+        console.print(f"[dim]no snapshots under {anvyc_dir / 'snapshots'}[/]")
+        return
+
+    console.print(f"[bold]{len(snapshots)} snapshot(s)[/]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("id", style="cyan")
+    table.add_column("created_at")
+    table.add_column("branch", style="dim")
+    table.add_column("label")
+    table.add_column("files", justify="right")
+    table.add_column("state")
+    for m in snapshots:
+        state = "[dim]clean[/]" if m.working_clean else "[yellow]has-stash[/]"
+        table.add_row(
+            m.id,
+            m.created_at,
+            m.git_branch or "—",
+            m.label or "—",
+            str(m.uncommitted_count),
+            state,
+        )
+    console.print(table)
+
+
+@snapshot_app.command("diff")
+def snapshot_diff(
+    snapshot_id: str = typer.Argument(..., help="비교 기준 snapshot id."),
+    against: str | None = typer.Option(
+        None,
+        "--against",
+        help="다른 snapshot id (지정 시 두 snapshot 의 stash 간 비교; 미지정 시 현재 working tree 와 비교).",
+    ),
+    repo: Path = typer.Option(Path.cwd(), "--repo", help="git working tree 루트."),
+    anvyc_root: Path | None = typer.Option(
+        None,
+        "--anvyc-root",
+        help="`.anvyc/` 디렉터리 경로 override (기본 <repo>/.anvyc).",
+    ),
+) -> None:
+    """snapshot 의 stash sha 와 비교 대상 (현재 또는 다른 snapshot) 간 unified diff.
+
+    CP-4 2/3 — read-only. working_clean=true 인 snapshot 은 비교 대상 없음
+    안내 메시지만 반환.
+    """
+    anvyc_dir = anvyc_root or (repo / ".anvyc")
+    try:
+        diff_text = diff_snapshot(repo, anvyc_dir, snapshot_id, against=against)
+    except SnapshotNotFoundError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except SnapshotDiffError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    if diff_text:
+        typer.echo(diff_text)
+    # 빈 diff 는 silent — git diff 표준 동작과 일치.
 
 
 if __name__ == "__main__":

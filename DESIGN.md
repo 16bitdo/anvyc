@@ -1942,8 +1942,8 @@ src/anvyc/
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
 | `anvyc snapshot create [--label X] [--session-id Y]` | **1/3 (본 PR)** | read+create | git stash + meta 적재. clean tree 도 anchor marker. |
-| `anvyc snapshot list [--json]` | 2/3 | read-only | `.anvyc/snapshots/*/meta.json` 인덱스. |
-| `anvyc snapshot diff <id> [--against <other-id>]` | 2/3 | read-only | snapshot vs 현재 (또는 두 snapshot 간) diff. `git diff <stash-sha> <ref>` 위. |
+| `anvyc snapshot list [--json] [--limit N]` | **2/3 (본 PR)** | read-only | `.anvyc/snapshots/*/meta.json` 인덱스, `created_at` 내림차순. 손상/version-미스매치 entry silently skip (data-loss 방지). |
+| `anvyc snapshot diff <id> [--against <other-id>]` | **2/3 (본 PR)** | read-only | snapshot vs 현재 (또는 두 snapshot 간) `git diff`. `working_clean=true` snapshot 은 stash sha 없음 → 안내 메시지만 반환. |
 | `anvyc snapshot restore <id> [--dry-run] [--force]` | 3/3 | **destructive** | working tree 를 snapshot 시점으로 복원. dry-run 기본, `--force` 명시 + confirm prompt. |
 
 ### 35.4 git stash anchor 의 의미
@@ -1958,12 +1958,13 @@ src/anvyc/
 이 분리는 사용자의 native `git stash` workflow 와 anvyc snapshot 의
 namespace 충돌을 방지한다.
 
-### 35.5 Out of scope (1/3 본 PR)
+### 35.5 Out of scope (2/3 본 PR 기준)
 
-- `list` / `diff` / `restore` 명령 (→ 2/3, 3/3)
+- `restore` 명령 (→ 3/3, destructive — confirm prompt + dry-run + `--force` 명시)
 - snapshot 자동 expiration (예: 30일 후 자동 삭제) — 후속 polish
 - portable export (snapshot 을 다른 머신/repo 로 이동) — 후속 polish
 - snapshot meta 에 anvyc doctor 결과 캡처 — CP-5 (creds) 와 cross-link 시 검토
+- `diff --stat` 같은 git diff 추가 option — 후속 polish
 
 ### 35.6 보안 경계
 
