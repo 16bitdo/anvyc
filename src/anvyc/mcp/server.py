@@ -151,22 +151,28 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="tool_call_stats",
             description=(
-                "tool 별 사용 카운트 ranking (CP-1 + CP-7 멀티 에이전트). "
-                "most_common 정렬, `top` N 으로 상위 N 개만 반환 가능. "
-                "`agent` 명시는 activity_summary 와 동일 의미."
+                "tool 별 사용 카운트 ranking (CP-1 + CP-7) + risk-gate 차단 통계 "
+                "(CP-8 PR-D). 반환 dict 형식: "
+                "{tool_call_ranking: [{name, count}, ...], blocked: "
+                "{total_blocks, by_hook, by_agent, oldest_block_at, "
+                "newest_block_at}}. `top` N 으로 ranking 상위 N 개만 반환. "
+                "`agent` 명시는 activity_summary 와 동일 — blocked 통계는 "
+                "audit jsonl 자체에 기록된 agent 필드를 그대로 반영하므로 본 "
+                "인자와 무관 (현재 claude_code 만 wire)."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "top": {
                         "type": "integer",
-                        "description": "상위 N 개 반환 (미지정 시 전체).",
+                        "description": "ranking 상위 N 개 반환 (미지정 시 전체).",
                     },
                     "agent": {
                         "type": "string",
                         "description": (
                             "단일 agent 명 (claude_code / cursor / codex). 미지정 "
-                            "시 모든 등록 agent 통합."
+                            "시 모든 등록 agent 통합. ranking 만 영향, blocked 통계는 "
+                            "audit jsonl 의 agent 필드 그대로."
                         ),
                     },
                 },
@@ -239,13 +245,16 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
 
     if name == "tool_call_stats":
         from anvyc.core.activity import collect_sessions, tool_call_ranking
+        from anvyc.core.audit_log import aggregate_block_events, collect_block_events
 
         top = args.get("top")
         agent = args.get("agent") if isinstance(args.get("agent"), str) else None
-        return tool_call_ranking(
+        ranking = tool_call_ranking(
             collect_sessions(agent=agent),
             top=top if isinstance(top, int) else None,
         )
+        blocked = aggregate_block_events(collect_block_events())
+        return {"tool_call_ranking": ranking, "blocked": blocked}
 
     raise ValueError(f"unknown tool: {name}")
 
