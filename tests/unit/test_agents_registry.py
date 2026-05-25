@@ -29,6 +29,7 @@ from anvyc.agents.base import (
     list_agents,
     register_agent,
 )
+from anvyc.core.activity import Session
 
 
 def test_registry_contains_three_agents() -> None:
@@ -86,7 +87,7 @@ def test_claude_code_adapter_delegates_discover(monkeypatch: pytest.MonkeyPatch)
     sentinel = iter([Path("/sentinel.jsonl")])
     called = {"hit": False}
 
-    def fake_iter(roots=None):
+    def fake_iter(roots: list[Path] | None = None) -> Iterator[Path]:
         called["hit"] = True
         return sentinel
 
@@ -113,16 +114,16 @@ def test_register_agent_duplicate_raises(monkeypatch: pytest.MonkeyPatch) -> Non
         name = "dummy"
         unified_schema_version = UNIFIED_SCHEMA_VERSION
 
-        def discover_session_files(self):
+        def discover_session_files(self) -> Iterator[Path]:
             return iter([])
 
-        def parse_session(self, path):
+        def parse_session(self, path: Path) -> Session | None:
             return None
 
-        def supports_hooks(self):
+        def supports_hooks(self) -> bool:
             return False
 
-        def hook_wire_targets(self):
+        def hook_wire_targets(self) -> list[Path]:
             return []
 
     register_agent(Dummy())
