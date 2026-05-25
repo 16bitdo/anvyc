@@ -9,8 +9,8 @@ class Anvyc < Formula
 
   desc "여러 장치에서 개발 도구 설정을 안전하게 백업/비교/복원/동기화하는 macOS CLI"
   homepage "https://github.com/16bitdo/anvyc"
-  url "https://github.com/16bitdo/anvyc/releases/download/v0.13.0/anvyc-0.13.0.tar.gz"
-  sha256 "9ea00338e2eb8673a354f634718c16345a2d8bbb4ea131075bb1458615e07c00"
+  url "https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0.tar.gz"
+  sha256 "16ed6555c71ae66e39413b0b1b9983dff3e7814b5d6465ed8179971b3f3b245b"
   license "MIT"
 
   depends_on "python@3.13"
