@@ -78,9 +78,10 @@ brew install anvyc
 anvyc --version
 ```
 
+사용자 설치/검증 가이드 (사후 검증 체크리스트 / 트러블슈팅 / 제거 절차): [docs/install-via-homebrew.md](./docs/install-via-homebrew.md).
 Formula source-of-truth: [packaging/homebrew/Formula/anvyc.rb](./packaging/homebrew/Formula/anvyc.rb).
-Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc). 
-갱신 절차: [docs/homebrew-publishing.md](./docs/homebrew-publishing.md).
+Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc).
+메인테이너 릴리스 / Formula 갱신 절차: [docs/homebrew-publishing.md](./docs/homebrew-publishing.md).
 
 ### 5.2 GitHub Release 의 wheel 직접 설치
 
