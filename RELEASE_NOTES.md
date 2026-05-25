@@ -1,5 +1,78 @@
 # anvyc 릴리즈 노트
 
+## v0.14.0 — 2026-05-25 (Control Plane v1+v2 — CP-1 audit · CP-4 snapshot · CP-5 creds)
+
+[Control Plane 통합] anvyc 가 `role-based-ruleset` × `ccinspector` 와 함께 AI agent autopilot **control plane** 의 **L2 Environment layer** 로 정착. v0.13.0 직후 9 axis PR + 1 fix = **10 PR** 으로 3 axis (CP-1·4·5) 완결.
+
+control plane SoT 위치: [role-based-ruleset/ROADMAP.md §4](https://github.com/16bitdo/role-based-ruleset/blob/main/ROADMAP.md) (사람 가독) + [metadata/control-plane-roadmap.yaml](https://github.com/16bitdo/role-based-ruleset/blob/main/metadata/control-plane-roadmap.yaml) (기계 가독) + [docs/control-plane-v1-recap.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/control-plane-v1-recap.md) (회고). 5축 (CP-1~CP-5) 전체 done, v1+v2 milestone closed.
+
+### CP-1: 실행 audit / observability (v1 axis, anvyc primary)
+
+Claude Code session transcript (`~/.claude*/projects/*/*.jsonl`) 의 read-only 집계 — autopilot 모드 사후 추적 가능.
+
+- **`anvyc activity` CLI** ([#32](https://github.com/16bitdo/anvyc/pull/32)) — session 별 메타 + tool 호출 카운트 표/JSON 출력 (`--json` / `--limit`).
+- **Collector module** (`core/activity.py`, [#31](https://github.com/16bitdo/anvyc/pull/31)) — 멀티계정 환경 (`.claude` / `.claude-edward` / `.claude-jklee`) session 묶음 처리.
+- **MCP tools 노출** ([#33](https://github.com/16bitdo/anvyc/pull/33)) — `activity_summary` + `tool_call_stats` (총 7 tool) 로 외부 agent 가 직접 조회.
+
+```bash
+$ anvyc activity --limit 3
+3 session(s) found  cwd=…  top tools: Bash=12 Read=8 Edit=5
+```
+
+### CP-4: 작업 회복 (snapshot / rollback) (v2 axis, anvyc primary)
+
+autopilot 의 실수 (브랜치 30 파일 수정 등) 를 명시적 marker → restore 가능. **4-layer safety** (dry-run / confirm / auto pre-restore / tail capture).
+
+- **`anvyc snapshot create [--label X]`** ([#34](https://github.com/16bitdo/anvyc/pull/34)) — `git stash + meta schema v1` (`schema_version: 1`, claude session id 포함). `.anvyc/snapshots/<id>/meta.json` + `refs/anvyc-snapshots/<id>` anchor.
+- **`anvyc snapshot list` / `diff <id> [--against <other>]`** ([#35](https://github.com/16bitdo/anvyc/pull/35)) — read-only query. created_at 내림차순, 손상 entry silently skip.
+- **`anvyc snapshot restore <id> [--force] [--yes]`** ([#36](https://github.com/16bitdo/anvyc/pull/36)) — destructive. 기본 dry-run, `--force` + confirm + **auto pre-restore snapshot** 자동 생성 + conflict 시 회복 채널 안내. DESIGN.md §35.7 (Restore 안전 절차 6단계) 신설.
+- **fix: untracked 파일 capture** ([#40](https://github.com/16bitdo/anvyc/pull/40)) — `git stash create` 의 `-u` silent 무시 제한 회피 — `_capture_stash` 를 `git stash push -u` + 즉시 `pop --index` 4-step 으로 재작성. v2 cut-over 후 **라이브 시연** 에서 발견된 behavior gap 즉시 fix (회귀 테스트 2건 추가).
+
+```bash
+$ anvyc snapshot create --label before-refactor
+snapshot created  id=20260525T120000Z-a1b2c3  branch:main  uncommitted:3
+
+$ anvyc snapshot restore 20260525T120000Z-a1b2c3 --force --yes
+restore plan ... auto pre-restore: yes (label=pre-restore-...)
+restored  target=...
+```
+
+### CP-5: 자격 lifecycle (creds rotation) (v2 axis, anvyc primary)
+
+GitHub PAT / AWS SSO / Claude OAuth 토큰의 만료 사전 감지 + 회전. **CP-3 scheduler 와 자연 시너지** (별 wire 작업 없이 doctor check 자동 합류).
+
+- **`anvyc creds status`** ([#37](https://github.com/16bitdo/anvyc/pull/37)) — 3 kind detection (`aws_sso` from `~/.aws/sso/cache/*.json`, `github` from `~/.config/gh/hosts.yml` + 선택 gh probe, `claude_oauth` from `~/.claude*.json`) + `CredentialsReport` schema v1 + status (`valid`/`expiring`/`expired`/`unknown`) 분류.
+- **doctor 의 `creds-expiry-within-7d` check** ([#38](https://github.com/16bitdo/anvyc/pull/38)) — 등록만으로 ccinspector 의 CP-3 scheduler 가 `anvyc doctor --strict --json` 호출 시 자동 포함 (L13 cross-axis 자동 합류 패턴). expired → `Severity.CRITICAL`, expiring → `Severity.WARNING`.
+- **`anvyc creds rotate <kind> [--force]`** ([#39](https://github.com/16bitdo/anvyc/pull/39)) — destructive native re-auth 위임 (`aws sso login` / `gh auth refresh` / claude_oauth 는 사용자 수동 안내). CP-4 restore §35.7 패턴 미러 4-layer safety. token 본문 노출 회피 (stdout/stderr tail 2 KiB). DESIGN.md §36.8 (Rotate 안전 절차) 신설.
+
+```bash
+$ anvyc creds status --no-probe
+4 credential(s) — expired=1 expiring=0 (threshold=7d)
+  aws_sso       https://d-...../start     2026-05-10T15:13...  -15d (past)  expired
+  ...
+
+$ anvyc doctor --only creds-expiry-within-7d
+critical — aws_sso 'https://d-...' expired
+```
+
+### DESIGN 갱신
+
+- **§35** (Snapshot/Rollback) 신설 — 7 subsection (원칙 / schema v1 / 명령 contract / stash anchor / out-of-scope / 보안 / 안전 절차 §35.7)
+- **§36** (Credentials Lifecycle) 신설 — 8 subsection (원칙 / schema v1 / 명령 contract / source detection / scheduler 자연 시너지 / out-of-scope / 보안 / 안전 절차 §36.8)
+
+### 테스트
+
+v0.13.0 대비 +66 hermetic assertion + 라이브 시연 검증:
+- snapshot 33 (create 8 + 2 fix / list+diff 13 / restore 10) + creds 35 (status 15 + check 8 + rotate 12) = **68 신규**
+- 라이브 시연: 4 demo / 17 케이스 / 1 behavior gap 발견 + fix
+
+### Control Plane 자산 (외부 참조)
+
+- 회고: [control-plane-v1-recap.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/control-plane-v1-recap.md) — v1 §1~§8 + v2 §9 (5/5 axis 완결 + 15 learnings 누적)
+- 페어 secondary 작업: [rbr#56](https://github.com/16bitdo/role-based-ruleset/pull/56) (rule 18-git-codebase-sync, CP-4) + [rbr#58](https://github.com/16bitdo/role-based-ruleset/pull/58) (rule 26-secrets-1password, CP-5)
+- ccinspector 측 CP-3 scheduler (`modules/scheduler/`): `anvyc doctor --strict --json` 을 일1회 호출 → 본 release 의 `creds-expiry-within-7d` check 가 자동 합류 (cross-axis 시너지 L13)
+
+
 ## v0.13.0 — 2026-05-22 (shell prompt 통합 + 개발 환경/CI 정비)
 
 [shell prompt 통합] anvyc 의 per-project 계정 라우팅(AWS/GitHub/Claude/Pulumi)을
