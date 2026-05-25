@@ -194,9 +194,56 @@ def parse_session(path: Path) -> Session | None:
     )
 
 
-def collect_sessions(roots: list[Path] | None = None) -> list[Session]:
-    """모든 session 을 파싱해 리스트로 반환 (session_id 없으면 제외)."""
-    sessions: list[Session] = []
+def collect_sessions(
+    roots: list[Path] | None = None,
+    agent: str | None = None,
+) -> list[Session]:
+    """모든 session 을 파싱해 리스트로 반환 (session_id 없으면 제외).
+
+    CP-7 Phase B — agent 별 dispatch:
+      - agent=None: 모든 등록된 AGENT_REGISTRY adapter 의 session union.
+        stub adapter (Cursor/Codex) 의 NotImplementedError 는 silent skip
+        (현재 동작과 byte-equal 보장 — Claude 만 impl).
+      - agent="<name>": 해당 adapter 만 dispatch. 미등록은 KeyError,
+        stub 은 NotImplementedError raise (CLI/MCP 가 사용자 메시지로 변환).
+
+    legacy path: roots 명시 시 agent 인자 금지 (ValueError). roots 만
+    사용하면 본 함수의 이전 동작 (top-level iter_session_files / parse_session)
+    이 유지된다.
+    """
+    if roots is not None and agent is not None:
+        raise ValueError("collect_sessions: roots 와 agent 를 함께 지정할 수 없습니다.")
+
+    if agent is not None:
+        # 단일 agent dispatch — registry 거침. stub 은 raise (silent 금지).
+        from anvyc.agents import get_agent
+
+        adapter = get_agent(agent)
+        sessions: list[Session] = []
+        for path in adapter.discover_session_files():
+            s = adapter.parse_session(path)
+            if s is not None:
+                sessions.append(s)
+        return sessions
+
+    if roots is None:
+        # CP-7 기본 경로: 모든 등록 agent 의 union. stub 의 NotImplementedError
+        # 는 union 모드에서는 skip — 사용자가 단일 agent 를 명시했을 때만 raise.
+        from anvyc.agents import AGENT_REGISTRY
+
+        sessions = []
+        for adapter in AGENT_REGISTRY.values():
+            try:
+                for path in adapter.discover_session_files():
+                    s = adapter.parse_session(path)
+                    if s is not None:
+                        sessions.append(s)
+            except NotImplementedError:
+                continue
+        return sessions
+
+    # legacy: roots 명시 — 이전 직접 호출 경로 보존 (caller 가 roots 를 컨트롤).
+    sessions = []
     for path in iter_session_files(roots):
         s = parse_session(path)
         if s is not None:

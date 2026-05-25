@@ -128,18 +128,32 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="activity_summary",
             description=(
-                "Claude Code session 의 통합 통계 (CP-1). "
-                "~/.claude*/projects/*/*.jsonl 를 read-only 로 집계 — "
-                "total_sessions / total_events / total_tool_calls / "
+                "AI agent session 의 통합 통계 (CP-1 + CP-7 멀티 에이전트). "
+                "기본은 모든 등록 agent union — 현재 Claude Code "
+                "(~/.claude*/projects/*/*.jsonl) 만 impl, Cursor/Codex 는 stub 으로 "
+                "silent skip. `agent` 명시 시 단일 dispatch — stub 명시는 error. "
+                "반환: total_sessions / total_events / total_tool_calls / "
                 "total_duration_seconds / oldest~newest range / tools_used dict."
             ),
-            inputSchema={"type": "object", "properties": {}},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent": {
+                        "type": "string",
+                        "description": (
+                            "단일 agent 명 (claude_code / cursor / codex). 미지정 "
+                            "시 모든 등록 agent 통합. CP-7 의 멀티 에이전트 dispatch."
+                        ),
+                    },
+                },
+            },
         ),
         Tool(
             name="tool_call_stats",
             description=(
-                "tool 별 사용 카운트 ranking (CP-1). "
-                "most_common 정렬, `top` N 으로 상위 N 개만 반환 가능."
+                "tool 별 사용 카운트 ranking (CP-1 + CP-7 멀티 에이전트). "
+                "most_common 정렬, `top` N 으로 상위 N 개만 반환 가능. "
+                "`agent` 명시는 activity_summary 와 동일 의미."
             ),
             inputSchema={
                 "type": "object",
@@ -147,6 +161,13 @@ def _tool_defs() -> list[Tool]:
                     "top": {
                         "type": "integer",
                         "description": "상위 N 개 반환 (미지정 시 전체).",
+                    },
+                    "agent": {
+                        "type": "string",
+                        "description": (
+                            "단일 agent 명 (claude_code / cursor / codex). 미지정 "
+                            "시 모든 등록 agent 통합."
+                        ),
                     },
                 },
             },
@@ -213,13 +234,18 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
     if name == "activity_summary":
         from anvyc.core.activity import aggregate_sessions, collect_sessions
 
-        return aggregate_sessions(collect_sessions())
+        agent = args.get("agent") if isinstance(args.get("agent"), str) else None
+        return aggregate_sessions(collect_sessions(agent=agent))
 
     if name == "tool_call_stats":
         from anvyc.core.activity import collect_sessions, tool_call_ranking
 
         top = args.get("top")
-        return tool_call_ranking(collect_sessions(), top=top if isinstance(top, int) else None)
+        agent = args.get("agent") if isinstance(args.get("agent"), str) else None
+        return tool_call_ranking(
+            collect_sessions(agent=agent),
+            top=top if isinstance(top, int) else None,
+        )
 
     raise ValueError(f"unknown tool: {name}")
 

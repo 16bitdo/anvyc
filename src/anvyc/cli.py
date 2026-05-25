@@ -1522,15 +1522,31 @@ def project_list(
 def activity(
     json_out: bool = typer.Option(False, "--json", help="JSON 출력"),
     limit: int | None = typer.Option(None, "--limit", help="최대 표시 session 수"),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        help=(
+            "단일 agent 만 조회 (claude_code / cursor / codex). 미지정 시 모든 "
+            "등록 agent 통합 (CP-7). Cursor/Codex 는 현재 stub — 명시 시 "
+            "NotImplementedError 메시지 표시."
+        ),
+    ),
 ) -> None:
-    """Claude Code session 활동 요약 (`~/.claude*/projects/*/*.jsonl`).
+    """AI agent session 활동 요약 (CP-7 멀티 에이전트 지원).
 
-    멀티계정 환경의 모든 session transcript 를 수집해 session 별 메타데이터와
-    tool 호출 카운트를 출력한다. 데이터 수집은 read-only — write 작업 없음.
-    CP-1 (audit / observability) 의 2/3 — collector 는 core/activity.py, MCP tool
-    노출은 후속 PR.
+    기본 (--agent 미지정) 은 모든 등록 agent 의 union — 현재는 Claude Code
+    transcript (`~/.claude*/projects/*/*.jsonl`) 만 impl 이라 byte-equal.
+    Cursor / Codex 는 stub 으로 silent skip 된다 (단일 --agent 명시 시
+    명시적 NotImplementedError 메시지).
     """
-    sessions = collect_sessions()
+    try:
+        sessions = collect_sessions(agent=agent)
+    except KeyError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(2) from e
+    except NotImplementedError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(2) from e
     if limit is not None:
         sessions = sessions[:limit]
 

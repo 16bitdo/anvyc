@@ -143,3 +143,59 @@ def test_package_reexports() -> None:
     assert agents.list_agents is list_agents
     assert agents.register_agent is register_agent
     assert agents.UNIFIED_SCHEMA_VERSION == UNIFIED_SCHEMA_VERSION
+
+
+# --- CP-7 Phase B: collect_sessions agent dispatch ---
+
+
+def test_collect_sessions_unknown_agent_raises_key_error() -> None:
+    from anvyc.core.activity import collect_sessions
+
+    with pytest.raises(KeyError, match="unknown agent"):
+        collect_sessions(agent="notarealagent")
+
+
+@pytest.mark.parametrize("name", ["cursor", "codex"])
+def test_collect_sessions_stub_agent_raises_not_implemented(name: str) -> None:
+    from anvyc.core.activity import collect_sessions
+
+    with pytest.raises(NotImplementedError):
+        collect_sessions(agent=name)
+
+
+def test_collect_sessions_roots_and_agent_mutually_exclusive(tmp_path: Path) -> None:
+    from anvyc.core.activity import collect_sessions
+
+    with pytest.raises(ValueError, match="함께 지정할 수 없습니다"):
+        collect_sessions(roots=[tmp_path], agent="claude_code")
+
+
+def test_collect_sessions_union_skips_stub_silently(monkeypatch: pytest.MonkeyPatch) -> None:
+    """agent=None (union) 모드는 stub adapter 의 NotImplementedError 를 silent skip.
+
+    이는 CP-7 의 'byte-equal 보장' AC — claude_code 만 impl 인 현재
+    상태에서 기존 동작과 동일한 결과를 내야 한다.
+    """
+    from anvyc.core import activity as activity_mod
+
+    monkeypatch.setattr(activity_mod, "iter_session_files", lambda roots=None: iter([]))
+    # union 호출은 stub 의 NotImplementedError 가 raise 되어선 안 됨.
+    result = activity_mod.collect_sessions()
+    assert result == []
+
+
+def test_collect_sessions_claude_code_explicit_uses_adapter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """agent='claude_code' 명시 시 adapter 의 discover/parse 가 호출되는지 검증."""
+    from anvyc.core import activity as activity_mod
+
+    fake_path = tmp_path / "fake.jsonl"
+    fake_path.write_text("{}", encoding="utf-8")
+
+    # claude_code adapter 의 discover_session_files 는 activity.iter_session_files 위임.
+    monkeypatch.setattr(activity_mod, "iter_session_files", lambda roots=None: iter([fake_path]))
+    monkeypatch.setattr(activity_mod, "parse_session", lambda p: None)
+
+    result = activity_mod.collect_sessions(agent="claude_code")
+    assert result == []  # parse_session 가 None 반환 → 빈 list
