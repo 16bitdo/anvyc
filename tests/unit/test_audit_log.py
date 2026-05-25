@@ -144,3 +144,50 @@ def test_iter_yields_in_file_order(tmp_path: Path) -> None:
     )
     hooks = [e.hook for e in iter_block_events(tmp_path)]
     assert hooks == ["first", "second"]
+
+
+# --------------- CP-11 PR-11E: agent filter ---------------
+
+
+def test_iter_with_agent_filter(tmp_path: Path) -> None:
+    """collect_block_events(agent=...) 가 audit jsonl 의 agent 필드와 정확히 일치하는 event 만 yield."""
+    _write_jsonl(
+        tmp_path / "risk-gate-2026-05-25.jsonl",
+        [
+            {"hook": "h", "agent": "claude_code", "exit_code": 2},
+            {"hook": "h", "agent": "cursor", "exit_code": 2},
+            {"hook": "h", "agent": "claude_code", "exit_code": 2},
+        ],
+    )
+    # filter claude_code → 2
+    events_cc = collect_block_events(tmp_path, agent="claude_code")
+    assert len(events_cc) == 2
+    assert all(e.agent == "claude_code" for e in events_cc)
+
+    # filter cursor → 1
+    events_cur = collect_block_events(tmp_path, agent="cursor")
+    assert len(events_cur) == 1
+    assert events_cur[0].agent == "cursor"
+
+    # 미등록 agent (codex 등) → 0
+    events_codex = collect_block_events(tmp_path, agent="codex")
+    assert events_codex == []
+
+    # filter None (기본) → 모든 event
+    events_all = collect_block_events(tmp_path)
+    assert len(events_all) == 3
+
+
+def test_iter_agent_filter_empty_string_excludes_no_agent(tmp_path: Path) -> None:
+    """audit event 의 agent 필드가 누락 (빈 문자열) 인 경우, agent 명시는 그 event 제외."""
+    _write_jsonl(
+        tmp_path / "risk-gate-2026-05-25.jsonl",
+        [
+            {"hook": "h1", "exit_code": 2},  # agent 필드 부재 → "" 로 정규화
+            {"hook": "h2", "agent": "claude_code", "exit_code": 2},
+        ],
+    )
+    # filter claude_code → agent 필드 부재 event 제외
+    events = collect_block_events(tmp_path, agent="claude_code")
+    assert len(events) == 1
+    assert events[0].hook == "h2"

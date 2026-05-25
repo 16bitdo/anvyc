@@ -124,15 +124,30 @@ def test_agent_stub_raises_not_implemented(fake_audit_dir: Path) -> None:
         _dispatch("tool_call_stats", {"agent": "codex"})
 
 
-def test_blocked_unaffected_by_agent_arg(fake_audit_dir: Path, fake_no_sessions: None) -> None:
-    """agent 인자는 ranking 만 영향 — blocked 통계는 audit jsonl 의 agent 필드 그대로."""
+def test_agent_arg_filters_blocked(fake_audit_dir: Path, fake_no_sessions: None) -> None:
+    """CP-11 PR-11E — agent 인자가 blocked 통계도 필터.
+
+    audit jsonl 에 다양한 agent 의 event 가 섞여 있을 때, agent 명시 시
+    그 agent 의 event 만 카운트. 미명시 시 모든 agent 통합.
+    """
     _write_jsonl(
         fake_audit_dir / "risk-gate-2026-05-25.jsonl",
         [
             {"ts": "2026-05-25T10:00:00Z", "hook": "h1", "matcher": "Bash",
              "agent": "claude_code", "exit_code": 2, "command_redacted": "x"},
+            {"ts": "2026-05-25T10:01:00Z", "hook": "h2", "matcher": "Bash",
+             "agent": "cursor", "exit_code": 2, "command_redacted": "y"},
+            {"ts": "2026-05-25T10:02:00Z", "hook": "h3", "matcher": "Bash",
+             "agent": "claude_code", "exit_code": 2, "command_redacted": "z"},
         ],
     )
+    # agent=claude_code — cursor event 제외
     result = _dispatch("tool_call_stats", {"agent": "claude_code"})
-    assert result["blocked"]["total_blocks"] == 1
-    assert result["blocked"]["by_agent"] == {"claude_code": 1}
+    blocked = result["blocked"]
+    assert blocked["total_blocks"] == 2
+    assert blocked["by_agent"] == {"claude_code": 2}
+
+    # agent 미명시 — 모든 agent 통합 (3 event)
+    result_all = _dispatch("tool_call_stats", {})
+    assert result_all["blocked"]["total_blocks"] == 3
+    assert result_all["blocked"]["by_agent"] == {"claude_code": 2, "cursor": 1}

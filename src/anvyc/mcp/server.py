@@ -152,13 +152,12 @@ def _tool_defs() -> list[Tool]:
             name="tool_call_stats",
             description=(
                 "tool 별 사용 카운트 ranking (CP-1 + CP-7) + risk-gate 차단 통계 "
-                "(CP-8 PR-D). 반환 dict 형식: "
+                "(CP-8 + CP-11 PR-11E). 반환 dict 형식: "
                 "{tool_call_ranking: [{name, count}, ...], blocked: "
                 "{total_blocks, by_hook, by_agent, oldest_block_at, "
                 "newest_block_at}}. `top` N 으로 ranking 상위 N 개만 반환. "
-                "`agent` 명시는 activity_summary 와 동일 — blocked 통계는 "
-                "audit jsonl 자체에 기록된 agent 필드를 그대로 반영하므로 본 "
-                "인자와 무관 (현재 claude_code 만 wire)."
+                "`agent` 명시 시 ranking + blocked 둘 다 그 agent 의 데이터만 "
+                "필터 — audit jsonl 의 'agent' 필드와 정확히 일치하는 event 만."
             ),
             inputSchema={
                 "type": "object",
@@ -171,8 +170,8 @@ def _tool_defs() -> list[Tool]:
                         "type": "string",
                         "description": (
                             "단일 agent 명 (claude_code / cursor / codex). 미지정 "
-                            "시 모든 등록 agent 통합. ranking 만 영향, blocked 통계는 "
-                            "audit jsonl 의 agent 필드 그대로."
+                            "시 모든 등록 agent 통합. ranking + blocked 통계 둘 "
+                            "다 영향 (CP-11 PR-11E)."
                         ),
                     },
                 },
@@ -253,7 +252,8 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
             collect_sessions(agent=agent),
             top=top if isinstance(top, int) else None,
         )
-        blocked = aggregate_block_events(collect_block_events())
+        # CP-11 PR-11E: agent 명시 시 blocked 통계도 그 agent 의 audit 만 필터.
+        blocked = aggregate_block_events(collect_block_events(agent=agent))
         return {"tool_call_ranking": ranking, "blocked": blocked}
 
     raise ValueError(f"unknown tool: {name}")
