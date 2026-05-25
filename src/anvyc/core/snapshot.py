@@ -1,8 +1,8 @@
 """Workspace snapshot (작업 회복) — CP-4 (anvyc#29) 의 핵심.
 
 autopilot 의 실수 (브랜치 30 파일 수정 등) 를 명시적 snapshot 으로 되돌리기
-위한 capture + query 단. 본 모듈은 create / list / diff 구현; restore (3/3)
-는 별도 PR.
+위한 capture / query / restore. CP-4 axis 의 3 PR 시퀀스 (1/3 create →
+2/3 list/diff → 3/3 restore) 가 모두 본 모듈에 통합.
 
 설계 원칙
 - **Non-disruptive capture**: `git stash create` 로 working tree 를 건드리지
@@ -254,6 +254,37 @@ class SnapshotDiffError(RuntimeError):
     """git diff 실행 실패 (ref unreachable 등)."""
 
 
+class SnapshotRestoreError(RuntimeError):
+    """snapshot restore 실행 실패 (conflict / ref unreachable / git apply 실패 등)."""
+
+
+@dataclass(frozen=True)
+class RestorePlan:
+    """`restore --dry-run` 의 출력 — 실제 수행 직전의 변경 plan."""
+
+    target_id: str
+    target_label: str | None
+    target_branch: str | None
+    target_stash_sha: str | None
+    target_working_clean: bool
+    current_branch: str | None
+    current_uncommitted_count: int
+    will_create_pre_restore_snapshot: bool
+    git_apply_command: list[str]  # 실제 실행될 git argv (디버깅용)
+    warnings: list[str]  # 사용자 주의 사항
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    """`restore` 실 수행 결과."""
+
+    target_id: str
+    pre_restore_snapshot_id: str | None  # auto-create 된 safety snapshot
+    applied: bool                          # git stash apply 가 정말 수행됐는지
+    git_apply_stdout: str
+    git_apply_stderr: str
+
+
 def diff_snapshot(
     repo: Path,
     anvyc_dir: Path,
@@ -308,3 +339,127 @@ def diff_snapshot(
             f"{err or 'unknown error'}"
         )
     return out
+
+
+def plan_restore(
+    repo: Path,
+    anvyc_dir: Path,
+    snapshot_id: str,
+) -> RestorePlan:
+    """restore 직전의 plan 작성 (dry-run 출력 및 실제 수행 모두 사용).
+
+    Raises:
+      SnapshotNotFoundError: snapshot_id 가 부재.
+    """
+    target = get_snapshot(anvyc_dir, snapshot_id)
+    if target is None:
+        raise SnapshotNotFoundError(f"snapshot not found: {snapshot_id}")
+
+    cur_branch = _detect_branch(repo)
+    cur_uncommitted = _detect_uncommitted_count(repo)
+
+    warnings: list[str] = []
+    if target.working_clean:
+        warnings.append(
+            "target snapshot 이 working_clean=true — 적용할 stash 가 없음. "
+            "restore 는 no-op (시점 marker 의미만)."
+        )
+    if cur_uncommitted > 0:
+        warnings.append(
+            f"현재 working tree 에 {cur_uncommitted} 개 변경 — "
+            "pre-restore snapshot 자동 생성으로 보호되지만 conflict 가능."
+        )
+    if target.git_branch and cur_branch and target.git_branch != cur_branch:
+        warnings.append(
+            f"branch 불일치: 현재 '{cur_branch}' vs target '{target.git_branch}' — "
+            "restore 는 branch 전환 안 함 (stash apply 만). 필요 시 사용자가 명시 checkout."
+        )
+
+    if target.git_stash_sha is None:
+        # clean marker — git apply 불요
+        cmd: list[str] = []
+    else:
+        cmd = ["git", "-C", str(repo), "stash", "apply", target.git_stash_sha]
+
+    return RestorePlan(
+        target_id=target.id,
+        target_label=target.label,
+        target_branch=target.git_branch,
+        target_stash_sha=target.git_stash_sha,
+        target_working_clean=target.working_clean,
+        current_branch=cur_branch,
+        current_uncommitted_count=cur_uncommitted,
+        will_create_pre_restore_snapshot=(not target.working_clean),
+        git_apply_command=cmd,
+        warnings=warnings,
+    )
+
+
+def restore_snapshot(
+    repo: Path,
+    anvyc_dir: Path,
+    snapshot_id: str,
+) -> RestoreResult:
+    """snapshot 시점의 working tree 변경분을 현재 위에 apply.
+
+    안전 절차:
+      1. target snapshot 조회 (없으면 raise)
+      2. target 이 clean marker (stash sha=null) 면 no-op + 안내
+      3. **auto pre-restore snapshot** 생성 — 현 working tree 를
+         label=`pre-restore-<target-id>` 로 capture (실패 시 raise — 보호 없이
+         restore 진행 금지)
+      4. `git stash apply <target-stash-sha>` 실행
+      5. git 의 exit code 가 0 이 아니면 SnapshotRestoreError (conflict 등) —
+         이미 생성된 pre-restore snapshot id 는 err message 에 안내
+
+    Raises:
+      SnapshotNotFoundError: snapshot_id 부재.
+      SnapshotRestoreError: pre-restore 실패 또는 git stash apply 실패.
+
+    Note:
+      본 함수는 CLI 의 --force / --dry-run 분기를 신경 쓰지 않음 — caller 가
+      이미 결정한 후 호출. CLI 가 dry-run plan_restore() 또는 force
+      restore_snapshot() 두 분기 명확화.
+    """
+    target = get_snapshot(anvyc_dir, snapshot_id)
+    if target is None:
+        raise SnapshotNotFoundError(f"snapshot not found: {snapshot_id}")
+
+    if target.git_stash_sha is None:
+        # clean marker — apply 할 stash 없음. no-op.
+        return RestoreResult(
+            target_id=target.id,
+            pre_restore_snapshot_id=None,
+            applied=False,
+            git_apply_stdout="",
+            git_apply_stderr="",
+        )
+
+    # auto pre-restore snapshot — 현 상태 보호 (실패 시 restore 진행 금지)
+    try:
+        pre = create_snapshot(
+            repo,
+            anvyc_dir,
+            label=f"pre-restore-{target.id}",
+            session_id=None,
+        )
+    except Exception as exc:  # noqa: BLE001 — caller 에 wrap 해서 raise
+        raise SnapshotRestoreError(
+            f"pre-restore snapshot 생성 실패 — restore 중단: {exc}"
+        ) from exc
+
+    rc, out, err = _run_git(repo, "stash", "apply", target.git_stash_sha)
+    if rc != 0:
+        raise SnapshotRestoreError(
+            f"git stash apply {target.git_stash_sha} 실패 (rc={rc}): "
+            f"{err or out or 'unknown error'}. 회복: 'git stash drop' / 수동 conflict "
+            f"resolve 또는 pre-restore snapshot '{pre.id}' 활용."
+        )
+
+    return RestoreResult(
+        target_id=target.id,
+        pre_restore_snapshot_id=pre.id,
+        applied=True,
+        git_apply_stdout=out,
+        git_apply_stderr=err,
+    )

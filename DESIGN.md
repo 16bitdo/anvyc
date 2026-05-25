@@ -1941,10 +1941,10 @@ src/anvyc/
 
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
-| `anvyc snapshot create [--label X] [--session-id Y]` | **1/3 (본 PR)** | read+create | git stash + meta 적재. clean tree 도 anchor marker. |
-| `anvyc snapshot list [--json] [--limit N]` | **2/3 (본 PR)** | read-only | `.anvyc/snapshots/*/meta.json` 인덱스, `created_at` 내림차순. 손상/version-미스매치 entry silently skip (data-loss 방지). |
-| `anvyc snapshot diff <id> [--against <other-id>]` | **2/3 (본 PR)** | read-only | snapshot vs 현재 (또는 두 snapshot 간) `git diff`. `working_clean=true` snapshot 은 stash sha 없음 → 안내 메시지만 반환. |
-| `anvyc snapshot restore <id> [--dry-run] [--force]` | 3/3 | **destructive** | working tree 를 snapshot 시점으로 복원. dry-run 기본, `--force` 명시 + confirm prompt. |
+| `anvyc snapshot create [--label X] [--session-id Y]` | 1/3 (#34, merged) | read+create | git stash + meta 적재. clean tree 도 anchor marker. |
+| `anvyc snapshot list [--json] [--limit N]` | 2/3 (#35, merged) | read-only | `.anvyc/snapshots/*/meta.json` 인덱스, `created_at` 내림차순. 손상/version-미스매치 entry silently skip. |
+| `anvyc snapshot diff <id> [--against <other-id>]` | 2/3 (#35, merged) | read-only | snapshot vs 현재 (또는 두 snapshot 간) `git diff`. `working_clean=true` snapshot 은 안내 메시지만. |
+| `anvyc snapshot restore <id> [--force] [--yes]` | **3/3 (본 PR)** | **destructive** | `git stash apply <target.git_stash_sha>`. **dry-run 기본** (--force 없으면 plan 만), `--force` + confirm prompt + auto pre-restore snapshot. `--yes` 자동 수락. §35.7 절차 참조. |
 
 ### 35.4 git stash anchor 의 의미
 
@@ -1958,13 +1958,16 @@ src/anvyc/
 이 분리는 사용자의 native `git stash` workflow 와 anvyc snapshot 의
 namespace 충돌을 방지한다.
 
-### 35.5 Out of scope (2/3 본 PR 기준)
+### 35.5 Out of scope (3/3 본 PR — CP-4 axis 완결 기준)
 
-- `restore` 명령 (→ 3/3, destructive — confirm prompt + dry-run + `--force` 명시)
 - snapshot 자동 expiration (예: 30일 후 자동 삭제) — 후속 polish
 - portable export (snapshot 을 다른 머신/repo 로 이동) — 후속 polish
 - snapshot meta 에 anvyc doctor 결과 캡처 — CP-5 (creds) 와 cross-link 시 검토
-- `diff --stat` 같은 git diff 추가 option — 후속 polish
+- `diff --stat` 같은 git diff 추가 option — polish
+- restore 시 branch 자동 전환 (`git checkout <target.git_branch>`) — 현재는
+  사용자 명시 checkout 권장. autopilot 의 branch 자동 변경은 위험.
+- restore 중 conflict 자동 resolve — 현재는 git conflict marker 그대로 남기고
+  `SnapshotRestoreError` raise (사용자 수동 해결).
 
 ### 35.6 보안 경계
 
@@ -1973,3 +1976,30 @@ namespace 충돌을 방지한다.
 - `.anvyc/snapshots/` 의 stash sha 는 git object — 일반 git 파일 권한 적용.
   민감 정보가 working tree 에 있던 시점이면 stash 에도 포함됨 — 사용자
   책임 (rule `26-secrets-1password` 의 1Password 사용 원칙 유지).
+
+### 35.7 Restore 안전 절차 (3/3 추가)
+
+restore 는 destructive — 본 절차로 회복성/재현성 모두 보장한다.
+
+1. **`plan_restore(repo, anvyc_dir, id)`** — target snapshot + 현재 상태 비교,
+   warnings list (branch 불일치, 현재 uncommitted 존재 등) + git apply 명령
+   미리 산출. CLI 가 `--force` 없으면 본 plan 만 출력 후 종료 (working tree
+   무변경 = **dry-run 기본**).
+2. **`--force` 시** confirm prompt 1회 (`--yes` 또는 `-y` 로 자동 수락).
+3. **auto pre-restore snapshot** — 실 apply 직전 현재 working tree 를
+   `label=pre-restore-<target-id>` 로 자동 capture. 실패 시 restore 중단
+   (보호 없이 진행 금지).
+4. **`git stash apply <target.git_stash_sha>`** — 표준 stash apply. 성공 시
+   working tree 가 target 시점 변경분 + 현재 변경분 합쳐진 상태.
+5. **conflict 시** `SnapshotRestoreError` raise + pre-restore snapshot id
+   안내 message 포함. git conflict marker (`<<<<<<<`) 는 working tree 에
+   남음 → 사용자 수동 resolve 또는 `git reset --hard <pre.git_stash_sha>`
+   로 회복.
+6. **branch 전환 안 함** — target.git_branch 와 현재 branch 불일치는
+   warning 만 (실 branch checkout 금지 — autopilot 의 branch 변경은 위험).
+
+회복 채널 요약:
+- restore 가 의도와 달랐다 → `anvyc snapshot list` 에서 `pre-restore-<id>`
+  찾아 `anvyc snapshot restore <pre-id> --force` 로 원상 복구.
+- restore 가 conflict 로 실패했다 → conflict marker 수동 resolve, 또는
+  pre-restore snapshot 의 stash sha 로 `git reset --hard <pre.git_stash_sha>`.
