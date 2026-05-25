@@ -9,8 +9,8 @@
 ## 1. 한 줄 설명
 
 ```text
-chezmoi의 안전 원칙을 참고한, 개발환경 특화 config sync tool.
-shell / git / AWS / GitHub CLI / Pulumi / iTerm2 / Cursor / Claude Code 설정을 한 번에.
+여러 장치에서 개발 환경 설정을 안전하게 백업·비교·복원·동기화하는 macOS CLI.
+Shell / Git / AWS / GitHub / Cursor / Claude Code / iTerm2 / Pulumi + dev_env / shell_prompt — 10 종 도구의 safe adapter.
 ```
 
 ---
