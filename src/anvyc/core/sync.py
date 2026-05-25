@@ -633,3 +633,154 @@ def pull_to_local(
         failed_paths=failed,
         manifest_written=False,  # pull 은 remote 만 read; local manifest 안 적음
     )
+
+
+# ===== Conflict resolution (CP-6 3/3) =====
+#
+# 2/3 의 conflict 기본 skip + --force overwrite 만으로는 부족한 시나리오 —
+# 사용자가 entry 별로 어느 쪽을 keep 할지 명시 결정. auto-merge / 3-way
+# merge 는 본 axis 영구 제외 (rbr rule 27 명문화) — 사용자 prompt 우선.
+
+KEEP_LOCAL = "local"
+KEEP_REMOTE = "remote"
+ALL_KEEP_CHOICES = (KEEP_LOCAL, KEEP_REMOTE)
+
+
+class SyncConflictError(ValueError):
+    """conflict resolve 입력/실행 오류."""
+
+
+def list_conflicts(
+    target: Path,
+    *,
+    home: Path | None = None,
+    dev_root: Path | None = None,
+    machine_id: str | None = None,
+    now: datetime | None = None,
+) -> list[SyncDiffEntry]:
+    """현재 local vs remote 의 conflict (status=diff) entries 만 반환.
+
+    Raises:
+      SyncError: remote manifest 부재.
+    """
+    h = home or Path.home()
+    n = now or datetime.now(tz=UTC)
+    remote = load_remote_manifest(target)
+    if remote is None:
+        raise SyncError(
+            f"remote manifest 부재 또는 손상: {target}/{REMOTE_MANIFEST_NAME}"
+        )
+    local = scan_local_manifest(home=h, dev_root=dev_root, machine_id=machine_id, now=n)
+    report = compute_sync_status(local, remote, remote_target=target, now=n)
+    return [e for e in report.diff_entries if e.status == STATUS_DIFF]
+
+
+def resolve_conflict(
+    target: Path,
+    relative_path: str,
+    *,
+    keep: str,
+    home: Path | None = None,
+    dev_root: Path | None = None,
+    machine_id: str | None = None,
+    now: datetime | None = None,
+) -> SyncOperationResult:
+    """단일 entry 의 conflict 를 명시 해결.
+
+    - keep="local" → local 본문을 remote 에 copy + manifest 갱신 (push-one)
+    - keep="remote" → remote 본문을 local 에 copy (pull-one, local manifest
+      는 없음 — anvyc 는 local manifest 저장 안 함, scan 으로 생성)
+
+    Args:
+      target: remote target path
+      relative_path: 해결할 entry 의 relative_path
+      keep: "local" | "remote"
+
+    Raises:
+      SyncConflictError: keep 값이 ALL_KEEP_CHOICES 외, 또는 해당 path
+        가 conflict 가 아니거나 부재.
+      SyncError: remote manifest / file 부재, copy 실패.
+    """
+    if keep not in ALL_KEEP_CHOICES:
+        raise SyncConflictError(
+            f"invalid --keep: {keep!r}. supported: {', '.join(ALL_KEEP_CHOICES)}"
+        )
+
+    h = home or Path.home()
+    n = now or datetime.now(tz=UTC)
+    remote = load_remote_manifest(target)
+    if remote is None:
+        raise SyncError(
+            f"remote manifest 부재 또는 손상: {target}/{REMOTE_MANIFEST_NAME}"
+        )
+    local = scan_local_manifest(home=h, dev_root=dev_root, machine_id=machine_id, now=n)
+    report = compute_sync_status(local, remote, remote_target=target, now=n)
+
+    entry = next(
+        (e for e in report.diff_entries if e.relative_path == relative_path and e.status == STATUS_DIFF),
+        None,
+    )
+    if entry is None:
+        raise SyncConflictError(
+            f"no conflict at: {relative_path!r}. "
+            f"`anvyc sync conflict list` 로 conflict 목록 확인."
+        )
+
+    if keep == KEEP_LOCAL:
+        # local 본문을 remote 에 copy + manifest 갱신
+        if entry.local is None:
+            raise SyncConflictError(
+                f"keep=local 인데 local entry 부재 (상태 불일치): {relative_path}"
+            )
+        src = _resolve_source_path_for_push(h, entry.local, dev_root=dev_root)
+        if src is None or not src.is_file():
+            raise SyncError(f"local source 파일 부재: {relative_path}")
+        dst = target / relative_path
+        _atomic_copy(src, dst)
+        # manifest 의 해당 entry 만 local 의 SyncItem 으로 교체
+        new_items = [
+            entry.local if it.relative_path == relative_path else it
+            for it in remote.items
+        ]
+        new_manifest = SyncTargetManifest(
+            schema_version=SCHEMA_VERSION,
+            machine_id=remote.machine_id,
+            generated_at=_iso(n),
+            items=new_items,
+        )
+        _atomic_write_manifest(target, new_manifest)
+        return SyncOperationResult(
+            operation="conflict-keep-local",
+            target=str(target),
+            items_copied=1,
+            items_skipped_conflict=0,
+            items_skipped_same=0,
+            items_failed=0,
+            failed_paths=[],
+            manifest_written=True,
+        )
+
+    # keep == "remote"
+    if entry.remote is None:
+        raise SyncConflictError(
+            f"keep=remote 인데 remote entry 부재 (상태 불일치): {relative_path}"
+        )
+    src = target / relative_path
+    if not src.is_file():
+        raise SyncError(f"remote source 파일 부재: {src}")
+    local_dst = _resolve_local_path_from_relative(h, relative_path, entry.remote.kind, dev_root=dev_root)
+    if local_dst is None:
+        raise SyncConflictError(
+            f"relative_path 역매핑 실패: {relative_path!r} (kind={entry.remote.kind})"
+        )
+    _atomic_copy(src, local_dst)
+    return SyncOperationResult(
+        operation="conflict-keep-remote",
+        target=str(target),
+        items_copied=1,
+        items_skipped_conflict=0,
+        items_skipped_same=0,
+        items_failed=0,
+        failed_paths=[],
+        manifest_written=False,
+    )

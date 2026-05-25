@@ -48,15 +48,19 @@ from anvyc.core.snapshot import (
 )
 from anvyc.core.status import compute_status
 from anvyc.core.sync import (
+    ALL_KEEP_CHOICES,
     STATUS_DIFF,
     STATUS_LOCAL_ONLY,
     STATUS_REMOTE_ONLY,
     STATUS_SAME,
+    SyncConflictError,
     SyncError,
     compute_sync_status,
+    list_conflicts,
     load_remote_manifest,
     pull_to_local,
     push_to_remote,
+    resolve_conflict,
     scan_local_manifest,
 )
 from anvyc.templates import DEFAULT_ANVYC_YAML
@@ -100,6 +104,12 @@ sync_app = typer.Typer(
     help="cross-machine state sync — control plane 자산 (CP-3 health / CP-4 snapshot) 머신 간 동기화 (CP-6, v3).",
 )
 app.add_typer(sync_app, name="sync")
+
+sync_conflict_app = typer.Typer(
+    name="conflict",
+    help="conflict resolution — sha256 불일치 entry 의 수동 해결 (CP-6 3/3).",
+)
+sync_app.add_typer(sync_conflict_app, name="conflict")
 
 console = Console()
 
@@ -2198,6 +2208,120 @@ def sync_pull(
         console.print("  failed paths:")
         for p in result.failed_paths[:10]:
             console.print(f"    - {p}")
+
+
+@sync_conflict_app.command("list")
+def sync_conflict_list(
+    target: Path = typer.Option(..., "--target", help="remote target filesystem path."),
+    machine_id: str | None = typer.Option(None, "--machine-id"),
+    home: Path | None = typer.Option(None, "--home"),
+    dev_root: Path | None = typer.Option(None, "--dev-root"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """현재 conflict (sha256 불일치) entries 만 표시 — resolve 후보 인덱스.
+
+    CP-6 3/3 — read-only. auto-resolve 없음; `resolve <path> --keep ...` 로
+    entry 별 수동 해결 (rule 27-cross-machine-sync-policy 준수).
+    """
+    h = home or Path.home()
+    try:
+        conflicts = list_conflicts(target, home=h, dev_root=dev_root, machine_id=machine_id)
+    except SyncError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    if json_out:
+        typer.echo(jsonlib.dumps([e.to_dict() for e in conflicts], ensure_ascii=False, indent=2))
+        return
+
+    if not conflicts:
+        console.print("[green]✓ no conflicts[/]")
+        return
+
+    console.print(f"[bold]{len(conflicts)} conflict(s)[/]  target={target}")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("relative_path")
+    table.add_column("local sha", style="cyan")
+    table.add_column("remote sha", style="magenta")
+    table.add_column("local mtime", style="dim")
+    table.add_column("remote mtime", style="dim")
+    for e in conflicts:
+        loc_sha = e.local.sha256[:12] if e.local else "—"
+        rem_sha = e.remote.sha256[:12] if e.remote else "—"
+        loc_mt = e.local.mtime if e.local else "—"
+        rem_mt = e.remote.mtime if e.remote else "—"
+        table.add_row(e.relative_path, loc_sha, rem_sha, loc_mt, rem_mt)
+    console.print(table)
+    console.print(
+        "\n[dim]해결: anvyc sync conflict resolve <relative_path> --target <…> --keep local|remote[/]"
+    )
+
+
+@sync_conflict_app.command("resolve")
+def sync_conflict_resolve(
+    relative_path: str = typer.Argument(..., help="conflict 의 relative_path."),
+    target: Path = typer.Option(..., "--target", help="remote target filesystem path."),
+    keep: str = typer.Option(
+        ...,
+        "--keep",
+        help=f"보존 측 — {' / '.join(ALL_KEEP_CHOICES)}. local 이면 remote 가 overwrite; remote 이면 local 이 overwrite.",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="confirm prompt 자동 수락."),
+    machine_id: str | None = typer.Option(None, "--machine-id"),
+    home: Path | None = typer.Option(None, "--home"),
+    dev_root: Path | None = typer.Option(None, "--dev-root"),
+) -> None:
+    """단일 conflict 를 명시 해결 (destructive — 반대편 본문 overwrite).
+
+    안전 절차:
+    - keep 값 검증 (local|remote 만 허용)
+    - relative_path 의 현 conflict 여부 확인 (안 그러면 error)
+    - confirm prompt (--yes 자동)
+    - atomic copy (push-one 또는 pull-one 분기)
+
+    CP-6 3/3 — axis 완결. paired: rbr rule `27-cross-machine-sync-policy`.
+    """
+    if keep not in ALL_KEEP_CHOICES:
+        typer.secho(
+            f"error: --keep must be one of {ALL_KEEP_CHOICES}, got {keep!r}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    h = home or Path.home()
+    console.print(f"[bold]conflict resolve plan[/]  path={relative_path}  keep={keep}")
+    if keep == "local":
+        console.print("  → local 본문이 remote 를 overwrite (push-one) + remote manifest 갱신")
+    else:
+        console.print("  → remote 본문이 local 을 overwrite (pull-one); local 측 manifest 없음")
+
+    if not yes and not typer.confirm("\nproceed?"):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = resolve_conflict(
+            target,
+            relative_path,
+            keep=keep,
+            home=h,
+            dev_root=dev_root,
+            machine_id=machine_id,
+        )
+    except SyncConflictError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except SyncError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    typer.secho(
+        f"\nresolved — operation={result.operation} "
+        f"manifest_written={result.manifest_written}",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
 
 
 if __name__ == "__main__":
