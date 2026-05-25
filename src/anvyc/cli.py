@@ -20,6 +20,14 @@ from anvyc.checks.base import Severity
 from anvyc.core.activity import collect_sessions
 from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
 from anvyc.core.backup import BackupBlockedError, run_backup
+from anvyc.core.creds import (
+    DEFAULT_WARN_THRESHOLD_DAYS,
+    STATUS_EXPIRED,
+    STATUS_EXPIRING,
+    STATUS_UNKNOWN,
+    STATUS_VALID,
+    collect_credentials,
+)
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
 from anvyc.core.list import list_backups
@@ -64,6 +72,12 @@ snapshot_app = typer.Typer(
     help="작업 회복 — git stash + meta 묶음 snapshot (CP-4, v2 진입).",
 )
 app.add_typer(snapshot_app, name="snapshot")
+
+creds_app = typer.Typer(
+    name="creds",
+    help="자격 lifecycle — AWS SSO / GitHub / Claude OAuth 만료 상태 (CP-5).",
+)
+app.add_typer(creds_app, name="creds")
 
 console = Console()
 
@@ -1754,6 +1768,82 @@ def snapshot_restore(
         console.print(f"  [dim]git stdout:[/]\n{result.git_apply_stdout}")
     if result.git_apply_stderr:
         console.print(f"  [dim]git stderr:[/]\n{result.git_apply_stderr}")
+
+
+@creds_app.command("status")
+def creds_status(
+    warn_days: int = typer.Option(
+        DEFAULT_WARN_THRESHOLD_DAYS,
+        "--warn-days",
+        help="expiring 분류 threshold (일 단위, 기본 7).",
+    ),
+    home: Path | None = typer.Option(
+        None,
+        "--home",
+        help="검사 root 디렉터리 override (기본 $HOME). 테스트 / 다른 머신 mount 시.",
+    ),
+    no_probe: bool = typer.Option(
+        False,
+        "--no-probe",
+        help="GitHub gh CLI probe (만료 헤더 추출) 비활성화 — offline / CI 모드.",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """AWS SSO / GitHub / Claude OAuth credential 발견 + 만료 상태 (read-only).
+
+    CP-5 1/3 — token detection + 만료 계산 + status 분류. 2/3 (doctor check
+    통합), 3/3 (rotate) 는 후속 PR.
+    """
+    report = collect_credentials(
+        home=home,
+        warn_threshold_days=warn_days,
+        probe_github_expiry=not no_probe,
+    )
+
+    if json_out:
+        typer.echo(jsonlib.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    creds = report.credentials
+    if not creds:
+        console.print(f"[dim]no credentials found under {home or Path.home()}[/]")
+        return
+
+    expired = sum(1 for c in creds if c.status == STATUS_EXPIRED)
+    expiring = sum(1 for c in creds if c.status == STATUS_EXPIRING)
+    console.print(
+        f"[bold]{len(creds)} credential(s)[/] — "
+        f"expired={expired} expiring={expiring} (threshold={warn_days}d)"
+    )
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("kind", style="cyan")
+    table.add_column("identifier")
+    table.add_column("expires_at", style="dim")
+    table.add_column("expires_in", justify="right")
+    table.add_column("status")
+    status_color = {
+        STATUS_VALID: "[green]valid[/]",
+        STATUS_EXPIRING: "[yellow]expiring[/]",
+        STATUS_EXPIRED: "[bold red]expired[/]",
+        STATUS_UNKNOWN: "[dim]unknown[/]",
+    }
+    for c in creds:
+        sec = c.expires_in_seconds
+        if sec is None:
+            in_disp = "—"
+        elif sec < 0:
+            in_disp = f"{sec // 86400}d (past)"
+        else:
+            days = sec // 86400
+            in_disp = f"{days}d" if days else f"{sec // 3600}h"
+        table.add_row(
+            c.kind,
+            c.identifier,
+            c.expires_at or "—",
+            in_disp,
+            status_color.get(c.status, c.status),
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":
