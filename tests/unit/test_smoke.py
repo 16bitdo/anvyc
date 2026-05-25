@@ -5,7 +5,7 @@ from __future__ import annotations
 def test_package_imports() -> None:
     import anvyc
 
-    assert anvyc.__version__ == "0.13.0"
+    assert anvyc.__version__ == "0.14.0"
 
 
 def test_cli_app_loads() -> None:
