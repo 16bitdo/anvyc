@@ -77,6 +77,13 @@ def fake_claude_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     monkeypatch.setattr(audit_log, "AUDIT_DIR_DEFAULT", tmp_path / "no-audit")
 
+    # CP-10 (v5): cursor adapter 가 실머신 Cursor SQLite read — fake_claude_home
+    # 안에서도 본 머신 데이터 누설 차단 위해 명시적 격리.
+    from anvyc.agents import cursor as cursor_mod
+
+    monkeypatch.setattr(cursor_mod, "DEFAULT_CURSOR_USER_DIR", tmp_path / "no-cursor")
+    monkeypatch.delenv("ANVYC_CURSOR_USER_DIR", raising=False)
+
     return home
 
 
@@ -100,6 +107,12 @@ def test_dispatch_activity_summary_empty(tmp_path: Path, monkeypatch: pytest.Mon
     home = tmp_path / "home-empty"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+
+    # CP-10 (v5): cursor 격리 — 실머신 SQLite 누설 차단.
+    from anvyc.agents import cursor as cursor_mod
+
+    monkeypatch.setattr(cursor_mod, "DEFAULT_CURSOR_USER_DIR", tmp_path / "no-cursor")
+    monkeypatch.delenv("ANVYC_CURSOR_USER_DIR", raising=False)
 
     from anvyc.mcp.server import _dispatch
 

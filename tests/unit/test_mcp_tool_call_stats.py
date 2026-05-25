@@ -116,9 +116,12 @@ def test_agent_unknown_raises_key_error(fake_audit_dir: Path) -> None:
 
 
 def test_agent_stub_raises_not_implemented(fake_audit_dir: Path) -> None:
-    """stub agent 명시는 NotImplementedError — MCP 에서 그대로 전파."""
+    """stub agent 명시는 NotImplementedError — MCP 에서 그대로 전파.
+
+    v5 시점 cursor 는 CP-10 impl — codex 만 stub. 본 테스트는 codex 로 검증.
+    """
     with pytest.raises(NotImplementedError):
-        _dispatch("tool_call_stats", {"agent": "cursor"})
+        _dispatch("tool_call_stats", {"agent": "codex"})
 
 
 def test_blocked_unaffected_by_agent_arg(fake_audit_dir: Path, fake_no_sessions: None) -> None:
