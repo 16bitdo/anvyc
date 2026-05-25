@@ -61,7 +61,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
 
 # 특정 버전:
-ANVYC_VERSION=v0.7.1 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_VERSION=v0.14.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
 # 설치 도구 강제 (uv | pipx | auto):
 ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
