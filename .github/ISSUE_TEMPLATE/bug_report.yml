@@ -1,0 +1,101 @@
+name: 버그 신고 (Bug report)
+description: anvyc 의 잘못된 동작 / 예기치 못한 결과 / 명령 실패를 신고합니다.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        anvyc 버그 신고를 시작해 주셔서 감사합니다.
+
+        - **보안 취약점은 본 양식 대신 [SECURITY.md](../blob/main/SECURITY.md) 의 비공개 채널 (`[anvyc-security]`) 로 신고해 주세요.**
+        - 행동 강령 위반은 [CODE_OF_CONDUCT.md](../blob/main/CODE_OF_CONDUCT.md) 의 비공개 채널 (`[anvyc-conduct]`) 로 신고해 주세요.
+
+  - type: input
+    id: version
+    attributes:
+      label: anvyc 버전
+      description: "`anvyc --version` 출력"
+      placeholder: "anvyc v0.14.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: macOS 버전
+      description: "`sw_vers -productVersion` 출력 + 아키텍처 (Apple Silicon / Intel)"
+      placeholder: "26.0.1 (Apple Silicon)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: 설치 경로
+      description: anvyc 를 어떻게 설치했는지
+      options:
+        - Homebrew (brew install anvyc)
+        - one-liner (install.sh)
+        - wheel 직접 (uv tool / pipx)
+        - 개발 설치 (scripts/dev-install.sh)
+        - 기타 (재현 단계에 명시)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 단계
+      description: 가능하면 최소 reproducer. anvyc.yaml / 환경변수 / 디렉터리 상태 등을 포함해 주세요. **secret 본문은 절대 포함하지 마세요** (placeholder `REDACTED` 사용).
+      placeholder: |
+        1. `anvyc init`
+        2. `anvyc.yaml` 의 X 항목을 Y 로 변경
+        3. `anvyc backup --dry-run` 실행
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      placeholder: "anvyc 가 ... 를 출력해야 한다 / ... 파일이 생성되어야 한다 / ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 에러 메시지 / 비예상 출력 / 예상 외 파일 변경 등
+      placeholder: |
+        에러: ...
+        또는 출력: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 관련 로그 / 출력 (선택)
+      description: "`anvyc --log-level debug <command>` 출력, 또는 `~/.anvyc/logs/` (있는 경우). 본문에 secret 이 포함됐을 가능성 있는 영역은 `REDACTED` 로 치환해 주세요."
+      render: shell
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 임시 회피 (선택)
+      description: 발견하신 회피 방법이 있다면
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 사전 확인
+      options:
+        - label: 본 신고 본문에 token / secret / 개인정보를 포함하지 않았다 (포함됐다면 즉시 댓글로 회전 의향 알려주세요)
+          required: true
+        - label: 보안 취약점이 아니다 (취약점은 SECURITY.md 채널)
+          required: true
+        - label: 동일 / 유사 issue 가 이미 열려있지 않다 (검색 완료)
+          required: true
