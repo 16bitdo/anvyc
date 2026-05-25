@@ -1958,6 +1958,27 @@ src/anvyc/
 이 분리는 사용자의 native `git stash` workflow 와 anvyc snapshot 의
 namespace 충돌을 방지한다.
 
+#### Capture 구현 — `stash push -u` + 즉시 `pop --index`
+
+untracked 파일까지 포함하려면 `git stash create -u` 가 자연스러운 후보이나
+git plumbing 제한으로 untracked 가 실제로 캡쳐되지 않는다 (live-demo
+시점에 발견된 behavior gap). 우회:
+
+1. `git stash push -u --quiet -m "anvyc-snapshot-<id>"` — tracked + index +
+   untracked 3-parent stash 생성 (working tree 일시 clean)
+2. `git rev-parse stash@{0}` — top stash SHA 즉시 capture
+3. `git update-ref refs/anvyc-snapshots/<id> <sha>` — anchor (GC 방지)
+4. `git stash pop --quiet --index` — working tree 복원 (anchor 가 있으므로
+   stack 에서 제거되어도 SHA 보존)
+
+이 순서가 안전한 이유:
+- step 4 (pop) 가 실패해도 stash entry 는 stack 에 남고 (msg `anvyc-snapshot-<id>`
+  로 식별), anchor ref 도 이미 등록됨 → 양쪽 채널 모두로 복구 가능
+- step 1~3 사이의 race window 는 단일 subprocess 시퀀스라 실용상 무시
+
+clean working tree (변경 0 + untracked 0) 면 step 1 의 push 가 non-zero —
+clean marker (stash_sha=null) 로 처리.
+
 ### 35.5 Out of scope (3/3 본 PR — CP-4 axis 완결 기준)
 
 - snapshot 자동 expiration (예: 30일 후 자동 삭제) — 후속 polish

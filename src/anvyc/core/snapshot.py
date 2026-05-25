@@ -113,17 +113,55 @@ def _detect_session_id(explicit: str | None) -> str | None:
 
 
 def _capture_stash(repo: Path, snapshot_id: str) -> tuple[str | None, str | None]:
-    """`git stash create` → ref 로 anchor. (stash_ref, stash_sha) 반환.
+    """현재 워킹트리 (tracked + **untracked**) 를 stash 로 capture + anchor.
 
-    working tree 가 clean 이면 (str(), str()) → (None, None) 반환.
+    구현 — push + 즉시 pop 방식:
+      1. `git stash push -u --quiet -m "anvyc-snapshot-<id>"` — untracked 포함
+         stash 생성 (working tree 가 clean 으로 변함)
+      2. `git rev-parse stash@{0}` — top stash 의 commit SHA capture
+      3. `git update-ref refs/anvyc-snapshots/<id> <sha>` — anchor (GC 방지)
+      4. `git stash pop --quiet --index` — working tree 복원 (anchor 가 이미
+         있으므로 stack 에서 제거되어도 SHA 보존)
+
+    `git stash create -u` 가 untracked 를 실제로 포함하지 않는 git plumbing
+    제한 회피 — `stash push -u` 의 full stash entry (tracked + index +
+    untracked 3-parent) 형태가 `apply` 시 untracked 도 복원.
+
+    working tree 가 완전 clean (no tracked changes + no untracked) 이면
+    `push` 가 non-zero 로 실패 → (None, None) 반환 = clean marker.
+
+    Returns:
+      (stash_ref, stash_sha) — clean tree 시 (None, None). anchor 실패 시
+      (None, sha) — caller 가 보존 결정.
     """
-    rc, sha, _err = _run_git(repo, "stash", "create")
-    if rc != 0 or not sha:
-        return None, None
-    ref = f"{STASH_REF_PREFIX}/{snapshot_id}"
-    rc, _, err = _run_git(repo, "update-ref", ref, sha)
+    msg = f"anvyc-snapshot-{snapshot_id}"
+    rc, _, _ = _run_git(repo, "stash", "push", "-u", "--quiet", "-m", msg)
     if rc != 0:
-        # ref 갱신 실패 — sha 만 반환 (caller 가 보존 결정).
+        # 변경 없음 — clean marker
+        return None, None
+
+    # top stash 의 SHA 즉시 capture
+    rc_rev, sha, _ = _run_git(repo, "rev-parse", "stash@{0}")
+    if rc_rev != 0 or not sha:
+        # 비정상 — 복원 시도 후 실패 반환
+        _run_git(repo, "stash", "pop", "--quiet", "--index")
+        return None, None
+
+    # anchor 먼저 (pop 이 실패해도 SHA 가 ref 로 보존되도록)
+    ref = f"{STASH_REF_PREFIX}/{snapshot_id}"
+    rc_anchor, _, _ = _run_git(repo, "update-ref", ref, sha)
+
+    # working tree 복원
+    rc_pop, _, pop_err = _run_git(repo, "stash", "pop", "--quiet", "--index")
+    if rc_pop != 0:
+        # pop 실패 — stash entry 는 stack 에 남아 있어 사용자가 수동 복구 가능.
+        # (push -u 의 message "anvyc-snapshot-<id>" 로 식별 가능)
+        # anchor 는 시도됐으므로 ref 가 있으면 반환.
+        if rc_anchor == 0:
+            return ref, sha
+        return None, sha
+
+    if rc_anchor != 0:
         return None, sha
     return ref, sha
 
