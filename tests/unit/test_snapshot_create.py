@@ -158,3 +158,53 @@ def test_meta_schema_keys(git_repo: Path, tmp_path: Path) -> None:
     }
     assert set(saved.keys()) == expected_keys
     assert saved["schema_version"] == 1
+
+
+def test_create_snapshot_captures_untracked_files(git_repo: Path, tmp_path: Path) -> None:
+    """untracked 파일도 stash 에 포함되어야 함 — fix for live-demo bug.
+
+    `git stash create` 는 untracked 를 캡쳐 안 함; `git stash push -u` 가 필요.
+    본 테스트는 _capture_stash 의 push -u + pop --index 접근법을 검증.
+    """
+    # tracked 수정 + untracked 신규
+    (git_repo / "README").write_text("modified-tracked\n", encoding="utf-8")
+    (git_repo / "new-untracked.txt").write_text("untracked-payload\n", encoding="utf-8")
+
+    anvyc_dir = tmp_path / "anvyc"
+    meta = create_snapshot(git_repo, anvyc_dir, label="with-untracked")
+    assert meta.git_stash_sha is not None
+    assert meta.git_stash_ref is not None
+
+    # working tree 무영향 — push + pop --index 후에도 변경 보존
+    assert (git_repo / "README").read_text() == "modified-tracked\n"
+    assert (git_repo / "new-untracked.txt").read_text() == "untracked-payload\n"
+
+    # stash 가 untracked 도 capture 했는지 — apply 시뮬레이션
+    # working tree 를 initial 상태로 reset + untracked 삭제
+    _run(git_repo, "checkout", "--", "README")
+    (git_repo / "new-untracked.txt").unlink()
+    assert (git_repo / "README").read_text() == "init\n"
+    assert not (git_repo / "new-untracked.txt").exists()
+
+    # anchored ref 로 stash apply → tracked + untracked 모두 복원되어야 함
+    _run(git_repo, "stash", "apply", meta.git_stash_ref)
+    assert (git_repo / "README").read_text() == "modified-tracked\n"
+    assert (git_repo / "new-untracked.txt").read_text() == "untracked-payload\n"
+
+
+def test_create_snapshot_untracked_only_no_tracked_changes(
+    git_repo: Path, tmp_path: Path
+) -> None:
+    """tracked 변경 없이 untracked 만 있는 경우도 capture 되어야 함."""
+    (git_repo / "only-untracked.txt").write_text("only", encoding="utf-8")
+    anvyc_dir = tmp_path / "anvyc"
+    meta = create_snapshot(git_repo, anvyc_dir, label="untracked-only")
+    assert meta.working_clean is False
+    assert meta.uncommitted_count >= 1
+    assert meta.git_stash_sha is not None  # untracked 만 있어도 stash 생성
+
+    # apply 시 복원
+    (git_repo / "only-untracked.txt").unlink()
+    assert meta.git_stash_ref is not None
+    _run(git_repo, "stash", "apply", meta.git_stash_ref)
+    assert (git_repo / "only-untracked.txt").read_text() == "only"
