@@ -2003,3 +2003,95 @@ restore 는 destructive — 본 절차로 회복성/재현성 모두 보장한�
   찾아 `anvyc snapshot restore <pre-id> --force` 로 원상 복구.
 - restore 가 conflict 로 실패했다 → conflict marker 수동 resolve, 또는
   pre-restore snapshot 의 stash sha 로 `git reset --hard <pre.git_stash_sha>`.
+
+## 36. Credentials Lifecycle 설계 (CP-5)
+
+> Control Plane v2 의 마지막 axis. GitHub PAT / AWS session / Claude OAuth
+> 토큰 만료를 사전 감지 + 회전 절차를 1Password CLI 로 연결. 1/3 본 PR 은
+> detection + status 만; 2/3 doctor check 통합, 3/3 rotate (op CLI wrapper)
+> 는 후속 PR.
+
+### 36.1 설계 원칙
+
+- **Read-only first**: 1/3·2/3 는 모두 read-only (detection / status / doctor
+  check). 3/3 의 rotate 만 write — destructive 절차는 snapshot/restore (§35.7)
+  같은 confirm + dry-run + auto pre-rotate backup 패턴 적용 예정.
+- **Source 다양성 수용**: 각 credential kind 의 만료 source 가 다름 — SSO
+  는 파일, GitHub 은 HTTP header, Claude 는 keychain. detection 은 source
+  별 helper 로 분리, 공통 `CredentialStatus` 로 합성.
+- **Schema 우선 안정화** (v1 cut-over 학습 L7 적용): 1/3 머지 시점에
+  `schema_version: 1` 확정 → 2/3 doctor check + 3/3 rotate 가 동일 schema
+  를 입력 contract 로 가정. CP-3 health / CP-4 snapshot 과 같은 패턴.
+
+### 36.2 CredentialStatus / CredentialsReport schema v1
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-25T00:00:00Z",
+  "warn_threshold_days": 7,
+  "credentials": [
+    {
+      "kind": "aws_sso" | "github" | "claude_oauth",
+      "identifier": "<profile/start_url/email>",
+      "source": "<file path 또는 'gh CLI'>",
+      "expires_at": "ISO8601 UTC | null",
+      "expires_in_seconds": int | null,
+      "status": "valid" | "expiring" | "expired" | "unknown"
+    },
+    ...
+  ]
+}
+```
+
+| key | 의미 |
+|---|---|
+| `kind` | credential 종류 (3 kind, 후속 확장 가능) |
+| `identifier` | 사람 식별용 — SSO start_url / GitHub host/user / Claude email |
+| `source` | 발견 위치 — `.aws/sso/cache/*.json` / `.config/gh/hosts.yml` / `.claude*.json` |
+| `expires_at` | ISO8601 UTC. null = 만료 정보 없음 / 미지원 source. |
+| `expires_in_seconds` | now 기준 잔여 초 (음수 = 만료 후 경과 초) |
+| `status` | `valid` (잔여 ≥ threshold) / `expiring` (0 < 잔여 < threshold) / `expired` (잔여 ≤ 0) / `unknown` (`expires_at=null`, 단 detected 면 valid 로 재분류) |
+
+### 36.3 명령 contract (CP-5 시리즈)
+
+| 명령 | PR | 안전 등급 | 책임 |
+|---|---|---|---|
+| `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | **1/3 (본 PR)** | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override (테스트 / 다른 머신 mount). |
+| doctor `creds_expiry_within_7d` check | 2/3 | read-only | `core/doctor.py` 의 check dict 에 신규 entry 합류 — 1/3 의 `collect_credentials()` 호출. CP-3 scheduler 가 `anvyc doctor --strict --json` 일1회 호출 시 자동 포함. |
+| `anvyc creds rotate <kind> [--dry-run] [--force]` | 3/3 | **destructive** | `op` (1Password CLI) wrapper. confirm prompt + dry-run 기본 + auto pre-rotate backup. rule 26-secrets-1password 준수. |
+
+### 36.4 Source 별 detection 전략 (1/3)
+
+| Kind | Source | Expiry 추출 | Status |
+|---|---|---|---|
+| `aws_sso` | `~/.aws/sso/cache/*.json` | `expiresAt` 필드 직접 read | full classification |
+| `github` | `~/.config/gh/hosts.yml` (간이 YAML parser — PyYAML 미의존) | `gh api -i user --hostname <host>` 의 `X-GitHub-Token-Expiration` 헤더 (없으면 `valid` 로 처리 — classic OAuth 는 만료 없음) | detected → `valid` (probe 실패 시), header 있으면 full |
+| `claude_oauth` | `~/.claude*.json` 의 `oauthAccount` 필드 | 직접 노출 안 됨 (실 token 은 keychain 등 별 location) | `valid` (detected) + `expires_at=null`. keychain 접근 보강은 후속 polish. |
+
+### 36.5 CP-3 scheduler 자연 시너지
+
+CP-3 scheduler 의 `run-scheduler.sh` 가 이미 `anvyc doctor --strict --json`
+일1회 호출 중. **CP-5 2/3 머지 시점**에 `creds_expiry_within_7d` check 가
+doctor 에 자동 합류 → scheduler 가 자동 호출 → CP-3 health JSON 의 doctor
+payload 에 만료 정보 포함 → CP-3 statusline 인디케이터에 자동 노출
+(severity 계산 규칙에 따라 expired→FAIL / expiring→WARN).
+
+**별도 wire 작업 불요** — CP-3 axis 가 만든 일반화된 doctor JSON contract
+의 cross-axis 재사용 가치 입증 (v1 cut-over 학습 L7 의 확장 효과).
+
+### 36.6 Out of scope (1/3 본 PR 기준)
+
+- doctor check 통합 (→ 2/3)
+- `creds rotate <kind>` 명령 (→ 3/3, destructive — `op` CLI 의존)
+- Claude OAuth 의 실 expiry 추출 (keychain 접근 — 별 polish)
+- GitHub PAT 의 fine-grained scope 검사 (현재는 만료만)
+- credential 자동 회전 자동화 (CP-3 scheduler 와 묶어 별 polish)
+
+### 36.7 보안 경계
+
+- `creds status` 출력에 **token 본문 노출 금지** — identifier (email/profile
+  이름) 만. expires_at 은 timestamp.
+- `--json` 출력도 동일 — secret 본문 미포함.
+- 3/3 `rotate` 는 `op` CLI 호출 시점에 token 을 stdin/stdout 으로 전달 —
+  shell history 노출 회피 (rule 26-secrets-1password 준수).
