@@ -23,8 +23,8 @@ from anvyc import agents
 from anvyc.agents import base as agents_base
 from anvyc.agents.base import (
     AGENT_REGISTRY,
-    AgentAdapter,
     UNIFIED_SCHEMA_VERSION,
+    AgentAdapter,
     get_agent,
     list_agents,
     register_agent,

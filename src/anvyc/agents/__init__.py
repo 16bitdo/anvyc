@@ -10,19 +10,18 @@ SoT 분담:
 - agent 자산 (hook 본문 등): role-based-ruleset/templates/agents/<agent>/
 """
 
-from anvyc.agents.base import (
-    AGENT_REGISTRY,
-    AgentAdapter,
-    UNIFIED_SCHEMA_VERSION,
-    get_agent,
-    list_agents,
-    register_agent,
-)
-
 # Side-effect imports: 각 어댑터 모듈은 import 시 register_agent() 호출.
 from anvyc.agents import claude_code as _claude_code  # noqa: F401
 from anvyc.agents import codex as _codex  # noqa: F401
 from anvyc.agents import cursor as _cursor  # noqa: F401
+from anvyc.agents.base import (
+    AGENT_REGISTRY,
+    UNIFIED_SCHEMA_VERSION,
+    AgentAdapter,
+    get_agent,
+    list_agents,
+    register_agent,
+)
 
 __all__ = [
     "AGENT_REGISTRY",
