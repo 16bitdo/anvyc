@@ -22,11 +22,15 @@ from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
 from anvyc.core.backup import BackupBlockedError, run_backup
 from anvyc.core.creds import (
     DEFAULT_WARN_THRESHOLD_DAYS,
+    ROTATE_KINDS,
     STATUS_EXPIRED,
     STATUS_EXPIRING,
     STATUS_UNKNOWN,
     STATUS_VALID,
+    RotateError,
     collect_credentials,
+    plan_rotate,
+    rotate_credential,
 )
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
@@ -1844,6 +1848,90 @@ def creds_status(
             status_color.get(c.status, c.status),
         )
     console.print(table)
+
+
+@creds_app.command("rotate")
+def creds_rotate(
+    kind: str = typer.Argument(..., help=f"회전 대상 — {' / '.join(ROTATE_KINDS)}."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="실제 회전 수행. 미지정 시 dry-run (계획만 출력).",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="--force 시의 confirm prompt 자동 수락.",
+    ),
+    timeout: int = typer.Option(
+        300,
+        "--timeout",
+        help="subprocess timeout (초). browser 인증 사용자 응답 고려 기본 5분.",
+    ),
+) -> None:
+    """자격 회전 — native re-auth 명령 위임 (**destructive**).
+
+    안전 절차 (snapshot restore §35.7 패턴 미러):
+    - 기본 dry-run — plan + warnings 만 출력.
+    - `--force` 시 confirm prompt (`--yes` 자동 수락).
+    - 외부 명령 (`aws sso login` / `gh auth refresh` 등) subprocess 호출.
+    - claude_oauth 는 직접 회전 불가 — 사용자 수동 조치 안내만.
+
+    1Password 통합 (`--from-op REF`) 은 후속 polish (browser-based OAuth 가
+    PAT 보다 안전한 다수 케이스를 우선).
+
+    CP-5 3/3 — axis 완결. paired: rbr rule `26-secrets-1password` 갱신.
+    """
+    try:
+        plan = plan_rotate(kind)
+    except RotateError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold]rotate plan[/]  kind={plan.kind}")
+    console.print(f"  description:    {plan.description}")
+    if plan.command:
+        console.print(f"  command:        {' '.join(plan.command)}")
+    else:
+        console.print("  command:        [dim](사용자 수동 조치 필요)[/]")
+    for w in plan.warnings:
+        console.print(f"  [yellow]warning:[/] {w}")
+
+    if not force:
+        console.print("[dim]\n(dry-run — no changes. add --force to actually rotate.)[/]")
+        return
+
+    if not plan.command:
+        console.print("\n[dim]claude_oauth — anvyc CLI 가 직접 실행할 수 없음. 위 안내 참조.[/]")
+        return
+
+    if not yes and not typer.confirm("\n실제로 rotation 을 수행할까요?"):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = rotate_credential(kind, timeout_seconds=timeout)
+    except RotateError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    if not result.executed:
+        console.print(f"\n[dim]no-op — {result.note}[/]")
+        return
+
+    color = typer.colors.GREEN if result.return_code == 0 else typer.colors.RED
+    typer.secho(
+        f"\nrotation completed  kind={result.kind}  rc={result.return_code}",
+        fg=color,
+        bold=True,
+    )
+    if result.stdout_tail:
+        console.print(f"  [dim]stdout (tail):[/]\n{result.stdout_tail}")
+    if result.stderr_tail:
+        console.print(f"  [dim]stderr (tail):[/]\n{result.stderr_tail}")
+    if result.return_code != 0:
+        raise typer.Exit(code=result.return_code or 1)
 
 
 if __name__ == "__main__":
