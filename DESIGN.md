@@ -2058,8 +2058,8 @@ restore 는 destructive — 본 절차로 회복성/재현성 모두 보장한�
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
 | `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | 1/3 (#37, merged) | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override. |
-| doctor `creds-expiry-within-7d` check | **2/3 (본 PR)** | read-only | `core/doctor.py` 의 `_REGISTRY` 에 신규 entry — `collect_credentials(probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. 7d threshold 는 check 이름 contract. CP-3 scheduler 가 `anvyc doctor --strict --json` 일1회 호출 시 **자동 포함** (별 wire 작업 불요). |
-| `anvyc creds rotate <kind> [--dry-run] [--force]` | 3/3 | **destructive** | `op` (1Password CLI) wrapper. confirm prompt + dry-run 기본 + auto pre-rotate backup. rule 26-secrets-1password 준수. |
+| doctor `creds-expiry-within-7d` check | 2/3 (#38, merged) | read-only | `core/doctor.py` 의 `_REGISTRY` 에 등록 — `collect_credentials(probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. CP-3 scheduler 가 doctor 호출 시 자동 포함. |
+| `anvyc creds rotate <kind> [--force] [--yes] [--timeout N]` | **3/3 (본 PR)** | **destructive** | native re-auth 위임 (`aws sso login` / `gh auth refresh` / claude_oauth = 사용자 수동 안내). dry-run 기본 + `--force` + confirm prompt. token 본문 노출 회피 (stdout/stderr tail 2 KiB 만). `--from-op REF` (1Password 통합) 은 후속 polish. §36.8 참조. |
 
 ### 36.4 Source 별 detection 전략 (1/3)
 
@@ -2080,18 +2080,52 @@ payload 에 만료 정보 포함 → CP-3 statusline 인디케이터에 자동 �
 **별도 wire 작업 불요** — CP-3 axis 가 만든 일반화된 doctor JSON contract
 의 cross-axis 재사용 가치 입증 (v1 cut-over 학습 L7 의 확장 효과).
 
-### 36.6 Out of scope (1/3 본 PR 기준)
+### 36.6 Out of scope (3/3 본 PR — CP-5 axis 완결 기준)
 
-- doctor check 통합 (→ 2/3)
-- `creds rotate <kind>` 명령 (→ 3/3, destructive — `op` CLI 의존)
-- Claude OAuth 의 실 expiry 추출 (keychain 접근 — 별 polish)
+- Claude OAuth 의 실 expiry 추출 (keychain 접근) — polish
 - GitHub PAT 의 fine-grained scope 검사 (현재는 만료만)
-- credential 자동 회전 자동화 (CP-3 scheduler 와 묶어 별 polish)
+- credential 자동 회전 자동화 (CP-3 scheduler 가 자동 호출하는 형태) — polish
+- `--from-op REF` (1Password 통합) — browser-based OAuth 가 다수 케이스에서
+  더 안전. PAT-only 워크플로 사용자만 의미 — polish.
+- `creds rotate` 의 auto pre-rotate backup — credential 자체 backup 은 보안
+  위험이라 의도적 제외 (사용자가 `anvyc creds status` 로 이전 expires_at 만
+  기록 보존하는 정도).
 
 ### 36.7 보안 경계
 
 - `creds status` 출력에 **token 본문 노출 금지** — identifier (email/profile
   이름) 만. expires_at 은 timestamp.
 - `--json` 출력도 동일 — secret 본문 미포함.
-- 3/3 `rotate` 는 `op` CLI 호출 시점에 token 을 stdin/stdout 으로 전달 —
-  shell history 노출 회피 (rule 26-secrets-1password 준수).
+- `rotate` 의 stdout/stderr 는 **tail 2 KiB 만 capture** — 외부 명령이
+  실수로 token 본문을 print 해도 trail 만 보존. anvyc 자체는 token 을
+  직접 핸들 안 함 — 외부 명령 (aws/gh) 에 위임 (rule 26-secrets-1password
+  준수).
+
+### 36.8 Rotate 안전 절차 (3/3 — CP-4 §35.7 패턴 미러)
+
+rotate 는 destructive — snapshot/restore (§35.7) 의 4-layer 안전 패턴 미러.
+
+1. **`plan_rotate(kind)`** — kind 검증 + 실행될 command + warnings 산출.
+   CLI 가 `--force` 없으면 plan + warnings 만 출력 후 종료 (no-op = dry-run).
+2. **`--force` 시** confirm prompt 1회 (`--yes` / `-y` 자동 수락).
+3. **External command 위임** — 각 kind 별 native re-auth:
+
+   | kind | command | 부수효과 |
+   |---|---|---|
+   | `aws_sso` | `aws sso login` | 브라우저 OAuth 흐름 → `~/.aws/sso/cache/*.json` 갱신 |
+   | `github` | `gh auth refresh` | OAuth refresh → `~/.config/gh/hosts.yml` token 갱신 |
+   | `claude_oauth` | (없음) | 사용자 수동 안내만 — Claude Code UI 에서 re-login |
+
+4. **결과 capture**: `RotateResult` 에 `return_code` + `stdout_tail` /
+   `stderr_tail` (각 2 KiB). 외부 명령 부재 → `RotateError("외부 명령 부재")`.
+   timeout (기본 300s — browser 인증 사용자 대기 고려) 초과 →
+   `RotateError("rotation timeout")`.
+
+회복 채널:
+- rotation 후 `anvyc creds status` 로 새 expires_at 확인.
+- rotation 실패 (rc != 0) → CLI 가 exit code 그대로 전파; 사용자가 원인
+  진단 (예: SSO 인증 cancel, gh login 만료된 base credential 등).
+
+**1Password 통합 (`--from-op REF`)** 은 후속 polish — 사용자가 PAT 를
+`op://...` 에 보관한 경우만 의미. AWS SSO + gh OAuth 같은 다수 케이스는
+browser refresh 가 더 안전 (token 자체가 OS keychain / 표준 cache 에 저장).

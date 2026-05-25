@@ -93,6 +93,146 @@ class CredentialsReport:
         }
 
 
+# ===== Rotate (CP-5 3/3) =====
+#
+# 3 kind 의 자격 회전 — native re-auth 우선. 1Password CLI(`op`) 통합은 후속
+# polish (사용자가 명시적으로 PAT 를 op 에 저장한 경우만 의미). 본 1차 구현
+# 은 browser-based OAuth refresh 가 더 안전한 다수 케이스를 다룬다.
+#
+# rule 26-secrets-1password 준수: token 본문을 stdout/stderr 로 출력하지
+# 않음. subprocess 호출은 caller 의 PATH 의 외부 명령에 위임 (token 내용
+# 미캡처). op CLI 통합은 후속 polish (--from-op REF 형태로 별도 도입).
+
+ROTATE_KINDS = (KIND_AWS_SSO, KIND_GITHUB, KIND_CLAUDE_OAUTH)
+
+
+class RotateError(ValueError):
+    """rotate 입력/실행 오류."""
+
+
+@dataclass(frozen=True)
+class RotatePlan:
+    """`rotate --dry-run` 의 plan 출력."""
+
+    kind: str
+    command: list[str]  # 실 실행될 외부 명령 (빈 list = 사용자 수동 조치 안내)
+    description: str
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class RotateResult:
+    """`rotate` 실 실행 결과."""
+
+    kind: str
+    executed: bool                 # subprocess 가 실제 호출됐는지
+    return_code: int | None        # subprocess exit code (executed=False 면 None)
+    stdout_tail: str               # 마지막 N bytes (token 노출 회피 위해 짧게)
+    stderr_tail: str
+    note: str                      # claude_oauth 같이 안내만 한 경우의 메시지
+
+
+def plan_rotate(kind: str) -> RotatePlan:
+    """3 kind 별 rotation plan.
+
+    Raises:
+      RotateError: kind 가 지원 범위 밖.
+    """
+    if kind not in ROTATE_KINDS:
+        raise RotateError(
+            f"unsupported kind: {kind!r}. supported: {', '.join(ROTATE_KINDS)}"
+        )
+
+    if kind == KIND_AWS_SSO:
+        return RotatePlan(
+            kind=kind,
+            command=["aws", "sso", "login"],
+            description="AWS SSO 브라우저 인증 — 새 access token 발급 후 ~/.aws/sso/cache/ 에 저장.",
+            warnings=[
+                "브라우저가 열림 — 활성 SSO start_url 의 default profile 기준.",
+                "여러 SSO 인스턴스가 있으면 'aws sso login --profile <name>' 으로 명시 권장 (본 명령은 default).",
+            ],
+        )
+    if kind == KIND_GITHUB:
+        return RotatePlan(
+            kind=kind,
+            command=["gh", "auth", "refresh"],
+            description="GitHub OAuth refresh — 활성 host/user 의 token 재발급.",
+            warnings=[
+                "gh CLI 가 관리하는 OAuth 만 영향 — 별도 PAT 는 사용자가 새로 발급 + `gh auth login --with-token` 필요.",
+                "1Password 저장 PAT 의 경우 별도 wrapper 가 필요 (후속 polish: --from-op REF).",
+            ],
+        )
+    # KIND_CLAUDE_OAUTH — Claude Code UI 에서 re-login 필요
+    return RotatePlan(
+        kind=kind,
+        command=[],  # 사용자 수동 조치
+        description="Claude Code UI 에서 re-login 필요 — anvyc 가 직접 회전 불가.",
+        warnings=[
+            "1) Claude Code 종료 후 재시작 → OAuth 흐름 자동 재발급 가능.",
+            "2) 또는 https://claude.com/login 에서 web 재로그인 → ~/.claude.json 갱신 자동.",
+            "3) anvyc CLI 는 직접 token 갱신 안 함 (security 경계 — rule 26).",
+        ],
+    )
+
+
+def rotate_credential(kind: str, *, timeout_seconds: int = 300) -> RotateResult:
+    """plan_rotate(kind).command 를 실 실행.
+
+    - command 가 빈 list (claude_oauth) → executed=False + 안내 메시지만.
+    - 외부 명령 호출 실패 (FileNotFoundError 등) → RotateError raise.
+    - subprocess exit code 그대로 반환 (caller 가 0/non-0 판단).
+
+    Args:
+      kind: 회전 대상.
+      timeout_seconds: subprocess timeout (browser 인증 사용자 대기 고려, 기본 5분).
+
+    Note:
+      stdout/stderr 는 마지막 2 KiB 만 capture — token 본문이 외부 명령
+      output 에 새지 않도록 짧게 (rule 26). 본 함수는 token 을 직접
+      다루지 않음 — 외부 명령에 위임.
+    """
+    plan = plan_rotate(kind)
+
+    if not plan.command:
+        return RotateResult(
+            kind=kind,
+            executed=False,
+            return_code=None,
+            stdout_tail="",
+            stderr_tail="",
+            note=plan.description + " (사용자 수동 조치 필요)",
+        )
+
+    try:
+        proc = subprocess.run(
+            plan.command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except FileNotFoundError as exc:
+        raise RotateError(
+            f"외부 명령 부재: {plan.command[0]} — 설치 후 재시도. ({exc})"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RotateError(
+            f"rotation timeout (>{timeout_seconds}s): {' '.join(plan.command)}. "
+            f"browser 인증 사용자 응답 지연 가능 — 수동 완료 후 'anvyc creds status' 확인."
+        ) from exc
+
+    # token 본문 노출 회피 위해 tail 만 (각 2 KiB)
+    return RotateResult(
+        kind=kind,
+        executed=True,
+        return_code=proc.returncode,
+        stdout_tail=proc.stdout[-2048:] if proc.stdout else "",
+        stderr_tail=proc.stderr[-2048:] if proc.stderr else "",
+        note=plan.description,
+    )
+
+
 def _classify(expires_at: str | None, *, warn_threshold_days: int, now: datetime) -> tuple[int | None, str]:
     """expires_at ISO8601 → (expires_in_seconds, status).
 
