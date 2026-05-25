@@ -70,11 +70,19 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
-def iter_block_events(audit_dir: Path | None = None) -> Iterator[BlockEvent]:
+def iter_block_events(
+    audit_dir: Path | None = None,
+    agent: str | None = None,
+) -> Iterator[BlockEvent]:
     """모든 audit jsonl 의 block 이벤트 yield.
 
     손상된 라인 / 형식 불일치는 silent skip (read-only collector 의 안전
     기본값, activity.py 와 동일 패턴).
+
+    CP-11 PR-11E — agent filter:
+      - agent=None (기본): 모든 agent 의 event yield
+      - agent='<name>': 해당 agent 의 event 만 yield. audit jsonl 의
+        'agent' 필드와 정확히 일치하는 event 만.
     """
     for path in discover_audit_files(audit_dir):
         try:
@@ -92,11 +100,14 @@ def iter_block_events(audit_dir: Path | None = None) -> Iterator[BlockEvent]:
                     hook = event.get("hook")
                     if not isinstance(hook, str) or not hook:
                         continue
+                    event_agent = str(event.get("agent", ""))
+                    if agent is not None and event_agent != agent:
+                        continue
                     yield BlockEvent(
                         ts=_parse_timestamp(event.get("ts")),
                         hook=hook,
                         matcher=str(event.get("matcher", "")),
-                        agent=str(event.get("agent", "")),
+                        agent=event_agent,
                         exit_code=int(event.get("exit_code", 0)) if isinstance(event.get("exit_code"), int) else 0,
                         command_redacted=str(event.get("command_redacted", "")),
                         source_path=path,
@@ -106,8 +117,11 @@ def iter_block_events(audit_dir: Path | None = None) -> Iterator[BlockEvent]:
             continue
 
 
-def collect_block_events(audit_dir: Path | None = None) -> list[BlockEvent]:
-    return list(iter_block_events(audit_dir))
+def collect_block_events(
+    audit_dir: Path | None = None,
+    agent: str | None = None,
+) -> list[BlockEvent]:
+    return list(iter_block_events(audit_dir, agent=agent))
 
 
 def aggregate_block_events(events: list[BlockEvent]) -> dict[str, Any]:
