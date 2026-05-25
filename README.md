@@ -40,6 +40,8 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ## 4. 지원 도구
 
+> **AI 도구 시대의 dotfile manager** — Cursor / Claude Code 의 settings · hooks · plugins · MCP config 까지 도구별 safe adapter 로 다룬다. 범용 파일 복사 도구는 secret/세션/캐시 영역까지 통째 가져가지만, anvyc 는 도구별 특성을 인지해 **공유 가치 영역** (rules / skills / plugins / settings) 만 분리 수집한다.
+
 | 도구 | 기본 포함 | 기본 제외 |
 |---|---|---|
 | Shell (zsh) | `.zshrc`, `.zprofile` | shell history |
