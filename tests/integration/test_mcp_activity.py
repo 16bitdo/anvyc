@@ -69,6 +69,14 @@ def fake_claude_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
 
     monkeypatch.setenv("HOME", str(home))
+
+    # CP-8 PR-D: audit_log 의 AUDIT_DIR_DEFAULT 는 import 시점에 evaluated 되어
+    # HOME setenv 만으로는 격리 안 됨 — 실머신 ~/.config/cc-inspect/audit 누설
+    # 방지를 위해 명시적으로 monkeypatch.
+    from anvyc.core import audit_log
+
+    monkeypatch.setattr(audit_log, "AUDIT_DIR_DEFAULT", tmp_path / "no-audit")
+
     return home
 
 
@@ -103,32 +111,40 @@ def test_dispatch_activity_summary_empty(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_dispatch_tool_call_stats_full(fake_claude_home: Path) -> None:
+    """CP-8 PR-D — 반환 형식이 list → dict ({tool_call_ranking, blocked})."""
     from anvyc.mcp.server import _dispatch
 
     result = _dispatch("tool_call_stats", {})
 
-    assert result == [
+    assert isinstance(result, dict)
+    assert result["tool_call_ranking"] == [
         {"name": "Read", "count": 2},
         {"name": "Bash", "count": 1},
     ]
+    # audit_dir 부재 (fake_claude_home 은 ~/.claude* 만 patch) → blocked 빈 통계.
+    assert result["blocked"]["total_blocks"] == 0
+    assert result["blocked"]["by_hook"] == {}
 
 
 def test_dispatch_tool_call_stats_top(fake_claude_home: Path) -> None:
+    """top 인자가 ranking 만 자르고 blocked 통계는 영향받지 않음 (CP-8 PR-D)."""
     from anvyc.mcp.server import _dispatch
 
     result = _dispatch("tool_call_stats", {"top": 1})
 
-    assert result == [{"name": "Read", "count": 2}]
+    assert isinstance(result, dict)
+    assert result["tool_call_ranking"] == [{"name": "Read", "count": 2}]
+    assert result["blocked"]["total_blocks"] == 0
 
 
 def test_dispatch_tool_call_stats_invalid_top(fake_claude_home: Path) -> None:
-    """top 이 int 가 아니면 전체 반환 (defensive fallback)."""
+    """top 이 int 가 아니면 ranking 전체 반환 (defensive fallback)."""
     from anvyc.mcp.server import _dispatch
 
     result = _dispatch("tool_call_stats", {"top": "bogus"})
 
-    # 전체 반환
-    assert len(result) == 2
+    assert isinstance(result, dict)
+    assert len(result["tool_call_ranking"]) == 2
 
 
 def test_dispatch_unknown_tool_raises() -> None:
