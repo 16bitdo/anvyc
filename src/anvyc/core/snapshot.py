@@ -1,8 +1,8 @@
 """Workspace snapshot (작업 회복) — CP-4 (anvyc#29) 의 핵심.
 
 autopilot 의 실수 (브랜치 30 파일 수정 등) 를 명시적 snapshot 으로 되돌리기
-위한 capture 단. 본 모듈은 1/3 PR 의 create 만 구현; list/diff (2/3),
-restore (3/3) 는 별도 PR.
+위한 capture + query 단. 본 모듈은 create / list / diff 구현; restore (3/3)
+는 별도 PR.
 
 설계 원칙
 - **Non-disruptive capture**: `git stash create` 로 working tree 를 건드리지
@@ -192,3 +192,119 @@ def create_snapshot(
     _atomic_write_json(snap_dir / "meta.json", meta.to_dict())
 
     return meta
+
+
+def _load_meta(meta_path: Path) -> SnapshotMeta | None:
+    """meta.json 1건 로드 — schema_version 미스매치 / 손상 시 None."""
+    try:
+        with meta_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    try:
+        return SnapshotMeta(
+            schema_version=data["schema_version"],
+            id=data["id"],
+            label=data.get("label"),
+            claude_session_id=data.get("claude_session_id"),
+            git_branch=data.get("git_branch"),
+            git_stash_ref=data.get("git_stash_ref"),
+            git_stash_sha=data.get("git_stash_sha"),
+            created_at=data["created_at"],
+            uncommitted_count=int(data.get("uncommitted_count", 0)),
+            working_clean=bool(data.get("working_clean", False)),
+        )
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def list_snapshots(anvyc_dir: Path) -> list[SnapshotMeta]:
+    """`.anvyc/snapshots/*/meta.json` 인덱스를 `created_at` 내림차순으로 반환.
+
+    - 디렉터리 부재 → 빈 list.
+    - meta.json 부재 / 손상 / version 미스매치 항목은 silently skip
+      (corrupt 처리는 1/3 의 health-append 패턴과 일관).
+    """
+    root = anvyc_dir / SNAPSHOTS_SUBDIR
+    if not root.is_dir():
+        return []
+    metas: list[SnapshotMeta] = []
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir():
+            continue
+        m = _load_meta(entry / "meta.json")
+        if m is not None:
+            metas.append(m)
+    metas.sort(key=lambda m: m.created_at, reverse=True)
+    return metas
+
+
+def get_snapshot(anvyc_dir: Path, snapshot_id: str) -> SnapshotMeta | None:
+    """단일 snapshot meta 조회. 부재 / 손상 시 None."""
+    return _load_meta(anvyc_dir / SNAPSHOTS_SUBDIR / snapshot_id / "meta.json")
+
+
+class SnapshotNotFoundError(ValueError):
+    """주어진 snapshot id 가 anvyc_dir 에 없거나 손상."""
+
+
+class SnapshotDiffError(RuntimeError):
+    """git diff 실행 실패 (ref unreachable 등)."""
+
+
+def diff_snapshot(
+    repo: Path,
+    anvyc_dir: Path,
+    snapshot_id: str,
+    *,
+    against: str | None = None,
+) -> str:
+    """snapshot 의 working tree state 와 비교 대상 간 unified diff 반환.
+
+    - `against=None`: snapshot 시점의 git stash sha ↔ **현재 working tree** 비교.
+      snapshot 의 `working_clean=true` (stash_sha=null) 인 경우 안내 메시지 반환.
+    - `against=<other-id>`: 두 snapshot 의 stash sha 간 비교. 한쪽이라도
+      `working_clean=true` 면 안내 메시지 반환.
+
+    Raises:
+      SnapshotNotFoundError: snapshot_id 또는 against 가 부재.
+      SnapshotDiffError: git diff 실행이 실패 (ref unreachable / repo 문제).
+
+    Note:
+      git stash sha 는 워킹트리 변경분 + index 변경분의 합쳐진 tree commit.
+      `git diff <sha>` 는 그 tree 와 현재 working tree 의 차이 (양방향 모두 보임).
+    """
+    base = get_snapshot(anvyc_dir, snapshot_id)
+    if base is None:
+        raise SnapshotNotFoundError(f"snapshot not found: {snapshot_id}")
+
+    if against is None:
+        if base.git_stash_sha is None:
+            return (
+                f"# snapshot {base.id} 은 working_clean=true (capture 시점 깨끗) — "
+                "비교할 stash sha 없음. 시점 marker 로만 의미."
+            )
+        rc, out, err = _run_git(repo, "diff", base.git_stash_sha)
+        if rc != 0:
+            raise SnapshotDiffError(
+                f"git diff {base.git_stash_sha} 실패: {err or 'unknown error'}"
+            )
+        return out
+
+    other = get_snapshot(anvyc_dir, against)
+    if other is None:
+        raise SnapshotNotFoundError(f"snapshot not found: {against}")
+    if base.git_stash_sha is None or other.git_stash_sha is None:
+        return (
+            f"# 한쪽 snapshot 이 working_clean=true (stash sha 없음): "
+            f"{base.id}.stash={base.git_stash_sha} vs {other.id}.stash={other.git_stash_sha}"
+        )
+    rc, out, err = _run_git(repo, "diff", base.git_stash_sha, other.git_stash_sha)
+    if rc != 0:
+        raise SnapshotDiffError(
+            f"git diff {base.git_stash_sha} {other.git_stash_sha} 실패: "
+            f"{err or 'unknown error'}"
+        )
+    return out
