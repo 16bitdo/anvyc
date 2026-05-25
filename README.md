@@ -87,10 +87,10 @@ Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc).
 
 ```bash
 # uv tool (권장)
-uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.6.3/anvyc-0.6.3-py3-none-any.whl
+uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0-py3-none-any.whl
 
 # 또는 pipx
-pipx install https://github.com/16bitdo/anvyc/releases/download/v0.6.3/anvyc-0.6.3-py3-none-any.whl
+pipx install https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0-py3-none-any.whl
 
 anvyc --version
 ```
