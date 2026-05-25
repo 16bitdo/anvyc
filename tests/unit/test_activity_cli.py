@@ -49,6 +49,15 @@ def fake_claude_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
 
     monkeypatch.setenv("HOME", str(home))
+
+    # CP-10 (v5): cursor adapter 가 실머신 ~/Library/Application Support/Cursor
+    # 의 SQLite 를 read 함 — fake_claude_home 안에서도 본 머신 누설 차단
+    # 위해 격리. DEFAULT_CURSOR_USER_DIR 은 module load 시점 evaluated.
+    from anvyc.agents import cursor as cursor_mod
+
+    monkeypatch.setattr(cursor_mod, "DEFAULT_CURSOR_USER_DIR", tmp_path / "no-cursor")
+    monkeypatch.delenv("ANVYC_CURSOR_USER_DIR", raising=False)
+
     return home
 
 
@@ -87,10 +96,20 @@ def test_activity_json(fake_claude_home: Path) -> None:
     assert item["tools_used"] == {"Read": 1, "Bash": 1}
 
 
+def _isolate_cursor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """CP-10 (v5): cursor adapter 가 실머신 ~/Library/Application Support/
+    Cursor SQLite 를 read — empty_home 테스트에서 본 머신 누설 차단."""
+    from anvyc.agents import cursor as cursor_mod
+
+    monkeypatch.setattr(cursor_mod, "DEFAULT_CURSOR_USER_DIR", tmp_path / "no-cursor")
+    monkeypatch.delenv("ANVYC_CURSOR_USER_DIR", raising=False)
+
+
 def test_activity_empty_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home-empty"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    _isolate_cursor(monkeypatch, tmp_path)
     runner = CliRunner()
     result = runner.invoke(app, ["activity"])
     assert result.exit_code == 0
@@ -101,6 +120,7 @@ def test_activity_json_empty_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     home = tmp_path / "home-empty"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    _isolate_cursor(monkeypatch, tmp_path)
     runner = CliRunner()
     result = runner.invoke(app, ["activity", "--json"])
     assert result.exit_code == 0

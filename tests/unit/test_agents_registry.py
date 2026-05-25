@@ -62,19 +62,22 @@ def test_get_agent_unknown_raises_key_error() -> None:
         get_agent("notarealagent")
 
 
-@pytest.mark.parametrize("name", ["cursor", "codex"])
+@pytest.mark.parametrize("name", ["codex"])
 def test_stub_discover_session_files_raises(name: str) -> None:
+    """codex 는 v5 시점 여전히 stub — discover 시 NotImplementedError.
+
+    cursor 는 CP-10 (v5) 에서 impl 전환 — tests/unit/test_agents_cursor.py 가 cover.
+    """
     adapter = get_agent(name)
     with pytest.raises(NotImplementedError):
-        # stub 의 호출 자체가 raise 일 수도, generator 진입 시 raise 일 수도.
-        # 두 경우 모두 with 안에서 catch 되도록 호출도 안쪽에 둔다.
         it = adapter.discover_session_files()
         if isinstance(it, Iterator):
             next(it)
 
 
-@pytest.mark.parametrize("name", ["cursor", "codex"])
+@pytest.mark.parametrize("name", ["codex"])
 def test_stub_parse_session_raises(name: str, tmp_path: Path) -> None:
+    """codex stub 의 parse_session 도 NotImplementedError (cursor 는 impl)."""
     adapter = get_agent(name)
     with pytest.raises(NotImplementedError):
         adapter.parse_session(tmp_path / "dummy.jsonl")
@@ -155,8 +158,9 @@ def test_collect_sessions_unknown_agent_raises_key_error() -> None:
         collect_sessions(agent="notarealagent")
 
 
-@pytest.mark.parametrize("name", ["cursor", "codex"])
+@pytest.mark.parametrize("name", ["codex"])
 def test_collect_sessions_stub_agent_raises_not_implemented(name: str) -> None:
+    """v5 시점 codex 만 stub — cursor 는 CP-10 으로 impl 전환."""
     from anvyc.core.activity import collect_sessions
 
     with pytest.raises(NotImplementedError):
@@ -173,13 +177,16 @@ def test_collect_sessions_roots_and_agent_mutually_exclusive(tmp_path: Path) -> 
 def test_collect_sessions_union_skips_stub_silently(monkeypatch: pytest.MonkeyPatch) -> None:
     """agent=None (union) 모드는 stub adapter 의 NotImplementedError 를 silent skip.
 
-    이는 CP-7 의 'byte-equal 보장' AC — claude_code 만 impl 인 현재
-    상태에서 기존 동작과 동일한 결과를 내야 한다.
+    v5 이후: claude_code (impl) + cursor (impl, CP-10) + codex (stub) — 모든
+    adapter 의 실 데이터 source 를 monkeypatch 로 격리한 빈 환경에서 union
+    결과가 empty 인지 검증. codex 의 NotImplementedError 도 silent skip 보장.
     """
+    from anvyc.agents import cursor as cursor_mod
     from anvyc.core import activity as activity_mod
 
     monkeypatch.setattr(activity_mod, "iter_session_files", lambda roots=None: iter([]))
-    # union 호출은 stub 의 NotImplementedError 가 raise 되어선 안 됨.
+    # cursor 도 격리 — 실머신 SQLite 누설 차단 (v5 CP-10 후 impl 됨).
+    monkeypatch.setattr(cursor_mod, "discover_cursor_sqlites", lambda user_dir=None: [])
     result = activity_mod.collect_sessions()
     assert result == []
 
