@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 보안 취약점 신고 (Security vulnerability)
+    url: https://github.com/16bitdo/anvyc/security/advisories/new
+    about: "취약점은 공개 issue 가 아닌 GitHub Security Advisory (권장) 또는 이메일 [anvyc-security] 채널로 비공개 신고. 절차 — SECURITY.md."
+  - name: 행동 강령 위반 신고 (Code of Conduct)
+    url: https://github.com/16bitdo/anvyc/blob/main/CODE_OF_CONDUCT.md
+    about: "CoC 위반은 이메일 [anvyc-conduct] 채널로 비공개 신고. 절차 — CODE_OF_CONDUCT.md."
+  - name: 기여 가이드 (Contributing)
+    url: https://github.com/16bitdo/anvyc/blob/main/CONTRIBUTING.md
+    about: "PR 작성 / 코드 컨벤션 / 개발 환경 셋업."
