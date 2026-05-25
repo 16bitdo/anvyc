@@ -2202,10 +2202,10 @@ browser refresh 가 더 안전 (token 자체가 OS keychain / 표준 cache 에 �
 
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
-| `anvyc sync status --target <path> [--machine-id X] [--json]` | **1/3 (본 PR)** | read-only | local manifest 생성 + remote manifest 비교 → SyncStatusReport (summary + diff_entries). remote 부재 시 모든 local item 이 `local_only`. |
-| `anvyc sync push <target>` | 2/3 | read+write | local items 를 remote target 에 mirror + remote manifest 갱신. conflict 검출 시 안내 (auto-resolve 없음). |
-| `anvyc sync pull <target>` | 2/3 | read+write | remote items 를 local 에 mirror. conflict 검출 시 사용자 prompt. |
-| `anvyc sync conflict ...` | 3/3 | destructive | conflict resolution 명령. rbr rule `<TBD>` paired. |
+| `anvyc sync status --target <path> [--machine-id X] [--json]` | 1/3 (#44, merged) | read-only | local manifest 생성 + remote manifest 비교 → SyncStatusReport. |
+| `anvyc sync push --target <path> [--force] [--yes]` | **2/3 (본 PR)** | write | local → remote mirror (per-file atomic copy + manifest atomic write). conflict (sha256 불일치) 기본 skip; `--force` overwrite. remote-only items 보존 (destructive 회피). |
+| `anvyc sync pull --target <path> [--force] [--yes]` | **2/3 (본 PR)** | write | remote → local mirror (relative_path 역매핑). conflict 기본 skip; `--force` local overwrite. local-only items 보존. |
+| `anvyc sync conflict ...` | 3/3 | destructive | conflict resolution 명령 + rbr rule `<TBD>` paired. |
 
 ### 37.4 Diff 알고리즘 (compute_sync_status)
 
@@ -2238,14 +2238,15 @@ workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
 **1/3 MVP 는 단일 machine 기준** — 다중 machine 통합 (예: `<remote>/<machine_id>/...`)
 은 2/3 polish.
 
-### 37.7 Out of scope (1/3 본 PR 기준)
+### 37.7 Out of scope (2/3 본 PR 기준)
 
-- `sync push` / `pull` 명령 (→ 2/3, read+write)
 - conflict resolution + rule (→ 3/3, destructive)
 - creds expiry timestamp sync (live computation — 후속 polish)
 - HTTPS / S3 / git remote backend abstraction (현재는 filesystem path 만)
 - 다중 machine_id 통합 (현재는 단일 remote 기준)
 - token / secret 본문 sync (rule 26 위반 — 의도적 영구 제외)
+- destructive deletion sync (push/pull 모두 삭제 안 함 — explicit cleanup 명령 후속)
+- `--dry-run` flag (CLI 가 항상 plan 먼저 출력 + confirm prompt — 별 flag 불요)
 
 ### 37.8 보안 경계
 
@@ -2256,3 +2257,25 @@ workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
 - snapshot meta 의 `claude_session_id` 는 식별자라 본문 아님 — sync 안전.
 - remote_target 은 사용자 책임 — Dropbox 같은 cloud sync 는 cloud 운영사
   policy 준수.
+
+### 37.9 Push/Pull 안전 절차 (2/3 — CP-4 §35.7 패턴 미러)
+
+push/pull 은 file write — snapshot restore §35.7 의 4-layer safety 미러.
+
+1. **dry-run plan**: CLI 가 status entries 출력 (will_copy / will_skip_conflict
+   카운트 + warning). plan 만 보고 종료 가능.
+2. **confirm prompt**: `--yes` / `-y` 없으면 사용자 응답 요구.
+3. **per-file atomic copy**: `tempfile.mkstemp` (dst.parent 와 동일
+   filesystem) + chunked write + `os.replace`. partial write 시 cleanup.
+4. **manifest atomic write** (push 만): 같은 tempfile + replace 패턴.
+
+회복 채널:
+- push 가 일부 file 실패 → `failed_paths` 에 기록. manifest 는 성공한
+  entries 만 반영. 재실행 시 same/local_only 분류로 자연 재시도.
+- pull 이 일부 file 실패 → 동일. local 측은 partial state 가능 — 재실행
+  으로 보완.
+- conflict (sha256 불일치) — 기본 skip + count, 사용자 결정으로 `--force`
+  재실행 가능. 3/3 의 conflict resolution 이 정형화 도구.
+
+**push/pull 모두 destructive deletion 금지** — remote-only / local-only
+items 는 반대 방향 작업에서 자동 보존. 명시적 cleanup 명령은 후속 polish.
