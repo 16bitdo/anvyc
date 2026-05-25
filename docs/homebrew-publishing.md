@@ -114,6 +114,8 @@ brew install anvyc
 anvyc --version  # X.Y.Z
 ```
 
+> 사용자 관점의 상세 가이드 (사후 검증 체크리스트 / 트러블슈팅 / 제거 절차) 는 [docs/install-via-homebrew.md](install-via-homebrew.md) 참조.
+
 ---
 
 ## 트러블슈팅
