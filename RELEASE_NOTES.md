@@ -1,5 +1,33 @@
 # anvyc 릴리즈 노트
 
+## v0.15.1 — 2026-05-26 (patch — `__version__` 동적 lookup refactor)
+
+[Display drift 영구 차단] v0.15.0 release PR (anvyc#67) 이 `pyproject.toml` 의 version 만 0.14.0 → 0.15.0 bump 하고 `src/anvyc/__init__.py:3` 의 hardcode `__version__ = "0.14.0"` 갱신 누락. 결과 — wheel artifact + editable install 양쪽에서 `anvyc --version` 이 `v0.14.0` 표시되는 display drift. functional 영향 없음 (workctx CLI / doctor check 모두 정상 작동) 이지만 향후 release 의 hardcode 갱신 잊음 방지 위해 **동적 lookup 으로 refactor**.
+
+### 변경
+
+- **`src/anvyc/__init__.py`**: hardcode `__version__` → `importlib.metadata.version("anvyc")` 동적 lookup. `PackageNotFoundError` fallback `"0.0.0+unknown"` (source 실행 등 metadata 부재 케이스).
+- **`pyproject.toml`**: version `0.15.0` → `0.15.1`. **pyproject 가 SoT** — 향후 release 는 본 파일 1줄만 bump 하면 `__version__` 자동 동기화.
+
+### 검증
+
+```bash
+$ anvyc --version
+anvyc v0.15.1
+```
+
+editable install + wheel install 양쪽 모두 pyproject version 그대로 표시.
+
+### upgrade
+
+v0.15.0 → v0.15.1 의 functional 변경 없음 — display 정정만. 즉시 upgrade 권장.
+
+```bash
+uv tool install --reinstall https://github.com/16bitdo/anvyc/releases/download/v0.15.1/anvyc-0.15.1-py3-none-any.whl
+```
+
+---
+
 ## v0.15.0 — 2026-05-26 (Control Plane v6 — CP-12 agent work-cwd tracking)
 
 [Control Plane v6 합류] anvyc 가 `role-based-ruleset` × `ccinspector` 와 함께 CP-12 (agent work-cwd tracking) axis 의 **L2 Environment layer 책임 2건** 완결. v0.14.0 직후 단일 axis 의 2 PR 묶음 release — CP-12 의 7-PR cross-repo 시퀀스 중 anvyc 측 산출물.
