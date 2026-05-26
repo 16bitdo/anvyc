@@ -63,6 +63,24 @@ from anvyc.core.sync import (
     resolve_conflict,
     scan_local_manifest,
 )
+from anvyc.core.workctx import (
+    DEFAULT_TTL_SEC as WORKCTX_DEFAULT_TTL_SEC,
+)
+from anvyc.core.workctx import (
+    EXPLICIT_KIND as WORKCTX_EXPLICIT_KIND,
+)
+from anvyc.core.workctx import (
+    clear as workctx_clear,
+)
+from anvyc.core.workctx import (
+    resolve_cache_path as workctx_resolve_cache_path,
+)
+from anvyc.core.workctx import (
+    status as workctx_status,
+)
+from anvyc.core.workctx import (
+    switch as workctx_switch,
+)
 from anvyc.templates import DEFAULT_ANVYC_YAML
 
 app = typer.Typer(
@@ -110,6 +128,12 @@ sync_conflict_app = typer.Typer(
     help="conflict resolution — sha256 불일치 entry 의 수동 해결 (CP-6 3/3).",
 )
 sync_app.add_typer(sync_conflict_app, name="conflict")
+
+workctx_app = typer.Typer(
+    name="workctx",
+    help="work-cwd context — explicit override (Bash cd 불가 시) + statusline / cache 컨텍스트 전환 (CP-12 PR-12E).",
+)
+app.add_typer(workctx_app, name="workctx")
 
 console = Console()
 
@@ -2338,6 +2362,130 @@ def sync_conflict_resolve(
         fg=typer.colors.GREEN,
         bold=True,
     )
+
+
+# ── workctx (CP-12 PR-12E) ────────────────────────────────────────────────
+
+
+@workctx_app.command("switch")
+def workctx_switch_cmd(
+    path: Path = typer.Argument(..., help="Override 할 디렉터리 (절대 또는 상대 경로)."),
+    ttl: int = typer.Option(
+        WORKCTX_DEFAULT_TTL_SEC,
+        "--ttl",
+        help=f"TTL (초). 기본 {WORKCTX_DEFAULT_TTL_SEC}s.",
+    ),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="cache profile (예: claude / claude-edward). $WORK_CWD_CACHE env 우선.",
+    ),
+) -> None:
+    """Explicit override 활성화 — statusline / cache 가 즉시 이 경로를 work-cwd 로 인식.
+
+    Bash `cd` 가 불가능한 시나리오 (sandbox, sub-shell 격리, 명시 의도 표현)
+    에서 사용. TTL 내 자동 만료 — `workctx clear` 로 즉시 해제 가능.
+
+    캐시 위치 우선순위:
+      1. $WORK_CWD_CACHE env (cci `wire-hooks-cwd-changed.py` 가 settings.json 에 주입)
+      2. --profile <name> → ~/.<profile>/.work-cwd-cache
+      3. ~/.claude/.work-cwd-cache (최종 fallback)
+    """
+    abs_path = path.expanduser().resolve()
+    if not abs_path.exists():
+        typer.secho(
+            f"warn: {abs_path} 미존재 — 그대로 진행 (statusline 표시는 raw 경로).",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+    cache = workctx_resolve_cache_path(profile)
+    row = workctx_switch(cache, str(abs_path), ttl_sec=ttl)
+    typer.secho(
+        f"workctx switch → {abs_path} (ttl={ttl}s, expires_at={row.explicit_expires_at})",
+        fg=typer.colors.GREEN,
+        bold=True,
+    )
+    typer.echo(f"  cache: {cache}")
+
+
+@workctx_app.command("clear")
+def workctx_clear_cmd(
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="cache profile. $WORK_CWD_CACHE env 우선.",
+    ),
+) -> None:
+    """Explicit override 해제. activity (cwd_changed / file_op) row 는 보존."""
+    cache = workctx_resolve_cache_path(profile)
+    removed = workctx_clear(cache)
+    if removed > 0:
+        typer.secho(
+            f"workctx clear — {removed} explicit row(s) removed",
+            fg=typer.colors.GREEN,
+        )
+    else:
+        typer.echo("workctx clear — (no explicit row to remove)")
+    typer.echo(f"  cache: {cache}")
+
+
+@workctx_app.command("show")
+def workctx_show_cmd(
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="cache profile. $WORK_CWD_CACHE env 우선.",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="JSON 출력 (스크립트 친화)."),
+) -> None:
+    """Current effective work-cwd + cache state.
+
+    Priority (statusline resolver 와 동일):
+      1. Latest non-expired explicit row.
+      2. Latest activity (cwd_changed | file_op), stale flag if age > 60s.
+      3. None.
+    """
+    cache = workctx_resolve_cache_path(profile)
+    state = workctx_status(cache)
+
+    if json_out:
+        eff = None
+        if state.effective is not None:
+            eff = {
+                "kind": state.effective_kind,
+                "path": state.effective.path,
+                "ts": state.effective.ts,
+            }
+            if state.effective_kind == WORKCTX_EXPLICIT_KIND:
+                eff["expires_at"] = state.effective.explicit_expires_at
+                eff["remaining_sec"] = state.effective_remaining_sec
+            else:
+                eff["age_sec"] = state.effective_age_sec
+                eff["stale"] = state.effective_stale
+        out = {
+            "cache": str(state.cache_path),
+            "rows": len(state.rows),
+            "effective": eff,
+        }
+        typer.echo(jsonlib.dumps(out, indent=2))
+        return
+
+    typer.echo(f"cache : {state.cache_path}")
+    typer.echo(f"rows  : {len(state.rows)}")
+    if state.effective is None:
+        typer.echo("effective: (none — fall back to launch cwd)")
+        return
+
+    table = Table(show_header=False, box=None)
+    table.add_row("kind", state.effective_kind)
+    table.add_row("path", state.effective.path)
+    if state.effective_kind == WORKCTX_EXPLICIT_KIND:
+        table.add_row("expires_at", str(state.effective.explicit_expires_at))
+        table.add_row("remaining_sec", f"{state.effective_remaining_sec}s")
+    else:
+        table.add_row("age_sec", f"{state.effective_age_sec}s")
+        table.add_row("stale", "yes" if state.effective_stale else "no")
+    console.print(table)
 
 
 if __name__ == "__main__":
