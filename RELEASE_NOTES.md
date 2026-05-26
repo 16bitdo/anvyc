@@ -1,5 +1,57 @@
 # anvyc 릴리즈 노트
 
+## v0.15.2 — 2026-05-26 (patch — MCP integration silent-failure hardening)
+
+[End-to-end 보호 매트릭스] 신규 머신 dev 셋업에서 `anvyc serve --mcp` 가 silent 하게 `Failed to connect` 로 떨어지던 케이스를 트리거로, **dev 셋업 → 런타임 진단 → 에러 메시지 정확성 → CI 드리프트 → 문서화** 5 layer 를 일괄 정비. functional 변경 없음 — 사용자 영향은 셋업/진단/에러 안내 UX 개선과 신규 doctor check 1건.
+
+### 사용자 영향 변경
+
+- **`scripts/dev-install.sh`**: `ANVYC_EXTRAS` 기본값 `dev` → `dev,mcp` (anvyc#69). 신규 contributor 가 추가 설치 없이 `anvyc serve --mcp` 즉시 사용 가능.
+- **`anvyc doctor`**: 18 check 로 증가 (17 → 18). 신규 **`mcp-extra-importable`** check 가 `mcp` 패키지 미설치를 WARNING 으로 즉시 감지 + 정확한 설치 명령 안내 (anvyc#72).
+- **에러 메시지 — `anvyc serve --mcp`**: `[mcp]` 표기 silent strip 버그 fix (anvyc#71). `pip install 'anvyc[mcp]'` 안내가 정확히 노출.
+
+```
+BEFORE: error anvyc MCP server requires the  extra. Install: pip install 'anvyc'
+AFTER:  error anvyc MCP server requires the [mcp] extra. Install: pip install 'anvyc[mcp]'
+```
+
+### 내부 hardening (사용자 직접 영향 없음)
+
+- **`src/anvyc/utils/errors.py`**: `print_error()` / `safe_msg()` 헬퍼 신설 (anvyc#74). `cli.py` 의 15 exception interpolation + 3 diff coloring 사이트를 헬퍼 경유로 통일 → Rich markup strip 사고 재발 차단.
+- **pre-commit mypy 범위 확장**: `src/anvyc/` → `src/anvyc/ tests/` (anvyc#73). CI 의 `Lint and type-check` job 과 동일 범위 — test 파일의 strict 위반이 push 전에 잡힘. 본 변경으로 PR-12E/PR-12F 가 머지 후 main 의 lint job 을 4 commit 연속 fail 상태로 방치하던 사건 패턴 차단.
+- **test type annotation 정리**: `tests/unit/test_workctx.py` / `test_work_cwd_track_check.py` 의 32 mypy errors 해소 (anvyc#70). pre-existing main fail 상태 회복의 직접 원인.
+
+### 문서
+
+- **`CONTRIBUTING.md`** §4.4 정정 (mypy 범위) + §4.5 신규 — CLI 사용자 출력 `console.print` 가이드 (anvyc#75). `print_error()` / `safe_msg()` 사용 규칙과 절대 작성 금지 안티패턴 3건을 표/코드로 문서화.
+
+### 변경된 사용자 워크플로
+
+| 시나리오 | v0.15.1 | v0.15.2 |
+|---|---|---|
+| 신규 머신 dev 셋업 | `bash scripts/dev-install.sh` 후 `pip install -e '.[mcp]'` 별도 필요 | `bash scripts/dev-install.sh` 만으로 MCP 즉시 사용 |
+| `mcp` extra 누락 진단 | 사용자가 `anvyc serve --mcp` 직접 호출해 SystemExit 메시지로 추적 | `anvyc doctor` 가 WARNING 으로 즉시 감지 + 설치 명령 안내 |
+| MCP 미설치 시 안내 | `error ... requires the  extra. Install: pip install 'anvyc'` (잘못된 명령) | `error ... requires the [mcp] extra. Install: pip install 'anvyc[mcp]'` (정확한 명령) |
+
+### 검증
+
+```bash
+$ anvyc --version
+anvyc v0.15.2
+
+$ anvyc doctor   # 18 check 등록 확인
+```
+
+### upgrade
+
+functional 변경 없음 (셋업/진단/UX 개선만). 즉시 upgrade 권장.
+
+```bash
+uv tool install --reinstall https://github.com/16bitdo/anvyc/releases/download/v0.15.2/anvyc-0.15.2-py3-none-any.whl
+```
+
+---
+
 ## v0.15.1 — 2026-05-26 (patch — `__version__` 동적 lookup refactor)
 
 [Display drift 영구 차단] v0.15.0 release PR (anvyc#67) 이 `pyproject.toml` 의 version 만 0.14.0 → 0.15.0 bump 하고 `src/anvyc/__init__.py:3` 의 hardcode `__version__ = "0.14.0"` 갱신 누락. 결과 — wheel artifact + editable install 양쪽에서 `anvyc --version` 이 `v0.14.0` 표시되는 display drift. functional 영향 없음 (workctx CLI / doctor check 모두 정상 작동) 이지만 향후 release 의 hardcode 갱신 잊음 방지 위해 **동적 lookup 으로 refactor**.
