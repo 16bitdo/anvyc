@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.work_cwd_track import WorkCwdTrackWiredCheck
 
 
-def _make_profile(tmp_path: Path, profile: str, settings_data: dict) -> Path:
+def _make_profile(tmp_path: Path, profile: str, settings_data: dict[str, Any]) -> Path:
     """Create ~/.<profile>/settings.json under tmp_path as fake home."""
     home = tmp_path / "home"
     pdir = home / f".{profile}"
@@ -17,7 +20,7 @@ def _make_profile(tmp_path: Path, profile: str, settings_data: dict) -> Path:
     return home
 
 
-def _settings_phase_a_only() -> dict:
+def _settings_phase_a_only() -> dict[str, Any]:
     return {
         "hooks": {
             "CwdChanged": [
@@ -28,7 +31,7 @@ def _settings_phase_a_only() -> dict:
     }
 
 
-def _settings_phase_a_b() -> dict:
+def _settings_phase_a_b() -> dict[str, Any]:
     return {
         "hooks": {
             "CwdChanged": [
@@ -45,7 +48,7 @@ def _settings_phase_a_b() -> dict:
     }
 
 
-def _settings_other_hooks_only() -> dict:
+def _settings_other_hooks_only() -> dict[str, Any]:
     """Hook 다른 종류만 있고 work-cwd-track 부재."""
     return {
         "hooks": {
@@ -59,7 +62,7 @@ def _settings_other_hooks_only() -> dict:
     }
 
 
-def test_no_profiles_returns_empty(tmp_path, monkeypatch):
+def test_no_profiles_returns_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """홈에 .claude* 프로필 없으면 빈 결과."""
     empty_home = tmp_path / "empty-home"
     empty_home.mkdir()
@@ -68,14 +71,14 @@ def test_no_profiles_returns_empty(tmp_path, monkeypatch):
     assert results == []
 
 
-def test_fully_wired_phase_ab_no_warning(tmp_path, monkeypatch):
+def test_fully_wired_phase_ab_no_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _make_profile(tmp_path, "claude-edward", _settings_phase_a_b())
     monkeypatch.setattr(Path, "home", lambda: home)
     results = WorkCwdTrackWiredCheck().run(CheckContext())
     assert results == [], f"unexpected results: {results}"
 
 
-def test_phase_a_only_warns_phase_b_missing(tmp_path, monkeypatch):
+def test_phase_a_only_warns_phase_b_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _make_profile(tmp_path, "claude-edward", _settings_phase_a_only())
     monkeypatch.setattr(Path, "home", lambda: home)
     results = WorkCwdTrackWiredCheck().run(CheckContext())
@@ -86,7 +89,7 @@ def test_phase_a_only_warns_phase_b_missing(tmp_path, monkeypatch):
     assert "WORK_CWD_CACHE" not in results[0].message
 
 
-def test_no_hooks_and_no_env_warns_all_three(tmp_path, monkeypatch):
+def test_no_hooks_and_no_env_warns_all_three(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _make_profile(tmp_path, "claude-edward", _settings_other_hooks_only())
     monkeypatch.setattr(Path, "home", lambda: home)
     results = WorkCwdTrackWiredCheck().run(CheckContext())
@@ -98,7 +101,7 @@ def test_no_hooks_and_no_env_warns_all_three(tmp_path, monkeypatch):
     assert "3 항목" in msg
 
 
-def test_env_only_no_hooks(tmp_path, monkeypatch):
+def test_env_only_no_hooks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _make_profile(
         tmp_path,
         "claude",
@@ -113,7 +116,7 @@ def test_env_only_no_hooks(tmp_path, monkeypatch):
     assert "WORK_CWD_CACHE" not in msg
 
 
-def test_multiple_profiles_independent(tmp_path, monkeypatch):
+def test_multiple_profiles_independent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A profile fully wired, B profile partial → B 만 warning."""
     home = tmp_path / "home"
     ok_dir = home / ".claude-ok"
@@ -129,7 +132,7 @@ def test_multiple_profiles_independent(tmp_path, monkeypatch):
     assert "Phase B" in results[0].message
 
 
-def test_malformed_settings_warns(tmp_path, monkeypatch):
+def test_malformed_settings_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     pdir = home / ".claude"
     pdir.mkdir(parents=True)
@@ -141,7 +144,7 @@ def test_malformed_settings_warns(tmp_path, monkeypatch):
     assert "파싱 실패" in results[0].message
 
 
-def test_phase_b_only_missing_phase_a_and_env(tmp_path, monkeypatch):
+def test_phase_b_only_missing_phase_a_and_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Phase B 만 배선 + env 누락 → 2 항목 missing."""
     home = _make_profile(
         tmp_path,
