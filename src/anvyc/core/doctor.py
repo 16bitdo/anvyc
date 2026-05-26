@@ -14,6 +14,7 @@ from anvyc.checks.creds_expiry import CredsExpiryWithin7dCheck
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.cursor_projects_suggest import CursorProjectsSuggestCheck
 from anvyc.checks.hook_integrity import HookIntegrityRiskGateCheck
+from anvyc.checks.mcp_extra_importable import McpExtraImportableCheck
 from anvyc.checks.mcp_tokens import McpTokensWarnCheck
 from anvyc.checks.multi_account_detected import MultiAccountDetectedCheck
 from anvyc.checks.op_references import OpReferencesCheck
@@ -50,6 +51,7 @@ _REGISTRY: dict[str, Check] = {
     "cursor-projects-suggest": CursorProjectsSuggestCheck(),
     "sops-keys-available": SopsKeysCheck(),
     "mcp-tokens-warn": McpTokensWarnCheck(),
+    "mcp-extra-importable": McpExtraImportableCheck(),
     "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),
     "project-gh-account-mapping": ProjectGhAccountMappingCheck(),
     "project-claude-account-mapping": ProjectClaudeAccountMappingCheck(),
