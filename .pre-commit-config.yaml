@@ -14,8 +14,10 @@ repos:
         language: system
         types: [python]
       - id: mypy
-        name: mypy (src)
-        entry: .venv/bin/mypy src/anvyc/
+        # CI 의 'Lint and type-check' job 과 동일 범위 (src/anvyc/ tests/) —
+        # 범위 불일치 시 test 파일의 strict 위반이 push 후에야 드러난다.
+        name: mypy (src + tests)
+        entry: .venv/bin/mypy src/anvyc/ tests/
         language: system
         types: [python]
         pass_filenames: false
