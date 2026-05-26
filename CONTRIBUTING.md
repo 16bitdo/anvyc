@@ -128,8 +128,51 @@ pytest -q tests/integration/test_sops_*.py  # SOPS 영역
 ```bash
 ruff check src tests               # 린트
 ruff format src tests              # 자동 포맷 (선택)
-mypy src                            # 타입 체크 (best-effort)
+mypy src/anvyc/ tests/             # 타입 체크 (strict — CI / pre-commit 과 동일 범위)
 ```
+
+`mypy` 범위는 CI 의 `Lint and type-check` job 과 동일하게 `src/anvyc/ tests/`
+입니다. pre-commit hook 도 같은 범위로 실행되므로 push 전 잡힙니다.
+
+### 4.5 CLI 사용자 출력 (console.print 가이드)
+
+`cli.py` 의 사용자-facing 출력은 [Rich](https://github.com/Textualize/rich)
+콘솔을 통과합니다. Rich 는 `[red]`, `[bold]` 같은 markup 태그를 해석하기 때문에,
+**외부 값**(예외 메시지·subprocess 출력·diff 라인 등) 을 그대로 보간하면
+값 안의 `[xxx]` 표기가 silent strip 됩니다.
+
+실제 사례: `pip install 'anvyc[mcp]'` 안내가 `pip install 'anvyc'` 로 표시돼
+사용자가 잘못된 명령을 실행하던 버그 (`#71`).
+
+**규칙**
+
+| 상황 | 사용 |
+|---|---|
+| 에러 메시지 (예외 또는 외부값 포함) | `print_error(message)` |
+| 색상 + 외부값 보간 (예: diff 라인 색상) | `console.print(f"[color]{safe_msg(value)}[/]")` |
+| 색상 + 리터럴/안전한 값만 (path, int 등) | `console.print(f"[color]{path}[/]")` — 그대로 OK |
+
+```python
+from anvyc.utils.errors import print_error, safe_msg
+
+# 에러:
+try:
+    risky_op()
+except FooError as e:
+    print_error(e)                                    # "[red]error[/] <escaped str(e)>"
+    raise typer.Exit(code=1) from e
+
+# 색상 + 외부값 보간:
+console.print(f"[red]{safe_msg(diff_line)}[/]")
+
+# 절대 작성 금지 (markup strip 위험):
+console.print(f"[red]error[/] {e}")                   # ✗
+console.print(f"[red]{e}[/]")                         # ✗
+console.print(f"[green]{subprocess_output}[/]")       # ✗
+```
+
+브래킷 보존이 중요한 이유: pip extra 표기(`[mcp]`), 로그 prefix(`[INFO]`),
+정규식 character class 등 합법적인 메시지에 brace 가 포함될 수 있습니다.
 
 ## 5. Issue 가이드
 
