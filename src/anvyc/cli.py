@@ -82,6 +82,7 @@ from anvyc.core.workctx import (
     switch as workctx_switch,
 )
 from anvyc.templates import DEFAULT_ANVYC_YAML
+from anvyc.utils.errors import print_error, safe_msg
 
 app = typer.Typer(
     name="anvyc",
@@ -208,7 +209,7 @@ def init(
             console.print("[red]error[/] git binary 미설치")
             raise typer.Exit(code=1) from None
         if proc.returncode != 0:
-            console.print(f"[red]error[/] git clone 실패\n{proc.stderr.strip()}")
+            print_error(f"git clone 실패\n{proc.stderr.strip()}")
             raise typer.Exit(code=1)
         config_path = anvyc_dir / "anvyc.yaml"
         if not config_path.is_file():
@@ -506,7 +507,7 @@ def status(
     try:
         report = compute_status(root, backup_id=backup_id)
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
 
     counts = report.counts()
@@ -546,7 +547,7 @@ def diff(
     try:
         report = compute_status(root, backup_id=backup_id)
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
 
     printed = 0
@@ -565,12 +566,14 @@ def diff(
             console.print("  (no diff)")
             continue
         for line in d.unified.splitlines():
+            # diff line 본문은 Rich markup 으로 오해될 수 있는 `[xxx]` 를 포함할
+            # 수 있어 escape — 색상 태그만 Rich 가 해석.
             if line.startswith("+") and not line.startswith("+++"):
-                console.print(f"[green]{line}[/]")
+                console.print(f"[green]{safe_msg(line)}[/]")
             elif line.startswith("-") and not line.startswith("---"):
-                console.print(f"[red]{line}[/]")
+                console.print(f"[red]{safe_msg(line)}[/]")
             elif line.startswith("@@"):
-                console.print(f"[cyan]{line}[/]")
+                console.print(f"[cyan]{safe_msg(line)}[/]")
             else:
                 console.print(line)
         printed += 1
@@ -616,7 +619,7 @@ def apply(
         )
         raise typer.Exit(code=2) from e
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
 
     _print_apply_report(report)
@@ -699,7 +702,7 @@ def restore(
         )
         raise typer.Exit(code=2) from e
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
 
     _print_apply_report(report, label="restore")
@@ -775,7 +778,7 @@ def scan_secrets(
                 check=True,
             ).stdout
         except _sp.CalledProcessError as e:
-            console.print(f"[red]git diff --cached 실패: {e.stderr}[/]")
+            print_error(f"git diff --cached 실패: {e.stderr}")
             raise typer.Exit(code=2) from e
         for rel in out.splitlines():
             rel = rel.strip()
@@ -848,7 +851,7 @@ def git_init(
     try:
         init_repo(root.resolve())
     except GitError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
     console.print(f"[green]git init OK[/] {_short_path(root.resolve())}")
     console.print("  [dim]pre-commit hook 설치됨 — push 전 secret scan 자동 실행[/]")
@@ -864,7 +867,7 @@ def git_status(
     try:
         out = status(root.resolve())
     except GitError as e:
-        console.print(f"[red]{e}[/]")
+        print_error(e)
         raise typer.Exit(code=1) from e
     if out.strip():
         typer.echo(out, nl=False)
@@ -883,7 +886,7 @@ def git_commit(
     try:
         out = commit(root.resolve(), message)
     except GitError as e:
-        console.print(f"[red]commit failed: {e}[/]")
+        print_error(f"commit failed: {e}")
         raise typer.Exit(code=1) from e
     if out:
         typer.echo(out, nl=False)
@@ -901,7 +904,7 @@ def git_push(
     try:
         out = push(root.resolve(), remote=remote, branch=branch)
     except GitError as e:
-        console.print(f"[red]push failed: {e}[/]")
+        print_error(f"push failed: {e}")
         raise typer.Exit(code=1) from e
     if out:
         typer.echo(out, nl=False)
@@ -935,7 +938,7 @@ def sops_encrypt(
     try:
         sops_encrypt_fn(src, output, recipients, mode=used_mode)
     except SopsError as e:
-        console.print(f"[red]encrypt 실패: {e}[/]")
+        print_error(f"encrypt 실패: {e}")
         raise typer.Exit(code=1) from e
     console.print(f"[green]encrypted[/] {_short_path(src)} → {_short_path(output)}  ({used_mode})")
 
@@ -973,7 +976,7 @@ def sops_decrypt(
             sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode)
             typer.echo(tmp.read_text(), nl=False)
         except SopsError as e:
-            console.print(f"[red]decrypt 실패: {e}[/]")
+            print_error(f"decrypt 실패: {e}")
             raise typer.Exit(code=1) from e
         finally:
             with contextlib.suppress(OSError):
@@ -983,7 +986,7 @@ def sops_decrypt(
     try:
         sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode)
     except SopsError as e:
-        console.print(f"[red]decrypt 실패: {e}[/]")
+        print_error(f"decrypt 실패: {e}")
         raise typer.Exit(code=1) from e
     console.print(f"[green]decrypted[/] {_short_path(src)} → {_short_path(output)}  ({mode})")
 
@@ -1128,7 +1131,7 @@ def config_edit(
     try:
         editor_argv = shlex.split(editor)
     except ValueError as e:
-        console.print(f"[red]error[/] EDITOR 파싱 실패: {e}")
+        print_error(f"EDITOR 파싱 실패: {e}")
         bak_path.unlink(missing_ok=True)
         raise typer.Exit(code=1) from e
     try:
@@ -1153,7 +1156,7 @@ def config_edit(
 
         load_anvyc_config(yaml_path)
     except Exception as e:
-        console.print(f"[red]error[/] schema 검증 실패: {e}")
+        print_error(f"schema 검증 실패: {e}")
         console.print(f"[dim]원본 복구: {bak_path} → {yaml_path}[/]")
         shutil.copy2(bak_path, yaml_path)
         raise typer.Exit(code=1) from e
@@ -1376,11 +1379,10 @@ def serve(
     try:
         from anvyc.mcp.server import run as mcp_run
     except SystemExit as e:
-        # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — 그대로 표시.
-        # SystemExit 메시지의 "[mcp]" 같은 대괄호가 Rich markup 으로 오해되지
-        # 않도록 escape — pip extra 표기를 사용자에게 정확히 노출하기 위함.
-        from rich.markup import escape
-        console.print(f"[red]error[/] {escape(str(e))}")
+        # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — print_error 가
+        # message 본문을 Rich escape 해 "[mcp]" 같은 pip extra 표기를 그대로
+        # 노출 (PR #71 회귀 방지).
+        print_error(e)
         raise typer.Exit(code=1) from e
     mcp_run()
 
