@@ -1,5 +1,75 @@
 # anvyc 릴리즈 노트
 
+## v0.15.0 — 2026-05-26 (Control Plane v6 — CP-12 agent work-cwd tracking)
+
+[Control Plane v6 합류] anvyc 가 `role-based-ruleset` × `ccinspector` 와 함께 CP-12 (agent work-cwd tracking) axis 의 **L2 Environment layer 책임 2건** 완결. v0.14.0 직후 단일 axis 의 2 PR 묶음 release — CP-12 의 7-PR cross-repo 시퀀스 중 anvyc 측 산출물.
+
+control plane SoT 위치: [role-based-ruleset/ROADMAP.md §4 CP-12](https://github.com/16bitdo/role-based-ruleset/blob/main/ROADMAP.md) + [docs/control-plane-v1-recap.md §13](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/control-plane-v1-recap.md) (v6 cut-over + v6.1 polish 회고, 누적 12 axes / 30 learnings).
+
+### CP-12: agent work-cwd tracking (v6 axis)
+
+launch dir 에 고정된 statusline 의 한계 해소 — agent 의 실 작업 디렉터리 (Bash `cd` / file Read·Write·Edit·MultiEdit / 명시 override) 가 cache (`.work-cwd-cache` schema v1) 에 누적되어 statusline `🔀` swap 으로 실시간 반영. anvyc 측 책임 2건:
+
+- **`anvyc workctx` CLI** ([#65](https://github.com/16bitdo/anvyc/pull/65)) — explicit override 채널. Bash `cd` 가 불가능한 시나리오 (1Password sandbox / sub-shell 격리 / 명시 의도) 에서 statusline / cache 의 work 컨텍스트 강제 전환.
+  - `anvyc workctx switch <path> [--ttl 1800]` — explicit row 작성, TTL 기본 1800s (soft expiry — statusline reader 는 row 존재 시 valid 로 간주, anvyc CLI 호출 시점에 lazy cleanup).
+  - `anvyc workctx clear` — explicit row 만 제거 (activity row 는 보존).
+  - `anvyc workctx show [--json]` — current effective work-cwd (statusline resolver 와 동일 priority: latest non-expired explicit > latest activity within 60s > stale → launch).
+  - `core/workctx.py` 신규 — cache schema v1 호환 reader/writer + TTL 관리 (17 unit tests).
+
+```bash
+$ anvyc workctx switch ~/dev/anvyc --ttl 60
+workctx switch → /Users/edward/dev/anvyc (ttl=60s, expires_at=1779781211)
+  cache: /Users/edward/.claude-edward/.work-cwd-cache
+
+$ anvyc workctx show
+cache : /Users/edward/.claude-edward/.work-cwd-cache
+rows  : 20
+ kind           explicit
+ path           /Users/edward/dev/anvyc
+ expires_at     1779781211
+ remaining_sec  47s
+```
+
+- **doctor check `work-cwd-track-wired`** ([#66](https://github.com/16bitdo/anvyc/pull/66)) — 3 profile (`.claude` / `.claude-edward` / `.claude-jklee`) 의 hook 배선 + `env.WORK_CWD_CACHE` 주입을 자동 검증. ccinspector `module_verify` (work-cwd-track) 의 **read-only mirror** — 단방향 의존 (DESIGN §7.7) 으로 별 채널 cross-validation. 검증 항목 3건: hooks.CwdChanged (Phase A 필수), hooks.PostToolUse (Phase B 권장), env.WORK_CWD_CACHE (필수). 누락 시 `Severity.WARNING` + 누락 항목 명시.
+
+```bash
+$ anvyc doctor --json | jq '.results[] | select(.check_name=="work-cwd-track-wired")'
+# (3 profile 모두 wire 정합 시 결과 없음 — 정상)
+```
+
+### Cross-repo 페어 (CP-12 7-PR + v6.1 polish)
+
+본 release 의 anvyc 2 PR 외 trace:
+
+- **rbr#83** (PR-12A): `CwdChanged` event hook 본문 + cache schema v1 (Phase A writer).
+- **cci#16** (PR-12B): `wire-hooks-cwd-changed.py` + `module_work_cwd_track` (cci install 자동화).
+- **cci#17** (PR-12C): `core/statusline.sh` work_cwd_resolve + 🔀 swap 표시 (reader).
+- **rbr#84** (PR-12D): PostToolUse Phase B (`Read|Write|Edit|MultiEdit` matcher, `file_op` row writer).
+- **cci#18** (PR-12D'): `wire-hooks-posttooluse.py` + Phase B wire 확장.
+- **anvyc#65** (PR-12E): **본 release — workctx CLI**.
+- **anvyc#66** (PR-12F): **본 release — doctor check**.
+- **rbr#85** (PR-12G): `common/rules/28-work-cwd-tracking.mdc` paired chore.
+
+v6.1 polish (multi-session pollution 해소, 같은 일자 ~30 분):
+- **rbr#87** (PR-X1): hook 2개 의 `session_id` row writer.
+- **cci#19** (PR-X2): statusline 의 `session_id` filter.
+- **rbr#88** (PR-X4): rule 28 트러블슈팅 + 회고 §13.7 L30 (workflow 6-step 패턴).
+
+### 신규 학습 (L27~L30, 누적 30)
+
+- **L27**: hook schema 미확정 시 claude-code-guide agent 1-shot 사전 검증 (axis planning 의 표준 step 후보).
+- **L28**: axis 내부 cross-repo 시퀀스는 in-session 효율적 — axes 간 분할만 session 분리 trigger.
+- **L29**: settings.json 실시간 reload — cci install 후 현 세션의 다음 tool call 부터 새 hook 자동 fire.
+- **L30**: L27 의 실 적용 사례 (multi-session pollution polish). **workflow 6 step 패턴** — 사용자 발견 issue → 진단 → 옵션 비교 → 사전 검증 → writer/reader 짝 PR → live 검증 + chore.
+
+### upgrade 가이드
+
+- 사용자: `brew upgrade anvyc` 또는 `pip install --user --upgrade anvyc==0.15.0` 또는 GitHub Release wheel 직접 install.
+- 설치 후: `anvyc workctx --help` 로 새 CLI 가용성 확인 + `anvyc doctor` 가 `work-cwd-track-wired` check 자동 포함.
+- 기존 사용자 (CP-12 미사용): `anvyc workctx` 명령은 opt-in — cci `module_work_cwd_track=1` 활성화 + `cc-inspect install.sh` 재실행 후 hook + statusline swap 활성. v0.14.0 동작과 100% backward-compat (workctx CLI 호출 안 하면 영향 없음).
+
+---
+
 ## v0.14.0 — 2026-05-25 (Control Plane v1+v2 — CP-1 audit · CP-4 snapshot · CP-5 creds)
 
 [Control Plane 통합] anvyc 가 `role-based-ruleset` × `ccinspector` 와 함께 AI agent autopilot **control plane** 의 **L2 Environment layer** 로 정착. v0.13.0 직후 9 axis PR + 1 fix = **10 PR** 으로 3 axis (CP-1·4·5) 완결.
