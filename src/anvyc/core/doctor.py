@@ -24,6 +24,7 @@ from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
+from anvyc.checks.work_cwd_track import WorkCwdTrackWiredCheck
 from anvyc.core.config import build_check_context, load_config
 
 
@@ -58,6 +59,7 @@ _REGISTRY: dict[str, Check] = {
     "unused-aws-profiles": UnusedAwsProfilesCheck(),
     "creds-expiry-within-7d": CredsExpiryWithin7dCheck(),
     "hook-integrity-risk-gate": HookIntegrityRiskGateCheck(),
+    "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
 }
 
 
