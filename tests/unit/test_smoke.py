@@ -1,11 +1,18 @@
 """스켈레톤 임포트 smoke test — CI 최소 안전망."""
 from __future__ import annotations
 
+import re
+
 
 def test_package_imports() -> None:
     import anvyc
 
-    assert anvyc.__version__ == "0.14.0"
+    # v0.15.1 patch — __version__ 은 동적 lookup (pyproject.toml SoT, importlib.metadata
+    # 또는 tomllib fallback). hardcode 비교 대신 valid semver 정규식 검증으로 향후
+    # release 마다 본 test 갱신 의무 제거.
+    assert re.match(r"^\d+\.\d+\.\d+", anvyc.__version__), (
+        f"unexpected __version__: {anvyc.__version__!r}"
+    )
 
 
 def test_cli_app_loads() -> None:
