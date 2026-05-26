@@ -1376,8 +1376,11 @@ def serve(
     try:
         from anvyc.mcp.server import run as mcp_run
     except SystemExit as e:
-        # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — 그대로 표시
-        console.print(f"[red]error[/] {e}")
+        # mcp 미설치 시 mcp/server.py 가 SystemExit 던짐 — 그대로 표시.
+        # SystemExit 메시지의 "[mcp]" 같은 대괄호가 Rich markup 으로 오해되지
+        # 않도록 escape — pip extra 표기를 사용자에게 정확히 노출하기 위함.
+        from rich.markup import escape
+        console.print(f"[red]error[/] {escape(str(e))}")
         raise typer.Exit(code=1) from e
     mcp_run()
 
