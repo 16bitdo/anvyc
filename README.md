@@ -90,7 +90,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
 
 # 특정 버전:
-ANVYC_VERSION=v0.15.2 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_VERSION=v0.16.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
 # 설치 도구 강제 (uv | pipx | auto):
 ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
@@ -117,10 +117,10 @@ Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc).
 
 ```bash
 # uv tool (권장)
-uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.15.2/anvyc-0.15.2-py3-none-any.whl
+uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.16.0/anvyc-0.16.0-py3-none-any.whl
 
 # 또는 pipx
-pipx install https://github.com/16bitdo/anvyc/releases/download/v0.15.2/anvyc-0.15.2-py3-none-any.whl
+pipx install https://github.com/16bitdo/anvyc/releases/download/v0.16.0/anvyc-0.16.0-py3-none-any.whl
 
 anvyc --version
 ```
@@ -498,7 +498,7 @@ axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
 - **v0.15.0** ✓ — Control Plane v6 — CP-12 agent work-cwd tracking (`anvyc workctx` CLI + `work-cwd-track-wired` doctor check, cache schema v1)
 - **v0.15.1** ✓ — `__version__` 동적 lookup refactor (display drift 차단, pyproject 가 SoT)
 - **v0.15.2** ✓ — MCP integration silent-failure hardening (`mcp-extra-importable` doctor check + dev-install.sh 기본 `[mcp]` extra + `print_error()`/`safe_msg()` 헬퍼)
-- **CP-13** (in-flight, main 머지 / 미릴리스) — cost observability (`anvyc cost {collect|summary|ledger|gc}` + MCP `cost_summary` + `cost-aws-explorer-iam` / `cost-github-pat-scope` doctor check + Anthropic (i) / AWS Cost Explorer / GitHub Enhanced Billing adapter). DESIGN.md §38 본문. ADR SoT: [role-based-ruleset adr/v6-cp13-cost-observability.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
+- **v0.16.0** ✓ — Cost observability MVP (CP-13, 8 PR) + UX 친화도 개선 (3 PR — `anvyc mcp install` 자동 등록 / `anvyc apply` default dry-run breaking / `--help` 5-panel 카테고리화 + shell completion + wizard 10 도구) + docs 슬림화 (4 PR — README/DESIGN/RELEASE_NOTES 분리 + 결번 정정 + check 목록 갱신). cost adapter 3종 (`anvyc cost {collect|summary|ledger|gc}` + MCP `cost_summary` + 2 doctor check). 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.16.0 entry.
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.

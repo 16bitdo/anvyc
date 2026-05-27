@@ -1,5 +1,174 @@
 # anvyc 릴리즈 노트
 
+## v0.16.0 — 2026-05-27 (minor — cost observability MVP + UX 친화도 개선)
+
+[v0.15.2 → v0.16.0 — 15 PR 통합 release] CP-13 cost observability (8 PR),
+UX 친화도 개선 (3 PR), docs slim (4 PR) 의 3 axis 가 모두 v0.15.2 cut-over 이후
+unreleased 상태였음. 통합 publish.
+
+### Breaking changes (1건)
+
+- **`anvyc apply` default = dry-run** (anvyc#94). 이전 v0.15.x: 즉시 적용.
+  - 마이그레이션: `anvyc apply` → `anvyc apply --apply`. `--dry-run` 옵션 제거.
+  - 근거: `snapshot restore` / `creds rotate` / `cost gc` / `sync push/pull` 의
+    default dry-run + opt-in 패턴과 정합. v0.x.x SemVer 적합.
+  - 옛 호출 (`anvyc apply` 단독) 은 데이터 손실 없이 dry-run plan + hint 1줄.
+
+```
+v0.15.x                       │ v0.16.0+
+─────────────────────────────────────────────────────────────
+anvyc apply                   │ anvyc apply --apply
+anvyc apply --dry-run         │ anvyc apply (default dry-run)
+anvyc apply --only shell      │ anvyc apply --only shell --apply
+```
+
+### 사용자 영향 변경 (non-breaking)
+
+- **`anvyc mcp install/uninstall/status` 신규** (anvyc#93) — Claude Code /
+  Cursor 의 `mcp.json` 자동 등록. atomic write, 기존 다른 server entry 보존,
+  `CLAUDE_CONFIG_DIR` env 인지, `.bak` 자동 생성, IDE 재시작 안내.
+- **`anvyc --help` 5-panel 카테고리** (anvyc#95) — Core / Project view /
+  Control plane / MCP / serve / External tools. 21 commands 의 첫 화면
+  가독성 개선.
+- **`anvyc init` 끝 next-step echo** — default / `--from-git` / wizard 3 경로
+  통일. doctor / backup / apply (default dry-run) 3 step + AI agent 통합
+  안내 (anvyc mcp install).
+- **wizard 10 도구** (이전 9) — shell_prompt 누락 fix.
+- **shell completion 활성화** — `anvyc --install-completion zsh` 가능 (typer
+  `add_completion=False` 제거).
+- **`anvyc cost {collect|summary|ledger|gc}` 신규** (CP-13 series, anvyc#79~#88) —
+  Anthropic (i) session jsonl channel + AWS Cost Explorer + GitHub Enhanced
+  Billing 통합 합산. KRW 표시 (`open.er-api.com` fx), MTD / EOM forecast,
+  budget 평가, ledger gc (90d retention).
+- **MCP `cost_summary` tool 신규** (anvyc#81) — period 별 source / account
+  합산 (8 read-only MCP tools 총합).
+- **doctor 14 → 20 check** — `cost-aws-explorer-iam` (PR-13C) /
+  `cost-github-pat-scope` (PR-13D) / `mcp-extra-importable` (v0.15.2) /
+  `creds-expiry-within-7d` (v0.14.0) / `hook-integrity-risk-gate` (CP-8) /
+  `work-cwd-track-wired` (v0.15.0) — 누적 정합화 (anvyc#90).
+- **`anvyc.yaml` `cost.github.accounts` override** (anvyc#88) — fine-grained
+  PAT 의 Resource owner 가 org 인 경우 user-level endpoint 403 회복 (예시:
+  `accounts: ["16bitdo", "heisgone@whatap"]`).
+
+### Cost observability MVP (CP-13, 8 PR — anvyc#79~#88)
+
+ADR SoT: [role-based-ruleset/docs/adr/v6-cp13-cost-observability.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
+(Accepted v1.2, 2026-05-27). 구조 SoT: [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md).
+
+| PR | 내용 |
+|---|---|
+| anvyc#79 | `pricing/anthropic.yaml` SoT + loader (PR-13A0) |
+| anvyc#80 | Session cost dimension + aggregate (PR-13A) |
+| anvyc#81 | Anthropic (i) channel adapter + CLI/MCP cost summary (PR-13B1) |
+| anvyc#82 | fx (open.er-api) + budgets + ledger/gc + KRW display (PR-13B2) |
+| anvyc#83 | budget_evaluations in summary_payload (PR-13E2-anvyc) |
+| anvyc#84 | AWS Cost Explorer adapter + doctor check (PR-13C) |
+| anvyc#85 | GitHub Billing adapter + doctor check (PR-13D) |
+| anvyc#86 | summarize_reports 의 collected_at_latest 노출 (polish #3) |
+| anvyc#87 | DESIGN §38.5 의 cost-window.json 위치 정정 (PR-13F chore) |
+| anvyc#88 | anvyc.yaml 의 cost.github.accounts override (polish CP-13H) |
+
+핵심 결정:
+- `CostReport schema v1` — `source` / `account` / `period (UTC)` / `currency=USD` /
+  `breakdown` / `meta.measurement_cost_usd` / `meta.pricing_version` / `meta.org_id`
+- 원통화 USD 저장 / 표시 시 KRW 변환 (`fx_rate_basis` 캡처, 회계 재현성)
+- admin API (ii) channel **v0.2 deferred** — Anthropic 공식 endpoint 미공개
+- 6h rolling window state 권위 위치 = `~/.config/cc-inspect/cost-window.json`
+  (ccinspector owner)
+- optional dep 격리 — `[cost-aws]` (boto3) / `[cost-github]` (httpx).
+  미설치 시 silent skip (graceful degradation).
+
+```bash
+# 설치
+uv tool install --upgrade 'anvyc[cost-aws,cost-github,mcp]'
+
+# 사용
+anvyc cost collect --source anthropic --period mtd
+anvyc cost summary --period 2026-05
+anvyc cost ledger --source anthropic --meta
+anvyc cost gc --apply
+```
+
+### UX 친화도 개선 (3 PR — anvyc#93~#95)
+
+UX 4 관점 (설치 / 도구 설정 / 명령어 / Claude 연결) 진단 결과의 High/Medium
+friction 5건 동시 해소.
+
+| PR | 친화도 |
+|---|---|
+| anvyc#93 | `anvyc mcp install/uninstall/status` — Claude/Cursor mcp.json 자동 등록 |
+| anvyc#94 | `anvyc apply` default = dry-run (breaking — 다른 destructive 명령과 정합) |
+| anvyc#95 | `--help` 5-panel + init next-step echo + wizard 10 도구 + shell completion |
+
+### Docs slim (4 PR — anvyc#89~#92)
+
+| PR | 영역 |
+|---|---|
+| anvyc#89 | README 912 → 512 / DESIGN 2562 → 1983 / RELEASE_NOTES 1475 → 955 슬림화 + docs/ 10 파일 분리 + DESIGN 결번 (§17a / §27.10) 정정 |
+| anvyc#90 | DESIGN §27.1.1 doctor check 목록 14 → 20 + 5 카테고리 sub-grouping |
+| anvyc#91 | mcp/server.py + mcp-integration.md 의 stale 표기 갱신 |
+| anvyc#92 | mcp-integration.md §4 표 3 row 신설 + 5 → 8 표기 통일 |
+
+신설 docs (`docs/`):
+- `multi-account.md` — AWS / GitHub / Claude / Pulumi per-project 라우팅
+- `security-policy.md` — 1Password + SOPS
+- `doctor-json-schema.md` — CI 통합용 schema
+- `control-plane.md` — axis 요약 + cost 빠른 사용
+- `design-axes/cp-04-snapshot.md` / `cp-05-creds.md` / `cp-06-sync.md` / `cp-13-cost.md`
+- `RELEASE_NOTES_v0.1-v0.6.md` (archive)
+
+### 변경된 사용자 워크플로
+
+| 시나리오 | v0.15.2 | v0.16.0 |
+|---|---|---|
+| Claude/Cursor MCP 설정 | mcp.json 수동 편집 | `anvyc mcp install --apply --yes` 한 줄 |
+| 다른 머신에서 apply | `anvyc apply --dry-run && anvyc apply` | `anvyc apply` (plan) → `anvyc apply --apply` (실 적용) |
+| 첫 사용 onboarding | `anvyc init` 후 사용자가 README 봐야 | init 끝에 doctor → backup → apply next-step 자동 echo |
+| `anvyc --help` 첫 화면 | 21 commands flat list | 5 panel 카테고리 (Core / Project view / Control plane / MCP / serve / External tools) |
+| Cost 가시화 | 미지원 | `anvyc cost summary --period mtd` (Anthropic + AWS + GitHub) |
+
+### 검증
+
+```bash
+$ anvyc --version
+anvyc v0.16.0
+
+$ anvyc --help                                 # 5 panel 노출
+$ anvyc doctor                                 # 20 check 등록
+$ anvyc serve --mcp                            # 8 read-only tool 노출
+$ anvyc mcp install --apply --yes              # 자동 등록
+$ anvyc apply                                  # dry-run plan (breaking 회귀 안전)
+$ anvyc cost summary --period mtd              # cost observability
+```
+
+### upgrade
+
+```bash
+# Homebrew
+brew upgrade anvyc
+
+# uv tool (권장)
+uv tool install --reinstall \
+  https://github.com/16bitdo/anvyc/releases/download/v0.16.0/anvyc-0.16.0-py3-none-any.whl
+
+# 또는 install.sh
+ANVYC_VERSION=v0.16.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+### apply 사용자 migration 1 step
+
+```bash
+# v0.15.x
+anvyc apply               # 즉시 적용
+anvyc apply --dry-run     # 계획만
+
+# v0.16.0
+anvyc apply               # 계획만 (default dry-run)
+anvyc apply --apply       # 실 적용
+```
+
+---
+
 ## v0.15.2 — 2026-05-26 (patch — MCP integration silent-failure hardening)
 
 [End-to-end 보호 매트릭스] 신규 머신 dev 셋업에서 `anvyc serve --mcp` 가 silent 하게 `Failed to connect` 로 떨어지던 케이스를 트리거로, **dev 셋업 → 런타임 진단 → 에러 메시지 정확성 → CI 드리프트 → 문서화** 5 layer 를 일괄 정비. functional 변경 없음 — 사용자 영향은 셋업/진단/에러 안내 UX 개선과 신규 doctor check 1건.
