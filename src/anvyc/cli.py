@@ -89,65 +89,71 @@ app = typer.Typer(
     name="anvyc",
     help="여러 장치에서 개발 도구 설정을 안전하게 백업/비교/복원/동기화한다.",
     no_args_is_help=True,
-    add_completion=False,
 )
 
+# --- panel 그룹 상수 (v0.16.0+) ---
+PANEL_CORE = "Core (backup/apply/restore)"
+PANEL_PROJECT = "Project view"
+PANEL_CONTROL = "Control plane (audit / snapshot / creds / sync / workctx / cost)"
+PANEL_MCP = "MCP / serve"
+PANEL_EXTERNAL = "External tools"
+
 git_app = typer.Typer(name="git", help=".anvyc 영역에 대한 Git 작업 wrapper.")
-app.add_typer(git_app, name="git")
+app.add_typer(git_app, name="git", rich_help_panel=PANEL_EXTERNAL)
 
 sops_app = typer.Typer(name="sops", help="SOPS 단독 명령 (encrypt/decrypt/rotate-keys).")
-app.add_typer(sops_app, name="sops")
+app.add_typer(sops_app, name="sops", rich_help_panel=PANEL_EXTERNAL)
 
 config_app = typer.Typer(name="config", help="anvyc.yaml 편집/조회.")
-app.add_typer(config_app, name="config")
+app.add_typer(config_app, name="config", rich_help_panel=PANEL_PROJECT)
 
 tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
-app.add_typer(tools_app, name="tools")
+app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 
 project_app = typer.Typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
-app.add_typer(project_app, name="project")
+app.add_typer(project_app, name="project", rich_help_panel=PANEL_PROJECT)
 
 snapshot_app = typer.Typer(
     name="snapshot",
-    help="작업 회복 — git stash + meta 묶음 snapshot (CP-4, v2 진입).",
+    help="작업 회복 — git stash + meta 묶음 snapshot (v0.14.0+).",
 )
-app.add_typer(snapshot_app, name="snapshot")
+app.add_typer(snapshot_app, name="snapshot", rich_help_panel=PANEL_CONTROL)
 
 creds_app = typer.Typer(
     name="creds",
-    help="자격 lifecycle — AWS SSO / GitHub / Claude OAuth 만료 상태 (CP-5).",
+    help="자격 lifecycle — AWS SSO / GitHub / Claude OAuth 만료 상태 (v0.14.0+).",
 )
-app.add_typer(creds_app, name="creds")
+app.add_typer(creds_app, name="creds", rich_help_panel=PANEL_CONTROL)
 
 sync_app = typer.Typer(
     name="sync",
-    help="cross-machine state sync — control plane 자산 (CP-3 health / CP-4 snapshot) 머신 간 동기화 (CP-6, v3).",
+    help="cross-machine state sync — control plane 자산 (health / snapshot meta) 머신 간 동기화 (v0.14.x+).",
 )
-app.add_typer(sync_app, name="sync")
+app.add_typer(sync_app, name="sync", rich_help_panel=PANEL_CONTROL)
 
 sync_conflict_app = typer.Typer(
     name="conflict",
-    help="conflict resolution — sha256 불일치 entry 의 수동 해결 (CP-6 3/3).",
+    help="conflict resolution — sha256 불일치 entry 의 수동 해결.",
 )
 sync_app.add_typer(sync_conflict_app, name="conflict")
 
 workctx_app = typer.Typer(
     name="workctx",
-    help="work-cwd context — explicit override (Bash cd 불가 시) + statusline / cache 컨텍스트 전환 (CP-12 PR-12E).",
+    help="work-cwd context — explicit override (Bash cd 불가 시) + statusline / cache 컨텍스트 전환 (v0.15.0+).",
 )
-app.add_typer(workctx_app, name="workctx")
+app.add_typer(workctx_app, name="workctx", rich_help_panel=PANEL_CONTROL)
 
 cost_app = typer.Typer(
     name="cost",
-    help="cost observability — CP-13 PR-13B (Anthropic session-side (i) channel 1차).",
+    help="cost observability — Anthropic / AWS Cost Explorer / GitHub Billing 통합 합산 (v0.16.0+).",
 )
-app.add_typer(cost_app, name="cost")
+app.add_typer(cost_app, name="cost", rich_help_panel=PANEL_CONTROL)
 
 mcp_app = typer.Typer(
     name="mcp",
-    help="MCP server 설정 자동 등록 — Claude Code / Cursor 의 mcp.json 편집을 대신.",
+    help="MCP server 설정 자동 등록 — Claude Code / Cursor 의 mcp.json 편집을 대신 (v0.16.0+).",
 )
-app.add_typer(mcp_app, name="mcp")
+app.add_typer(mcp_app, name="mcp", rich_help_panel=PANEL_MCP)
 
 console = Console()
 
@@ -171,7 +177,7 @@ def main(
     """anvyc 전역 옵션."""
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def init(
     root: Path = typer.Option(Path.cwd(), "--root", help="anvyc 프로젝트 루트."),
     force: bool = typer.Option(False, "--force", help="기존 anvyc.yaml 이 있어도 덮어쓴다."),
@@ -192,7 +198,7 @@ def init(
     `--from-git <url>` 사용 시 기존 `.anvyc/` 에 clone 하지 않고 fail-fast.
     clone 후 `.anvyc/anvyc.yaml` 검증, next-step (doctor + apply --dry-run) 안내.
 
-    `--interactive` 사용 시 9개 도구에 대해 enable 여부와 path 를 prompt.
+    `--interactive` 사용 시 10개 도구에 대해 enable 여부와 path 를 prompt.
     `--from-git` 과 함께 사용 불가 (의미 충돌).
     """
     if interactive and from_git:
@@ -232,7 +238,7 @@ def init(
             )
             raise typer.Exit(code=1)
         console.print(f"[green]cloned[/] {from_git} → {anvyc_dir}")
-        console.print("[bold]next[/] anvyc doctor  &&  anvyc apply --dry-run  &&  anvyc apply")
+        _print_init_next_steps()
         return
 
     config_path = anvyc_dir / "anvyc.yaml"
@@ -244,11 +250,28 @@ def init(
         config_path.write_text(DEFAULT_ANVYC_YAML)
         console.print(f"[green]wrote[/] {config_path}")
     console.print(f"[green]ready[/] {anvyc_dir}")
+    _print_init_next_steps()
+
+
+def _print_init_next_steps() -> None:
+    """init 끝에서 통일된 next-step 안내 (v0.16.0+)."""
+    console.print("\n[bold]next[/]")
+    console.print("  1. [cyan]anvyc doctor[/]          # 환경 정합성 점검 (20 check)")
+    console.print("  2. [cyan]anvyc backup[/]          # 첫 백업 생성")
+    console.print(
+        "  3. [cyan]anvyc apply[/]           "
+        "# 다른 머신에서 — default dry-run plan, --apply 시 실 적용"
+    )
+    console.print(
+        "[dim]  AI agent 통합: [cyan]anvyc mcp install[/]   "
+        "(Claude Code / Cursor 의 mcp.json 자동 등록)[/]"
+    )
 
 
 # wizard 의 도구별 default 값 (file-based adapter 만 file path 입력 필요)
 _WIZARD_FILE_DEFAULTS: dict[str, list[str]] = {
     "shell": ["~/.zshrc", "~/.zprofile"],
+    "shell_prompt": ["~/.config/starship.toml", "~/.p10k.zsh"],
     "git": ["~/.gitconfig", "~/.gitignore_global"],
     "aws": ["~/.aws/config"],
     "gh": ["~/.config/gh/config.yml"],
@@ -260,6 +283,7 @@ _WIZARD_DEV_ENV_DEFAULTS = {
 }
 _WIZARD_TOOLS_ORDER = (
     "shell",
+    "shell_prompt",
     "git",
     "aws",
     "gh",
@@ -280,7 +304,7 @@ def _parse_csv(answer: str, default: list[str]) -> list[str]:
 
 
 def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
-    """대화형 wizard — 9 도구의 enable/path 를 prompt 한 후 yaml 작성."""
+    """대화형 wizard — 10 도구의 enable/path 를 prompt 한 후 yaml 작성."""
     import yaml as _yaml
     from rich.syntax import Syntax
 
@@ -289,7 +313,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
         console.print(f"[red]error[/] {config_path} 이미 존재 — 다른 --root 사용 또는 --force")
         raise typer.Exit(code=1)
 
-    console.print("[bold]anvyc init wizard[/] — 9개 도구 설정\n")
+    console.print("[bold]anvyc init wizard[/] — 10개 도구 설정\n")
 
     tools_cfg: dict[str, dict[str, Any]] = {}
     for tool in _WIZARD_TOOLS_ORDER:
@@ -346,9 +370,10 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
     config_path.write_text(yaml_text)
     console.print(f"[green]wrote[/] {config_path}")
     console.print(f"[green]ready[/] {anvyc_dir}")
+    _print_init_next_steps()
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def doctor(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="모든 finding 나열."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
@@ -453,7 +478,7 @@ def _short_path(p: Path | None) -> str:
     return s.replace(home, "~", 1) if s.startswith(home) else s
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def backup(
     root: Path | None = typer.Option(None, "--root", help=".anvyc 디렉터리 경로."),
     config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
@@ -509,7 +534,7 @@ def backup(
         )
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def status(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
     backup_id: str | None = typer.Option(
@@ -548,7 +573,7 @@ def status(
     console.print(table)
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def diff(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
     backup_id: str | None = typer.Option(
@@ -594,7 +619,7 @@ def diff(
         console.print("[green]no differences[/]")
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def apply(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
     config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
@@ -693,7 +718,7 @@ def _print_apply_report(report: ApplyReport, label: str = "apply") -> None:
     console.print(table)
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CORE)
 def restore(
     backup_id: str = typer.Argument(..., help="복원할 backup id (예: 20260518-130000)."),
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
@@ -737,7 +762,7 @@ def restore(
         raise typer.Exit(code=3)
 
 
-@app.command(name="list")
+@app.command(name="list", rich_help_panel=PANEL_CORE)
 def list_(
     root: Path = typer.Option(Path(".anvyc"), "--root", help=".anvyc 디렉터리."),
 ) -> None:
@@ -767,7 +792,7 @@ def list_(
     console.print(table)
 
 
-@app.command(name="scan-secrets")
+@app.command(name="scan-secrets", rich_help_panel=PANEL_CORE)
 def scan_secrets(
     paths: list[Path] | None = typer.Argument(
         None, help="스캔할 파일/디렉터리. 지정 안 하면 --staged 필요."
@@ -1386,7 +1411,7 @@ def project_show(
         console.print(f"[bold]tool_versions[/] {tv}")
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_MCP)
 def serve(
     mcp: bool = typer.Option(
         False, "--mcp", help="MCP server (stdio) 실행 — Claude Code/Cursor 호출 가능 (v0.9.0+)."
@@ -1414,7 +1439,7 @@ def serve(
     mcp_run()
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_PROJECT)
 def prompt(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 디렉터리 (default: cwd)."),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력 (key→value)."),
@@ -1574,7 +1599,7 @@ def project_list(
     console.print(table)
 
 
-@app.command()
+@app.command(rich_help_panel=PANEL_CONTROL)
 def activity(
     json_out: bool = typer.Option(False, "--json", help="JSON 출력"),
     limit: int | None = typer.Option(None, "--limit", help="최대 표시 session 수"),
