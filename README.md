@@ -147,23 +147,23 @@ write 영역 (`backup` / `apply` / `restore` / `snapshot restore` / `creds rotat
 `sync push/pull`) 은 의도적 미포함 — agent 가 destructive 실행 불가.
 
 ```bash
+# 1) [mcp] extra 설치
 uv tool install --upgrade 'anvyc[mcp]'
+
+# 2) mcp.json 자동 등록 (v0.16.0+) — 기존 다른 server entry 보존, atomic write
+anvyc mcp install --ide both --apply --yes
+
+# 3) IDE 재시작 (Cmd+Q 후 재실행)
+
+# 등록 상태 확인
+anvyc mcp status
 ```
 
-`~/.claude/mcp.json` (Claude Code) 또는 `~/.cursor/mcp.json` (Cursor):
+`anvyc mcp install` 은 `CLAUDE_CONFIG_DIR` env var 인지 + 기존 mcp.json 의
+다른 server entry 보존 + dry-run default + `.bak` 자동 생성.
 
-```json
-{
-  "mcpServers": {
-    "anvyc": {
-      "command": "anvyc",
-      "args": ["serve", "--mcp"]
-    }
-  }
-}
-```
-
-상세 설정 + 사용 예: [docs/mcp-integration.md](./docs/mcp-integration.md).
+Manual 설정 (custom wrapper path 사용 시) 도 가능 — `~/.claude/mcp.json` 또는
+`~/.cursor/mcp.json` 에 직접 JSON 작성. 상세: [docs/mcp-integration.md](./docs/mcp-integration.md).
 
 ### 5.6 개발 설치 (contributor)
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import json as jsonlib
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -141,6 +142,12 @@ cost_app = typer.Typer(
     help="cost observability — CP-13 PR-13B (Anthropic session-side (i) channel 1차).",
 )
 app.add_typer(cost_app, name="cost")
+
+mcp_app = typer.Typer(
+    name="mcp",
+    help="MCP server 설정 자동 등록 — Claude Code / Cursor 의 mcp.json 편집을 대신.",
+)
+app.add_typer(mcp_app, name="mcp")
 
 console = Console()
 
@@ -2662,6 +2669,258 @@ def cost_gc(
         f"{action}: [red]{result['removed_count']}[/red] files, "
         f"kept: [green]{result['kept_count']}[/green] files"
     )
+
+
+# ---------- mcp (PR A — anvyc mcp install/uninstall/status) ----------------
+
+
+def _short_home(path: Path) -> str:
+    """`~/...` 단축 표기 — 출력 가독성 (--json 출력 영향 없음)."""
+    try:
+        home = Path.home()
+        return f"~/{path.relative_to(home)}"
+    except ValueError:
+        return str(path)
+
+
+def _print_install_plans(plans: list[Any], *, action: str) -> None:
+    """action = 'install' 또는 'uninstall' — plan 표 출력."""
+    from rich.table import Table
+
+    table = Table(title=f"mcp {action} plan")
+    table.add_column("ide")
+    table.add_column("scope")
+    table.add_column("path")
+    table.add_column("current")
+    if action == "install":
+        table.add_column("new file?")
+        table.add_column("backup")
+    else:
+        table.add_column("remaining")
+    table.add_column("other servers")
+
+    for plan in plans:
+        row = [
+            plan.ide,
+            plan.scope,
+            _short_home(plan.target_path),
+            plan.current_state,
+        ]
+        if action == "install":
+            row.append("yes" if plan.will_write_new_file else "no")
+            row.append(_short_home(plan.backup_path) if plan.backup_path else "—")
+        else:
+            row.append(", ".join(plan.remaining_servers) or "—")
+        row.append(", ".join(plan.existing_servers) if action == "install"
+                   else ", ".join(plan.remaining_servers))
+        # `other servers` 컬럼이 install 의 existing_servers / uninstall 의 remaining_servers
+        # 와 의미 중복이지만 표 친화 위해 동일 처리.
+        table.add_row(*row[: len(table.columns)])
+
+    console.print(table)
+
+
+@mcp_app.command("install")
+def mcp_install(
+    ide: str = typer.Option(
+        "auto",
+        "--ide",
+        help="claude | cursor | both | auto. auto = 감지된 IDE 모두.",
+    ),
+    scope: str = typer.Option(
+        "user",
+        "--scope",
+        help="user (~/.claude/mcp.json 또는 ~/.cursor/mcp.json) | project (<cwd>/.mcp.json or <cwd>/.cursor/mcp.json).",
+    ),
+    apply_changes: bool = typer.Option(
+        False,
+        "--apply",
+        help="기본 dry-run. --apply 시 atomic write 로 실제 mcp.json 작성.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="--apply 시의 confirm prompt 자동 수락."
+    ),
+) -> None:
+    """anvyc 를 Claude Code / Cursor 의 mcp.json 에 자동 등록.
+
+    안전 절차 (CP-4/CP-5/cost gc 의 destructive 패턴 미러):
+    - 기본 dry-run — plan 표 출력만 (파일 무변경).
+    - --apply 시 atomic write (tempfile + os.replace).
+    - 기존 mcpServers 의 다른 entry 는 항상 보존.
+    - 기존 anvyc entry 가 다른 command 면 .bak 자동 생성 후 표준값으로 overwrite.
+    """
+    from anvyc.core.mcp_setup import apply_install, plan_install, resolve_ides
+
+    try:
+        ides = resolve_ides(
+            ide,
+            home=None,
+            claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+        )
+    except ValueError as e:
+        print_error(e)
+        raise typer.Exit(code=2) from e
+
+    if not ides:
+        console.print(
+            "[yellow]no IDE detected[/yellow] — `~/.claude` / `~/.cursor` 둘 다 부재. "
+            "`--ide claude` 또는 `--ide cursor` 로 명시하면 신규 작성됩니다."
+        )
+        raise typer.Exit(code=0)
+
+    plans = plan_install(
+        ides,
+        scope=scope,
+        claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+    )
+    _print_install_plans(plans, action="install")
+
+    if not apply_changes:
+        console.print(
+            "\n[yellow]dry-run[/yellow] — 변경 없음. 실제 적용: "
+            "[bold]anvyc mcp install --apply[/bold]"
+        )
+        return
+
+    if not yes and not typer.confirm("\n적용하시겠습니까?", default=False):
+        console.print("취소.")
+        raise typer.Exit(code=1)
+
+    results = apply_install(plans)
+    for r in results:
+        if not r.written:
+            console.print(
+                f"[dim]skip[/dim] {r.plan.ide}: 이미 동일 등록 ({_short_home(r.plan.target_path)})"
+            )
+            continue
+        backup_msg = (
+            f" (.bak={_short_home(r.plan.backup_path)})"
+            if r.backup_written and r.plan.backup_path
+            else ""
+        )
+        console.print(
+            f"[green]wrote[/green] {r.plan.ide}: "
+            f"{_short_home(r.plan.target_path)}{backup_msg}"
+        )
+
+    console.print(
+        "\n[bold]next[/bold] IDE 재시작 필요 — Cmd+Q 후 재실행 "
+        '(또는 Claude Code: "Developer: Reload Window").'
+    )
+
+
+@mcp_app.command("uninstall")
+def mcp_uninstall(
+    ide: str = typer.Option(
+        "auto",
+        "--ide",
+        help="claude | cursor | both | auto.",
+    ),
+    scope: str = typer.Option("user", "--scope"),
+    apply_changes: bool = typer.Option(False, "--apply"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+) -> None:
+    """mcp.json 에서 anvyc entry 만 제거 — 다른 server 는 보존."""
+    from anvyc.core.mcp_setup import apply_uninstall, plan_uninstall, resolve_ides
+
+    try:
+        ides = resolve_ides(
+            ide,
+            home=None,
+            claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+        )
+    except ValueError as e:
+        print_error(e)
+        raise typer.Exit(code=2) from e
+
+    if not ides:
+        console.print("[yellow]no IDE detected[/yellow].")
+        raise typer.Exit(code=0)
+
+    plans = plan_uninstall(
+        ides,
+        scope=scope,
+        claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+    )
+    _print_install_plans(plans, action="uninstall")
+
+    if not apply_changes:
+        console.print(
+            "\n[yellow]dry-run[/yellow] — 변경 없음. 실제 적용: "
+            "[bold]anvyc mcp uninstall --apply[/bold]"
+        )
+        return
+
+    if not yes and not typer.confirm("\n적용하시겠습니까?", default=False):
+        console.print("취소.")
+        raise typer.Exit(code=1)
+
+    results = apply_uninstall(plans)
+    for r in results:
+        if not r.removed:
+            console.print(
+                f"[dim]skip[/dim] {r.plan.ide}: anvyc 등록 없음 "
+                f"({_short_home(r.plan.target_path)})"
+            )
+            continue
+        console.print(
+            f"[green]removed[/green] {r.plan.ide}: "
+            f"{_short_home(r.plan.target_path)}"
+        )
+
+    console.print(
+        "\n[bold]next[/bold] IDE 재시작 시점에 anvyc tool 이 사라집니다."
+    )
+
+
+@mcp_app.command("status")
+def mcp_status(
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """양쪽 IDE 의 mcp.json 에 anvyc 등록 상태 표 출력 (read-only)."""
+    from rich.table import Table
+
+    from anvyc.core.mcp_setup import collect_status
+
+    rows = collect_status(
+        claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+    )
+
+    if json_out:
+        payload = [
+            {
+                "ide": r.ide,
+                "scope": r.scope,
+                "path": str(r.path),
+                "exists": r.exists,
+                "has_anvyc": r.has_anvyc,
+                "anvyc_command": r.anvyc_command,
+                "anvyc_args": r.anvyc_args,
+                "other_servers": r.other_servers,
+            }
+            for r in rows
+        ]
+        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title="mcp.json 등록 상태")
+    table.add_column("ide")
+    table.add_column("scope")
+    table.add_column("path")
+    table.add_column("anvyc")
+    table.add_column("command")
+    table.add_column("다른 server")
+
+    for r in rows:
+        anvyc_cell = (
+            "[green]✓ yes[/green]" if r.has_anvyc
+            else ("[dim]— no[/dim]" if r.exists else "[dim]missing[/dim]")
+        )
+        command_cell = r.anvyc_command or "—"
+        others = ", ".join(r.other_servers) or "—"
+        table.add_row(r.ide, r.scope, _short_home(r.path), anvyc_cell, command_cell, others)
+
+    console.print(table)
 
 
 if __name__ == "__main__":

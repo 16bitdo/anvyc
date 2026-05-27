@@ -43,7 +43,25 @@ error: anvyc MCP server requires the [mcp] extra. Install: pip install 'anvyc[mc
 
 ## 2. Claude Code 설정
 
-전역: `~/.claude/mcp.json` 또는 OS 별 위치
+**권장: 자동 등록 (v0.16.0+)**
+
+```bash
+# dry-run plan
+anvyc mcp install --ide claude
+
+# 실제 작성 (atomic write, 기존 다른 server 보존)
+anvyc mcp install --ide claude --apply --yes
+
+# `CLAUDE_CONFIG_DIR=~/.claude-edward` set 환경에서는 그 경로에 자동 작성.
+```
+
+명령은 `~/.claude/mcp.json` (또는 `$CLAUDE_CONFIG_DIR/mcp.json`) 의 기존
+mcpServers 를 보존한 채 `anvyc` entry 만 atomic 으로 추가. 등록 상태는
+`anvyc mcp status` 로 확인.
+
+**Manual (참조) — custom wrapper path 사용 시**
+
+전역: `~/.claude/mcp.json` (또는 `$CLAUDE_CONFIG_DIR/mcp.json`)
 project-local: `<project>/.mcp.json`
 
 ```json
@@ -56,6 +74,10 @@ project-local: `<project>/.mcp.json`
   }
 }
 ```
+
+> **중요**: mcp.json 변경 후 **Claude Code 재시작** 필요 — Cmd+Q 후 재실행
+> (또는 Cmd+Shift+P → "Developer: Reload Window"). `anvyc mcp install --apply`
+> 도 동일 제약 (명령 끝에 안내 echo).
 
 Claude Code 재시작 후 8 tool 사용 가능. 호출 예 (Claude Code 안):
 
@@ -73,7 +95,17 @@ Claude Code 재시작 후 8 tool 사용 가능. 호출 예 (Claude Code 안):
 
 ## 3. Cursor 설정
 
-`~/.cursor/mcp.json`:
+Claude Code 와 동일 패턴.
+
+```bash
+# 권장 — 자동 등록 (v0.16.0+)
+anvyc mcp install --ide cursor --apply --yes
+
+# Claude / Cursor 양쪽 동시
+anvyc mcp install --ide both --apply --yes
+```
+
+Manual (참조) — `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -86,7 +118,7 @@ Claude Code 재시작 후 8 tool 사용 가능. 호출 예 (Claude Code 안):
 }
 ```
 
-전역 + project-local 양쪽 모두 위 형식.
+전역 + project-local 양쪽 모두 위 형식. Cursor 재시작 필요.
 
 ---
 
