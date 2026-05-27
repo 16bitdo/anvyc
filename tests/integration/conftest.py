@@ -21,3 +21,24 @@ def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     띄우는 subprocess(부모 env 상속/merge)도 동일하게 격리된 HOME 을 본다.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
+
+
+_INTEGRATION_DIR = Path(__file__).parent
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """tests/integration/ 하위 항목에 integration 마커 자동 부여.
+
+    pytest 의 collection hook 은 conftest 위치와 무관하게 전체 collected
+    items 를 인자로 받으므로, item.path 가 이 conftest 의 부모 디렉터리
+    (=tests/integration) 하위에 있는지 확인해 필터링한다. 파일별
+    데코레이터 부착 대신 자동 마킹 — 신규 통합 테스트도 자동 적용된다.
+    CI 는 `pytest -m "not integration"` 으로 unit fast-fail 게이트를 먼저
+    돌리고, 통과하면 `pytest -m integration` 단계로 넘어간다.
+    """
+    integration_marker = pytest.mark.integration
+    for item in items:
+        if _INTEGRATION_DIR in item.path.parents:
+            item.add_marker(integration_marker)
