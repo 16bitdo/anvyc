@@ -264,7 +264,7 @@ source build 가 필요한 환경은 `pip install maturin` 선행 후 재시도.
 ### 8.2 future
 
 - SSE / HTTP transport (Cursor 의 remote MCP 지원 시점)
-- write 영역 tool (`anvyc backup` / `anvyc apply --dry-run` 등 안전 영역)
+- write 영역 tool (`anvyc backup` / `anvyc apply` 등 안전 영역 — apply 는 v0.16.0+ 부터 default dry-run)
 - per-tool authentication (현재는 stdio 신뢰 모델)
 - prompt template (MCP `prompts` capability 활용)
 
