@@ -4,6 +4,30 @@
 
 상세 설계는 [DESIGN.md](./DESIGN.md)를 참고한다.
 
+## 목차
+
+- [1. 한 줄 설명](#1-한-줄-설명) · [2. 왜 만들었나](#2-왜-만들었나) · [3. 핵심 원칙](#3-핵심-원칙) · [4. 지원 도구](#4-지원-도구)
+- [5. 설치](#5-설치) · [6. 빠른 시작](#6-빠른-시작) · [7. 디렉터리 구조](#7-디렉터리-구조) · [8. 명령어 요약](#8-명령어-요약)
+- [9. 보안 정책 요약](#9-보안-정책-요약) · [10. 기술 스택](#10-기술-스택)
+- [11. 다수 계정 관리](#11-다수-계정-관리) · [12. 호스트별 overlay](#12-호스트별-overlay-v064)
+- [13. AI agent control-plane (CP-1·4·5·6·12·13)](#13-ai-agent-control-plane-v0140)
+- [14. 로드맵](#14-로드맵) · [15. 기여 / 보안 / 라이선스](#15-기여--보안--라이선스)
+
+심화 문서 (별도 파일):
+
+| 문서 | 내용 |
+|---|---|
+| [DESIGN.md](./DESIGN.md) | 설계 본문 (38 섹션, axis 본문은 docs/design-axes/ 로 분리) |
+| [docs/multi-account.md](./docs/multi-account.md) | AWS / GitHub / Claude / Pulumi per-project 계정 라우팅 가이드 |
+| [docs/security-policy.md](./docs/security-policy.md) | 1Password Secret Reference + SOPS encryption-at-rest |
+| [docs/doctor-json-schema.md](./docs/doctor-json-schema.md) | `anvyc doctor --json` 안정 schema (CI 통합용) |
+| [docs/control-plane.md](./docs/control-plane.md) | AI agent control-plane axes (CP-1·4·5·6·12·13) + Cost observability |
+| [docs/design-axes/](./docs/design-axes/) | 각 axis 의 schema · 명령 contract · 안전 절차 본문 |
+| [docs/mcp-integration.md](./docs/mcp-integration.md) | MCP server 설정 / 8 tool 사용 예 |
+| [docs/install-via-homebrew.md](./docs/install-via-homebrew.md) | Homebrew 사용자 설치 / 검증 / 제거 가이드 |
+| [docs/shell-prompt.md](./docs/shell-prompt.md) | starship / p10k 세그먼트 연동 |
+| [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md) | macOS-specific 트러블슈팅 |
+
 ---
 
 ## 1. 한 줄 설명
@@ -11,6 +35,7 @@
 ```text
 여러 장치에서 개발 환경 설정을 안전하게 백업·비교·복원·동기화하는 macOS CLI.
 Shell / Git / AWS / GitHub / Cursor / Claude Code / iTerm2 / Pulumi + dev_env / shell_prompt — 10 종 도구의 safe adapter.
+AI agent 의 audit / snapshot / creds / sync / workctx / cost 6 종 control-plane axis 통합 (CP-1·4·5·6·12·13).
 ```
 
 ---
@@ -59,13 +84,13 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 ## 5. 설치
 
-### 5.0 one-liner 설치 (v0.7.1+)
+### 5.1 one-liner 설치 (권장, v0.7.1+)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
 
 # 특정 버전:
-ANVYC_VERSION=v0.14.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_VERSION=v0.15.2 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
 # 설치 도구 강제 (uv | pipx | auto):
 ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
@@ -74,7 +99,7 @@ ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anv
 - GitHub Release wheel + `SHA256SUMS` 자동 검증
 - `uv tool` 또는 `pipx` 자동 감지 (없으면 명시 안내)
 
-### 5.1 Homebrew tap (v0.7.1+)
+### 5.2 Homebrew tap (v0.7.1+)
 
 ```bash
 brew tap 16bitdo/anvyc
@@ -82,24 +107,25 @@ brew install anvyc
 anvyc --version
 ```
 
-사용자 설치/검증 가이드 (사후 검증 체크리스트 / 트러블슈팅 / 제거 절차): [docs/install-via-homebrew.md](./docs/install-via-homebrew.md).
-Formula source-of-truth: [packaging/homebrew/Formula/anvyc.rb](./packaging/homebrew/Formula/anvyc.rb).
+사용자 설치/검증 가이드 (사후 검증 / 트러블슈팅 / 제거 절차):
+[docs/install-via-homebrew.md](./docs/install-via-homebrew.md).
+Formula SoT: [packaging/homebrew/Formula/anvyc.rb](./packaging/homebrew/Formula/anvyc.rb).
 Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc).
-메인테이너 릴리스 / Formula 갱신 절차: [docs/homebrew-publishing.md](./docs/homebrew-publishing.md).
+메인테이너 릴리스 절차: [docs/homebrew-publishing.md](./docs/homebrew-publishing.md).
 
-### 5.2 GitHub Release 의 wheel 직접 설치
+### 5.3 GitHub Release 의 wheel 직접 설치
 
 ```bash
 # uv tool (권장)
-uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0-py3-none-any.whl
+uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.15.2/anvyc-0.15.2-py3-none-any.whl
 
 # 또는 pipx
-pipx install https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0-py3-none-any.whl
+pipx install https://github.com/16bitdo/anvyc/releases/download/v0.15.2/anvyc-0.15.2-py3-none-any.whl
 
 anvyc --version
 ```
 
-### 5.3 git remote 에서 부트스트랩 (v0.6.2+)
+### 5.4 git remote 에서 부트스트랩 (v0.6.2+)
 
 머신 A 에서 `.anvyc/` 를 private git repo 로 push 해두고, 새 머신 B 에서:
 
@@ -114,7 +140,11 @@ anvyc apply
 
 ### 5.5 MCP server (AI agent integration, v0.9.0+)
 
-Claude Code / Cursor 등 MCP 호환 agent 에서 anvyc 의 read-only 5 tool 호출:
+Claude Code / Cursor 등 MCP 호환 agent 에서 anvyc 의 read-only 8 tool 호출:
+`project_show` / `project_list` / `project_doctor` / `doctor` / `tools_list` /
+`activity_summary` (CP-1) / `tool_call_stats` (CP-1·8·11) / `cost_summary` (CP-13).
+write 영역 (`backup` / `apply` / `restore` / `snapshot restore` / `creds rotate` /
+`sync push/pull`) 은 의도적 미포함 — agent 가 destructive 실행 불가.
 
 ```bash
 uv tool install --upgrade 'anvyc[mcp]'
@@ -151,11 +181,10 @@ bash scripts/dev-install.sh
 
 > **macOS + Python 3.13.13+ 참고**: editable install 의 `.pth` 가 macOS
 > `UF_HIDDEN` flag 때문에 `ModuleNotFoundError: No module named 'anvyc.cli'` 로
-> 깨질 수 있습니다 — `dev-install.sh` 가 설치하는 dev wrapper 는 `.pth` 대신
-> `PYTHONPATH` 로 `src/` 를 주입해 `python -m anvyc` 로 실행하므로 이 트랩을
-> 아예 거치지 않습니다. 원인·수동 대응은
-> [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md) 참고. 일반
-> 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
+> 깨질 수 있습니다 — dev wrapper 는 `.pth` 대신 `PYTHONPATH` 로 `src/` 를
+> 주입해 `python -m anvyc` 로 실행하므로 이 트랩을 회피합니다. 원인·수동
+> 대응은 [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md)
+> 참고. 일반 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
 
 ---
 
@@ -188,32 +217,51 @@ anvyc apply
 anvyc/
 ├── README.md
 ├── DESIGN.md
+├── CONTEXT.md         # AI agent 작업 인계 — 결정/가정/진행 상태
+├── RELEASE_NOTES.md
 ├── pyproject.toml
 ├── src/anvyc/
-│   ├── __main__.py  # python -m anvyc 진입점 (v0.13.0+)
+│   ├── __main__.py    # python -m anvyc 진입점 (v0.13.0+)
 │   ├── cli.py
 │   ├── templates.py
-│   ├── core/        # inventory, backup, diff, apply, restore, metadata, project_info, project_roots
-│   ├── adapters/    # shell, git, aws, gh, cursor, claude, iterm2, pulumi, dev_env, shell_prompt
-│   ├── checks/      # doctor checks (cross_user, project_*_account, venv_hidden, ...)
-│   ├── mcp/         # MCP server (anvyc serve --mcp, v0.9.0+, [mcp] extra)
-│   ├── security/    # scanner, patterns, policy
-│   ├── storage/     # local, git, encryption
-│   └── utils/
+│   ├── templates/     # 정적 자산 (예: aws-cost-readonly.json IAM policy, CP-13 PR-13C)
+│   ├── core/          # inventory, backup, diff, apply, restore, metadata,
+│   │   │              # project_info, project_roots, snapshot, creds, sync,
+│   │   │              # activity, audit_log, workctx
+│   │   └── cost/      # cost observability (CP-13) — api, compute, cache,
+│   │                  # ledger, budgets, fx, adapters/, pricing/
+│   ├── adapters/      # shell, git, aws, gh, cursor, claude, iterm2,
+│   │                  # pulumi, dev_env, shell_prompt (10 도구)
+│   ├── agents/        # multi-agent activity adapter (CP-7) — claude_code,
+│   │                  # cursor, codex (Protocol + 3 어댑터)
+│   ├── checks/        # 20 doctor check (cross_user, project_*_account,
+│   │                  # venv_hidden, creds_expiry, hook_integrity,
+│   │                  # mcp_extra_importable, work_cwd_track,
+│   │                  # cost_aws_explorer_iam, cost_github_pat_scope, ...)
+│   ├── mcp/           # MCP server (anvyc serve --mcp, v0.9.0+, [mcp] extra)
+│   ├── security/      # scanner, patterns, policy
+│   ├── storage/       # local, git, encryption
+│   └── utils/         # paths, hashing, logging, gh_hosts, git_remote, ...
 └── tests/{unit,integration,fixtures}
 ```
 
-런타임 상태는 사용자 환경의 `.anvyc/` 와 `~/.anvyc-secrets/` 에 저장된다.
+런타임 상태는 사용자 환경의 다음 위치에 저장된다:
+- `.anvyc/` — 프로젝트 루트의 backup / snapshot / sync state
+- `~/.anvyc-secrets/` — 분리된 secret 영역 (1Password ref / SOPS)
+- `~/.config/anvyc/cost/` — CP-13 cost cache (raw daily / aggregate / fx / pricing)
+- `~/.claude*/.work-cwd-cache` — CP-12 work-cwd cache (schema v1)
+- `~/.config/cc-inspect/cost-window.json` — CP-13 6h rolling window (ccinspector owner, DESIGN §38.5)
 
 ---
 
 ## 8. 명령어 요약
 
 ```bash
+# --- 핵심 backup / apply / restore ---
 anvyc init                     # 프로젝트/설정 초기화
 anvyc init --interactive       # 대화형 wizard (v0.7.1+)
 anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
-anvyc doctor                   # 환경 진단 (14 check)
+anvyc doctor                   # 환경 진단 (20 check, CP-13 까지)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력
@@ -222,6 +270,7 @@ anvyc restore <backup-id>      # 특정 backup으로 복원
 anvyc list                     # 백업 목록
 anvyc scan-secrets             # secret 패턴 스캔
 
+# --- 설정 / 도구 / 프로젝트 view ---
 anvyc config edit              # $EDITOR 로 anvyc.yaml 편집 + schema 검증 (v0.6.3+)
 anvyc config show [--effective] [--json]   # raw 또는 default 적용된 yaml/json (v0.6.3+/v0.8.0)
 anvyc tools list [--json]      # 10 도구의 enabled / detect / file-count (v0.6.3+/v0.13.0)
@@ -235,8 +284,23 @@ anvyc project doctor [--path P] [--json] [--strict]
 anvyc prompt [--path P] [--json]
                                # cwd 계정 라우팅을 shell prompt 용 한 줄로 (v0.13.0+)
 
-anvyc serve --mcp              # MCP server (Claude Code/Cursor 직접 호출, v0.9.0+)
+# --- AI agent control-plane (CP-1·4·5·6·12·13) ---
+anvyc activity [--limit N] [--agent <name>] [--json]
+                               # AI agent session 별 통계 (CP-1, v0.14.0+)
+anvyc snapshot {create|list|diff|restore}
+                               # 작업 회복 — git stash + meta schema v1 (CP-4, v0.14.0+)
+anvyc creds {status|rotate}    # AWS SSO / GitHub PAT / Claude OAuth 만료 + 재인증 (CP-5, v0.14.0+)
+anvyc sync {status|push|pull}
+anvyc sync conflict {list|resolve}
+                               # cross-machine state sync — control-plane 자산 머신 간 동기화 (CP-6, v0.14.0+)
+anvyc workctx {switch|clear|show}
+                               # agent 의 work-cwd explicit override (CP-12, v0.15.0+)
+anvyc cost {collect|summary|ledger|gc}
+                               # cost observability — Anthropic (i) / AWS Cost Explorer / GitHub Billing
+                               # 통합 합산 + KRW 표시 + EOM forecast + budget 평가 (CP-13, in-flight)
 
+# --- MCP / Git / SOPS ---
+anvyc serve --mcp              # MCP server (8 read-only tool, Claude Code/Cursor 직접 호출, v0.9.0+)
 anvyc git {init|status|commit|push}
 anvyc sops {encrypt|decrypt|rotate-keys}
 ```
@@ -252,151 +316,30 @@ anvyc sops {encrypt|decrypt|rotate-keys}
 | Medium | `.env`, `password=` | 경고, `--force` 시 진행 |
 | Low | email, username, op:// 와 같은 라인의 패턴 매칭 | 정보 로그만 |
 
-`secret-scan`은 `backup` / `apply` / `git push` 모든 시점에 실행된다.
+`secret-scan` 은 `backup` / `apply` / `git push` 모든 시점에 실행된다.
 
-### 9.1 1Password Secret Reference (v0.1.0)
+### 9.1 두 가지 secret 분리 채널
 
-raw secret 대신 [1Password Secret Reference](https://developer.1password.com/docs/cli/secret-references/) `op://<vault>/<item>/<field>` 를 사용한다. reference 자체는 비-secret 이므로 backup/Git commit 안전.
+| 채널 | 적합 | 안전 자산 |
+|---|---|---|
+| **1Password Secret Reference** (v0.1.0) | 단일 변수 raw secret | `op://<vault>/<item>/<field>` reference. 같은 라인에 `op://` 가 있으면 scanner false-positive 자동 강등. doctor `op-references-valid` check. |
+| **SOPS encryption-at-rest** (v0.2) | `.env` 같은 다수 secret 묶음 | age 키 backend. `secret_files` 가 backup 시 자동 암호화 (`.sops.json`). doctor `sops-keys-available` check. |
 
-```bash
-# .zshrc 예
-export AWS_ACCESS_KEY_ID="op://Personal/AWS/access_key_id"
-export GITHUB_TOKEN="op://Personal/GitHub/token"
-```
+두 채널 공존 가능. 설치 절차 / 사용 흐름 / scanner 통합 등 상세는
+**[docs/security-policy.md](./docs/security-policy.md)** 참조.
 
-**사용 흐름**:
+### 9.2 `anvyc doctor --json` schema
 
-```bash
-# 1) 1Password CLI 설치 + 로그인
-brew install 1password-cli      # macOS
-op signin
-
-# 2) 민감 값을 1Password 에 등록 (또는 기존 항목 사용)
-op item create --category=login --title='AWS' \
-    access_key_id=AKIA... secret_access_key=...
-
-# 3) dotfile 에서 raw secret 을 op:// reference 로 치환
-
-# 4) backup — reference 는 그대로 들어감
-anvyc backup
-
-# 5) 다른 머신에서 apply 후 1Password 로그인만 하면 동일 환경
-op signin           # 새 머신에서
-anvyc apply
-```
-
-**scanner 의 false-positive 강등**: 같은 라인에 `op://` 가 있으면 다른 secret 패턴 매칭이 `low` 로 강등된다 (placeholder 신호로 간주). 따라서 위 `.zshrc` 예시는 backup 시 차단되지 않는다.
-
-**doctor 의 reference 검증**: `anvyc doctor --only op-references-valid` 가 발견된 모든 `op://` URI 를 `op read` 로 resolve 시도한다. 실패 시 WARNING. `op` CLI 미설치/미인증 시 안전 skip.
-
-### 9.2 SOPS encryption-at-rest (v0.2)
-
-다수 secret 묶음 (`.env`, `.toml`, 바이너리 키 등) 은 [SOPS](https://github.com/getsops/sops) 로 암호화하여 백업한다. age 키 backend 기본 지원.
-
-```bash
-# 1) sops + age 설치
-brew install sops age
-
-# 2) age key 생성 (한 번만)
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-# Public key: age1abc... ← anvyc.yaml 에 추가
-
-# 3) anvyc.yaml 설정
-cat >> .anvyc/anvyc.yaml <<EOF
-security:
-  sops:
-    enabled: true
-    age_recipients:
-      - "age1abc...edward-mac"
-    age_identity_file: "~/.config/sops/age/keys.txt"
-
-tools:
-  pulumi:
-    enabled: true
-    files: ["~/.pulumi/config.json"]
-    secret_files: ["~/.pulumi/credentials.json"]
-EOF
-
-# 4) backup — secret_files 는 자동으로 SOPS 암호화
-anvyc backup
-# → backup_dir/pulumi/sops/credentials.json.sops.json (encrypted)
-
-# 5) 다른 머신에서 — 같은 age private key 가 있어야 복호화
-anvyc apply   # SOPS 자동 복호화 후 target 에 평문 저장
-```
-
-**1Password 와 공존 가능**:
-- 단일 변수 raw secret → `op://` reference (§9.1)
-- 다수 secret 묶음 (`.env` 등) → SOPS `secret_files`
-
-**doctor 점검**: `anvyc doctor --only sops-keys-available` 가 sops/age binary 와 age identity file 부재를 자동 안내.
-
-**scanner 통합**: SOPS 로 암호화된 파일 (`.sops.json` 또는 `sops:` metadata 보유) 은 secret scan 통과 — 암호화된 상태에서 base64 가 secret 패턴에 매치되는 false positive 차단.
-
----
-
-## 9.3 `anvyc doctor --json` schema (v0.5.3)
-
-CI / 다른 도구 통합용. 출력은 valid JSON 으로 안정적이며 회귀 테스트로 보장된다.
+CI / 다른 도구 통합용 안정 schema (v0.5.3+). 회귀 테스트로 보장.
 
 ```bash
 anvyc doctor --json                          # 전체
 anvyc doctor --only cross-user --json        # 특정 check 만
-anvyc doctor --skip cursor-projects-suggest --json
+anvyc doctor --strict --json > /dev/null     # CI 게이트: blocking 발견 시 exit 1
 ```
 
-### Top-level
-
-| 필드 | 타입 | 설명 |
-|---|---|---|
-| `results` | `list[Result]` | 발견된 모든 finding |
-| `summary` | `dict[severity, int]` | 6 severity 각각의 카운트 (0 카운트도 포함) |
-
-### Result 객체
-
-| 필드 | 타입 | 비고 |
-|---|---|---|
-| `check_name` | `str` | 발행한 check (예: `cross-user`, `cursor-symlink-integrity`) |
-| `severity` | `str` | `info` / `info-aliased` / `warning` / `warning-foreign` / `warning-dangling` / `critical` |
-| `message` | `str` | 사람-가독 요약 |
-| `location` | `str \| null` | 절대 경로 또는 null |
-| `line` | `int \| null` | 텍스트 매칭의 라인 번호 (해당 시) |
-| `suggestion` | `str \| null` | 조치 권유 (해당 시) |
-
-### Summary 객체
-
-```json
-{
-  "info": 11,
-  "info-aliased": 0,
-  "warning": 1,
-  "warning-foreign": 21,
-  "warning-dangling": 0,
-  "critical": 0
-}
-```
-
-### Exit code
-
-| 코드 | 의미 |
-|---|---|
-| `0` | clean 또는 blocking 없는 결과 (--strict 없을 때) |
-| `1` | --strict 일 때 blocking severity (warning*/critical) 발견 |
-| `2` | argparse 등 사용 오류 |
-
-### 활용 예 (jq)
-
-```bash
-# critical 만 추출
-anvyc doctor --json | jq '.results[] | select(.severity == "critical")'
-
-# 특정 location 의 finding 수
-anvyc doctor --json | jq '[.results[] | select(.location | contains(".cursor"))] | length'
-
-# CI 게이트: blocking 발견 시 exit 1
-anvyc doctor --strict --json > /dev/null
-```
+필드 / 타입 / exit code / jq 활용 예 →
+**[docs/doctor-json-schema.md](./docs/doctor-json-schema.md)**.
 
 ---
 
@@ -407,244 +350,54 @@ anvyc doctor --strict --json > /dev/null
 | 언어 | Python 3.11+ |
 | CLI | Typer |
 | 출력 | Rich |
-| 설정 검증 | pydantic |
+| YAML 파서 | PyYAML |
 | 경로 패턴 | pathspec |
-| 테스트 | pytest |
+| 테스트 | pytest (+ pytest-cov) |
+| Lint / Type | ruff / mypy (strict, `platform=darwin` 고정) |
 | plist 처리 | plistlib (stdlib) |
-| 암호화 (선택) | age 또는 cryptography |
-| 패키징 | pipx / uv |
+| 패키징 | uv tool / pipx / Homebrew |
+| 암호화 (선택, `[encryption]`) | cryptography |
+| MCP server (선택, `[mcp]`) | mcp ≥ 1.0 |
+| Cost / AWS (선택, `[cost-aws]`) | boto3 — Cost Explorer adapter |
+| Cost / GitHub (선택, `[cost-github]`) | httpx — Enhanced Billing Platform |
+
+pydantic 의존은 v0.7.2 에서 제거됐다 (Homebrew install 호환). 설정 검증은
+stdlib (`dataclasses` + 수동 schema 검사) 로 처리한다.
 
 ---
 
-## 11. 다수 AWS profile 관리 (multi-account workflow)
+## 11. 다수 계정 관리
 
-anvyc 는 **정적 설정 sync 도구**다. runtime profile switching 은 표준 도구
-([direnv](https://direnv.net/), [aws-vault](https://github.com/99designs/aws-vault)) 에 맡기고
-anvyc 는 그 설정을 백업·동기화하는 역할에 집중한다.
-
-### 11.1 권장 패턴: direnv + .envrc (프로젝트별 1개 profile)
+AWS profile / GitHub / Claude Code / Pulumi 의 per-project 계정 라우팅을
+`.envrc` (direnv) 로 선언하고 anvyc 의 doctor check 로 정합성을 검증한다.
 
 ```bash
-# 1) direnv 설치 + zsh hook
-brew install direnv
-echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
-
-# 2) 프로젝트 디렉터리에 .envrc 작성
-cat > ~/dev/my-dev-project/.envrc <<'EOF'
+# AWS
 export AWS_PROFILE=my-dev
-EOF
-
-# 3) 새 .envrc 신뢰 (보안)
-cd ~/dev/my-dev-project
-direnv allow
-
-# 4) 이후로는 cd 시 AWS_PROFILE 자동 설정
-cd ~/dev/my-dev-project   # → AWS_PROFILE=my-dev 자동 export
-cd ~/                            # → AWS_PROFILE 자동 unset
-```
-
-### 11.2 PR 별 임시 전환 (1~3 profile 교체)
-
-```bash
-# ~/.zshrc 에 helper function:
-awsp() { export AWS_PROFILE="$1"; aws sts get-caller-identity; }
-
-# PR 작업 중:
-awsp my-dev      # 개발
-awsp my-audit    # 로그 확인
-awsp my-prd      # 운영 readonly
-unset AWS_PROFILE  # 원복
-```
-
-또는 [aws-vault](https://github.com/99designs/aws-vault) (MFA 강제 + 격리):
-
-```bash
-aws-vault exec my-prd -- terraform plan
-```
-
-### 11.3 anvyc 가 추적하는 것
-
-```yaml
-# anvyc.yaml
-tools:
-  aws:
-    enabled: true
-    files: ["~/.aws/config"]        # 모든 profile 정의 백업
-    # ~/.aws/credentials 는 secret 으로 기본 제외
-    # SOPS 통합 시 secret_files 로:
-    # secret_files: ["~/.aws/credentials"]
-
-  # 향후 v0.7+ (dev_env 어댑터, 계획 중):
-  # dev_env:
-  #   project_roots: ["~/dev"]
-  #   patterns: [".envrc", ".tool-versions", ".python-version", ".nvmrc"]
-```
-
-### 11.4 anvyc 의 scope (multi-account 영역)
-
-| anvyc 가 해야 할 | anvyc 가 안 해야 할 |
-|---|---|
-| ✓ `~/.aws/config` profile 정의 sync | ✗ runtime profile switching |
-| ✓ `.envrc` 파일 추적 (v0.7+ 계획) | ✗ credential 자체 관리 |
-| ✓ profile mapping 검증 (doctor check, v0.6.x 계획) | ✗ shell session state 추적 |
-| ✓ 변경 안전망 (local-backup) | ✗ AWS API 호출 자체 |
-
-direnv 와 aws-vault 가 더 잘 하는 영역에 anvyc 가 들어가면 도구 경계 모호.
-anvyc 는 **정적 설정 동기화 + 검증 + 권장 워크플로 가이드** 역할.
-
-### 11.5 multi-account doctor checks (v0.6.1 구현됨)
-
-| Check | 동작 | 상태 |
-|---|---|---|
-| `project-aws-profile-mapping` | `project_roots` 아래 `.envrc` 의 `AWS_PROFILE` 값 ↔ `~/.aws/config` 정합성 검증 | ✓ v0.6.1 |
-| `aws-profile-status` | 현재 active `AWS_PROFILE` env var ↔ 정의 검증 | ✓ v0.6.1 |
-| `multi-account-detected` | ssh / aws / cursor alias 의 multi-account 환경 자동 안내 (INFO) | ✓ v0.6.1 |
-| `unused-aws-profiles` | `.aws/config` 에만 있고 어디서도 안 쓰는 profile (INFO) | v0.7+ 계획 |
-
-```bash
-# 개별 실행
-anvyc doctor --only project-aws-profile-mapping
-anvyc doctor --only aws-profile-status
-anvyc doctor --only multi-account-detected
-```
-
-자세한 UX 개선 계획은 [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고 (아카이브).
-
-### 11.6 다수 GitHub 계정 관리 (per-project gh routing, v0.11.0+)
-
-AWS profile 과 같은 문제가 GitHub 계정에도 있다. `gh` CLI 는 **single global
-active account** 만 가지므로, 여러 계정 (개인 / org 별 봇 계정 등) 을 오가면
-잘못된 계정으로 동작하거나 false warning 이 발생한다. AWS 의 `.envrc` +
-`AWS_PROFILE` 패턴과 동일하게, project 별 `.envrc` 에 `GH_CONFIG_DIR` 을
-선언해 direnv 가 계정을 라우팅하게 한다.
-
-```bash
-# 1) 계정별 gh config 디렉터리 준비 (convention: ~/.config/gh-<account>)
-GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"  gh auth login   # 개인 계정
-GH_CONFIG_DIR="$HOME/.config/gh-secondary" gh auth login  # org 봇 계정
-
-# 2) 프로젝트 .envrc 에 라우팅 선언 (origin ssh alias 와 일치시킬 것)
-cat >> ~/dev/my-personal-repo/.envrc <<'EOF'
+# GitHub
 export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"
-EOF
-
-# 3) 새 .envrc 신뢰
-cd ~/dev/my-personal-repo
-direnv allow
-
-# 4) 이후 cd 시 gh 가 올바른 계정 자동 사용
-cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
-```
-
-권장: `GH_CONFIG_DIR` 의 계정 이름을 git `origin` 의 ssh alias
-(`git@github.com-<alias>:...`) 와 동일하게 맞춘다. anvyc 의 doctor check 가
-이 일치를 검증한다.
-
-| Check | 동작 | 상태 |
-|---|---|---|
-| `project-gh-account-mapping` | `project_roots` 아래 `.envrc` 의 `GH_CONFIG_DIR` gh 계정 ↔ GitHub `origin` ssh alias 정합성 검증 (global) | ✓ v0.11.0 |
-| `gh_account_routing` | cwd 의 `GH_CONFIG_DIR` ↔ origin ssh alias 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.11.0 |
-
-```bash
-# 개별 실행
-anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 8 check
-```
-
-`anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을
-machine-readable 하게 확인할 수 있다 (DESIGN §32.4a). AWS 와 마찬가지로
-anvyc 는 **정적 설정 동기화 + 검증** 역할이며, 계정 인증 자체는 `gh` 가 관리한다.
-
-### 11.7 다수 Claude Code 계정 관리 (per-project Claude routing, v0.12.0+)
-
-Claude Code 도 단일 계정 config 를 쓰므로, 개인 / 업무 계정을 오가면 잘못된
-계정으로 동작할 수 있다. `CLAUDE_CONFIG_DIR` 은 Claude Code 가 네이티브로 읽는
-env var (`GH_CONFIG_DIR` 의 직접 analog) 이므로, `.envrc` 에 선언하면 direnv 가
-project 별 계정(config + auth 토큰)을 라우팅한다.
-
-```bash
-# 1) 계정별 config 디렉터리 준비 (convention: ~/.claude-<account>)
-CLAUDE_CONFIG_DIR="$HOME/.claude-16bitdo" claude   # 개인 계정 로그인
-CLAUDE_CONFIG_DIR="$HOME/.claude-work"    claude   # 업무 계정 로그인
-
-# 2) 프로젝트 .envrc 에 라우팅 선언
-cat >> ~/dev/my-personal-repo/.envrc <<'EOF'
-export CLAUDE_CONFIG_DIR="$HOME/.claude-16bitdo"
-EOF
-
-# 3) 새 .envrc 신뢰
-cd ~/dev/my-personal-repo
-direnv allow
-```
-
-| Check | 동작 | 상태 |
-|---|---|---|
-| `project-claude-account-mapping` | `project_roots` 아래 `.envrc` 의 `CLAUDE_CONFIG_DIR` 가 가리키는 config 디렉터리 존재 검증 (global) | ✓ v0.12.0 |
-| `claude_account_dir_exists` | cwd 의 `CLAUDE_CONFIG_DIR` config 디렉터리 존재 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.12.0 |
-
-```bash
-# 개별 실행
-anvyc doctor --only project-claude-account-mapping
-anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 8 check
-```
-
-`anvyc project show --json` 의 `claude_account` 필드로 라우팅 계정을 확인할 수
-있다 (DESIGN §32.4b). gh 와 달리 cross-check 할 remote 가 없어 검증은 **디렉터리
-존재 확인 (1-way)** 만 한다 — 핵심 가치는 AI agent / 사용자가 "이 프로젝트가 어느
-Claude 계정으로 라우팅되는지" 를 알 수 있는 것이다.
-
-### 11.8 다수 Pulumi backend 관리 (per-project Pulumi routing, v0.12.0+)
-
-Pulumi 의 "계정"은 AWS profile / gh 계정 같은 단일 username 이 아니라 **backend**
-(state 저장 위치 + org/account) 개념이다. project 별로 다른 backend 를 쓰면
-`Pulumi.yaml` 의 `backend.url` 로 선언하고, 필요 시 `.envrc` 의
-`PULUMI_BACKEND_URL` 로 override 한다.
-
-```yaml
-# Pulumi.yaml — state backend 선언 (커밋되는 SoT)
-name: my-infra
-runtime: python
-backend:
-  url: s3://acme-pulumi-state
-```
-
-```bash
-# (선택) .envrc 로 backend env override — Pulumi.yaml 과 일치시킬 것
-cat >> ~/dev/my-infra/.envrc <<'EOF'
+# Claude
+export CLAUDE_CONFIG_DIR="$HOME/.claude-edward"
+# Pulumi
 export PULUMI_BACKEND_URL="s3://acme-pulumi-state"
-EOF
-direnv allow
 ```
 
-| Check | 동작 | 상태 |
-|---|---|---|
-| `project-pulumi-backend-mapping` | `project_roots` 아래 `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` 정합성 검증 (global) | ✓ v0.12.0 |
-| `pulumi_backend_routing` | cwd 의 `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.12.0 |
-
-```bash
-# 개별 실행
-anvyc doctor --only project-pulumi-backend-mapping
-anvyc project doctor              # cwd 에 pulumi_backend_routing 포함 8 check
-```
-
-`anvyc project show --json` 의 `pulumi.backend` 필드로 backend 를 확인할 수 있다
-(DESIGN §32.4c). `backend` 키를 명시하지 않으면 Pulumi Cloud default 이며 anvyc 은
-명시 선언만 추적한다. `PULUMI_ACCESS_TOKEN` 은 secret 이라 `dev_env` 에서 자동
-마스킹되고, anvyc 은 값을 추적하지 않는다.
-
-### 11.9 shell prompt 에 라우팅 표시 (`anvyc prompt`, v0.13.0+)
-
-`anvyc prompt` 는 현재 디렉터리의 계정 라우팅(§11.5~11.8)을 shell prompt 용
-한 줄로 출력한다 — `project show` 를 매번 치지 않고 prompt 에서 바로 확인.
+shell prompt 통합 (v0.13.0+):
 
 ```bash
 $ anvyc prompt
 aws:company-dev gh:16bitdo claude:edward
 ```
 
-설정된 필드만 공백 구분 `key:value` 로 출력하고 없으면 빈 출력이다. starship
-custom command / powerlevel10k 세그먼트 연동 방법은
-[docs/shell-prompt.md](./docs/shell-prompt.md) 참고.
+다음 4 도구 × 5+ doctor check 의 전체 설정 절차 / 정합성 검증은
+**[docs/multi-account.md](./docs/multi-account.md)** 참조.
+
+| 도구 | env var | doctor check | 도입 |
+|---|---|---|---|
+| AWS | `AWS_PROFILE` (direnv) | `project-aws-profile-mapping` 외 3 | v0.6.1+ |
+| GitHub | `GH_CONFIG_DIR` | `project-gh-account-mapping`, `gh_account_routing` | v0.11.0+ |
+| Claude Code | `CLAUDE_CONFIG_DIR` | `project-claude-account-mapping`, `claude_account_dir_exists` | v0.12.0+ |
+| Pulumi | `PULUMI_BACKEND_URL` + `Pulumi.yaml backend.url` | `project-pulumi-backend-mapping`, `pulumi_backend_routing` | v0.12.0+ |
 
 ---
 
@@ -700,7 +453,29 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 
 ---
 
-## 13. 로드맵
+## 13. AI agent control-plane (v0.14.0+)
+
+anvyc 는 `role-based-ruleset` × `ccinspector` 와 함께 **AI agent autopilot 의 L2
+Environment layer** 책임을 맡는다. 각 axis 는 `schema_version: 1` 단일 키로
+통합되며 CP-3 scheduler 의 `anvyc doctor --strict --json` 호출에 자동 합류한다.
+
+| Axis | 명령 | 도입 |
+|---|---|---|
+| **CP-1** audit | `anvyc activity` + MCP `activity_summary` / `tool_call_stats` | v0.14.0 |
+| **CP-4** snapshot | `anvyc snapshot {create\|list\|diff\|restore}` | v0.14.0 |
+| **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry-within-7d` check | v0.14.0 |
+| **CP-6** sync | `anvyc sync {status\|push\|pull}` + `conflict {list\|resolve}` | v0.14.0 |
+| **CP-12** work-cwd | `anvyc workctx {switch\|clear\|show}` + `work-cwd-track-wired` check | v0.15.0 |
+| **CP-13** cost | `anvyc cost {collect\|summary\|ledger\|gc}` + MCP `cost_summary` | in-flight |
+
+axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
+**[docs/control-plane.md](./docs/control-plane.md)**.
+각 axis 의 상세 schema · 명령 contract · 안전 절차 →
+**[docs/design-axes/](./docs/design-axes/)**.
+
+---
+
+## 14. 로드맵
 
 - **v0.1.0~v0.5.3** ✓ Released — 8 adapter / 9 CLI / 7 doctor check / SOPS / 1Password / Git sync
 - **v0.6.0** ✓ — OSS 공개 준비 + multi-AWS-profile 가이드 (§11)
@@ -718,20 +493,20 @@ overlay 미존재 시 base 동작 그대로 — backward compatible.
 - **v0.11.0** — per-project gh 계정 라우팅 인식 + 프로젝트 루트 SoT 단일화 (`~/dev` 이전) — 별도 태깅 없이 v0.12.0 으로 통합 배포
 - **v0.12.0** ✓ — per-project Claude Code·Pulumi backend 계정 라우팅 인식 ([plan](./docs/archive/improvement-plan-account-routing.md))
 - **v0.13.0** ✓ — shell prompt 통합 — `anvyc prompt` 세그먼트 명령 + starship/p10k config 어댑터
+- **v0.14.0** ✓ — Control Plane v1+v2 합류 — CP-1 activity audit (`anvyc activity` + MCP `activity_summary` / `tool_call_stats`), CP-4 snapshot/restore (`anvyc snapshot`, schema v1, 4-layer safety), CP-5 credentials lifecycle (`anvyc creds` + `creds-expiry-within-7d` doctor check)
+- **v0.14.x (CP-6)** ✓ — cross-machine state sync (`anvyc sync {status|push|pull}` + `sync conflict {list|resolve}`, schema v1, 4-layer safety)
+- **v0.15.0** ✓ — Control Plane v6 — CP-12 agent work-cwd tracking (`anvyc workctx` CLI + `work-cwd-track-wired` doctor check, cache schema v1)
+- **v0.15.1** ✓ — `__version__` 동적 lookup refactor (display drift 차단, pyproject 가 SoT)
+- **v0.15.2** ✓ — MCP integration silent-failure hardening (`mcp-extra-importable` doctor check + dev-install.sh 기본 `[mcp]` extra + `print_error()`/`safe_msg()` 헬퍼)
+- **CP-13** (in-flight, main 머지 / 미릴리스) — cost observability (`anvyc cost {collect|summary|ledger|gc}` + MCP `cost_summary` + `cost-aws-explorer-iam` / `cost-github-pat-scope` doctor check + Anthropic (i) / AWS Cost Explorer / GitHub Enhanced Billing adapter). DESIGN.md §38 본문. ADR SoT: [role-based-ruleset adr/v6-cp13-cost-observability.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.
 
 ---
 
-## 14. 기여
+## 15. 기여 / 보안 / 라이선스
 
-[CONTRIBUTING.md](./CONTRIBUTING.md) 참고. 기여자 간 상호작용은 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) ([Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) 기반) 를 따릅니다.
-
-## 15. 보안
-
-취약점 신고는 [SECURITY.md](./SECURITY.md) 의 비공개 채널로 부탁드립니다.
-
-## 16. 라이선스
-
-[MIT License](./LICENSE) © 2026 edward (16bitdo)
+- 기여 가이드: [CONTRIBUTING.md](./CONTRIBUTING.md). 기여자 간 상호작용은 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) ([Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) 기반) 를 따릅니다.
+- 취약점 신고: [SECURITY.md](./SECURITY.md) 의 비공개 채널.
+- 라이선스: [MIT License](./LICENSE) © 2026 edward (16bitdo)
