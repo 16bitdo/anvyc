@@ -2325,3 +2325,226 @@ remote: SyncItem}, ...]`.
 - resolve 중 copy 실패 → `SyncError` raise + 사용자 수동 점검.
 - resolve 후 sync status 가 다시 `diff` 일 수 있음 (다른 머신이 동시 변경)
   → 정상 동작, 재실행으로 수렴.
+
+## 38. Cost observability 설계 (CP-13)
+
+> CP-13 (Cost observability / costwatch) 의 구조 SoT. 결정 SoT 는
+> [`role-based-ruleset/docs/adr/v6-cp13-cost-observability.md`](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
+> (Accepted v1.1, 2026-05-27 rbr#90 cut-over). audit (CP-1) / scheduler
+> (CP-3) / creds (CP-5) / sync (CP-6) 위에서 AI agent 의 실행 비용
+> (Anthropic + AWS + GitHub) 을 동일 `schema_version: 1` 로 통합. 본 §38 은
+> schema · adapter · cache · doctor · cross-axis 시너지의 본문이며, ADR §4
+> implementation plan 의 PR-13A0 ~ E 가 이를 단계 도입.
+
+### 38.1 설계 원칙
+
+1. **결정 SoT vs 구조 SoT 분리** — 8축 결정 (배치 / 소스 / 구현 순서 / 알림 /
+   통화 / dep / account / PR 분리) 은 ADR §2 가 본문, schema · adapter
+   contract · cache 정책은 본 §38 이 본문. ADR 변경 시 §38 의 schema 본문
+   동기 갱신.
+2. **schema_version 합의** — `CostReport` 는 CP-3 health / CP-4 snapshot /
+   CP-5 creds / CP-6 sync 와 동일 `schema_version: 1` 단일 키. 추가 차원은
+   확장-호환 만 (기존 키 변경 금지, 필드 추가만 허용).
+3. **measurement-cost 자기 관찰 (ADR R1)** — Cost Explorer 호출 자체 비용
+   등 측정 비용을 `meta.measurement_cost_usd` 에 동봉. 자기 잠식 방지.
+4. **원통화 USD 저장 / 표시 시 KRW 변환** — store 는 항상 USD, display 는
+   `fx_rate_basis` (출처 + 날짜) 캡처 후 KRW 변환. 회계 재현성.
+5. **profile 명 = account 1차 키 (ADR R13)** — Claude 3 프로필 (`.claude` /
+   `.claude-edward` / `.claude-jklee`) 의 분리 합산. organization_id 는
+   `meta.org_id` 부속.
+6. **optional dep 격리 (ADR R11)** — `cost-aws` / `cost-anthropic` /
+   `cost-github` 그룹. anvyc core dep (`typer / rich / pathspec / pyyaml`)
+   보존.
+7. **observability only** — cost 는 PostToolUse hook 으로 차단 부적합. CP-2
+   risk-gate 와 채널 분리. 알림은 statusline + CP-3 macOS notification 만.
+
+### 38.2 CostReport schema v1
+
+```yaml
+schema_version: 1
+source: anthropic | aws | github
+account: <profile_name>             # Anthropic: profile 명 (edward / jklee / default)
+                                    # AWS:      aws_profile 명
+                                    # GitHub:   gh login 명 (16bitdo / heisgone)
+period:
+  start: 2026-05-01T00:00:00Z       # 항상 UTC store
+  end:   2026-06-01T00:00:00Z       # exclusive
+currency: USD                       # 항상 USD store
+amount: 123.45                      # period 총합
+breakdown:                          # 차원별 분해 (optional)
+  - dim: model                      # open string. 권장 enum:
+                                    #   model / service / repo / workflow / tag / sku / cache_tier
+    key: claude-sonnet-4-6
+    amount: 67.89
+collected_at: 2026-05-27T..Z
+fx_rate_basis: ecb:2026-05-27       # display 시 사용, TTL=1d / stale 7d WARNING
+meta:
+  measurement_cost_usd: 0.01        # R1 자기 관찰
+  pricing_version: 1                # R9 mitigation (가격표 SoT 버전)
+  org_id: <opt>                     # R13 부속 (Anthropic organization_id 등)
+```
+
+#### 확장 호환 규칙
+
+- 기존 키 의미 변경 금지. 새 차원은 `breakdown[].dim` 의 open string 으로 추가.
+- `meta` 는 source 별 자유. 단 `measurement_cost_usd` / `pricing_version` /
+  `org_id` 3 키는 공통 reserved.
+
+### 38.3 Adapter Protocol + 어댑터 lifecycle
+
+#### CostAdapter Protocol
+
+```python
+class CostAdapter(Protocol):
+    name: str                                       # "anthropic" / "aws" / "github"
+    optional_dep_group: str | None                  # e.g. "cost-aws"
+
+    def discover_accounts(self) -> Iterator[Account]: ...
+    def fetch_period(
+        self, account: Account, period: Period
+    ) -> CostReport: ...
+    def supports_realtime(self) -> bool: ...        # invoice 채널이 (i) 실시간인지
+```
+
+`Account` = `(source, key)` 튜플. 어댑터별 의미:
+
+| source | key | discover 채널 |
+|---|---|---|
+| anthropic | profile 명 | `~/.claude*/projects/` glob |
+| aws | aws_profile 명 | `~/.aws/config` + `project_list` 의 `aws_profile` 보강 |
+| github | gh login 명 | `gh auth status --hostname github.com-<alias>` |
+
+#### 어댑터 채널
+
+| source | (i) 실시간 | (ii) 청구 진실 |
+|---|---|---|
+| anthropic | session jsonl 의 token 합산 × `pricing/anthropic.yaml` (PR-13A0/A) | admin API monthly invoice (PR-13B 2/3) |
+| aws | `ce:GetCostAndUsage` (PR-13C) | 동일 API + 월말 잠금 |
+| github | `/orgs/{org}/settings/billing/*` (PR-13D) | 동일 API |
+
+(i) 가 MTD 실시간, (ii) 가 월말 진실 — diff > 5% 시 doctor WARNING (§38.6).
+
+#### 어댑터 graceful skip
+
+optional dep 부재 시 `CostAdapterDepMissing(source=...)` raise → 상위 호출자가
+catch + doctor `cost-<src>-dep-missing` WARNING + 설치 안내 (`pip install
+'anvyc[cost-aws]'`).
+
+### 38.4 명령 contract (CP-13 시리즈)
+
+| 명령 | 시점 | 동작 |
+|---|---|---|
+| `anvyc cost collect [--source <s>] [--period <p>]` | scheduler 일1회 + 수동 | 어댑터 호출 → 캐시 저장 → CostReport JSON stdout |
+| `anvyc cost summary [--group-by <dim>] [--period mtd\|eom\|<period>]` | 사용자 ad-hoc / MCP | 캐시 집계 + KRW 표시 + EOM forecast |
+| `anvyc cost ledger [--source <s>] [--meta]` | 회계 검증 | period 별 row table, `--meta` 시 measurement_cost / pricing_version 노출 |
+| `anvyc cost reconcile [--source anthropic]` | 월말 + scheduler | (i) ≠ (ii) gap 비교, > 5% 시 exit 1 |
+| `anvyc cost gc [--keep-days N]` | retention 정리 | raw 90d / aggregate 24m 외 자동 삭제 |
+
+MCP tool (`anvyc/mcp/server.py`):
+
+| MCP tool | 응답 |
+|---|---|
+| `cost_summary` | `{ source, account, period, total_usd, total_krw, breakdown[], forecast_eom_usd, fx_rate_basis }` |
+| `cost_reconciliation` | `{ source, account, period, (i)_usd, (ii)_usd, gap_pct, status }` |
+
+`activity_summary` (기존, PR-13A 확장): `total_cost_usd` / `cost_by_model` /
+`pricing_version` 키 추가 (확장 호환).
+
+### 38.5 캐시 / Retention 정책
+
+#### 캐시 layout
+
+```
+~/.config/anvyc/cost/
+├── cache/
+│   ├── anthropic/<profile_name>/<YYYY-MM-DD>.json     # raw daily
+│   ├── aws/<aws_profile>/<YYYY-MM-DD>.json
+│   ├── github/<gh_login>/<YYYY-MM-DD>.json
+│   └── fx/<YYYY-MM-DD>.json                            # FX rate (TTL=1d)
+├── aggregate/
+│   └── <source>/<account>/<YYYY-MM>.json               # monthly aggregate
+├── state/
+│   └── cost-window.json                                # 6h rolling window (CP-3 wire)
+├── budgets.yml                                         # 사용자 예산 정책
+└── pricing/                                            # PR-13A0 가격표 SoT 사본
+    └── anthropic.yaml
+```
+
+#### Retention
+
+| 영역 | 기본 | 만료 / 알림 |
+|---|---|---|
+| `cache/<src>/<acct>/*.json` (raw daily) | 90d | 자동 삭제 (`anvyc cost gc`) |
+| `aggregate/<src>/<acct>/*.json` (monthly) | 24m | 자동 삭제 |
+| `state/cost-window.json` | rolling 6 tick | overwrite |
+| `cache/fx/*.json` | TTL=1d | stale 7d 시 WARNING, 14d 시 statusline `~` prefix |
+| `pricing/anthropic.yaml` | 90d 갱신 | `effective_date` 90d 초과 시 WARNING (R9) |
+
+#### Atomic write
+
+`tempfile.mkstemp(dir=parent)` + chunked write + `os.replace`. CP-4 snapshot ·
+CP-6 sync 의 atomic write 패턴 미러.
+
+### 38.6 doctor check 등록
+
+`anvyc/checks/_REGISTRY` 에 5종 추가 (CP-3 scheduler 가 자동 호출):
+
+| check id | 동작 | severity |
+|---|---|---|
+| `cost-anthropic-reconciliation` | (i) session sum vs (ii) invoice gap > 5% | WARNING |
+| `cost-<src>-dep-missing` | optional dep import fail | WARNING (graceful skip) |
+| `cost-aws-explorer-iam` | `ce:GetCostAndUsage` 권한 부재 | WARNING + 정책 JSON 출력 |
+| `cost-fx-stale` | FX cache 7d 초과 stale | WARNING |
+| `cost-pricing-stale` | `pricing/anthropic.yaml` 의 `effective_date` 90d 초과 | WARNING |
+
+CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor --strict
+--json` 호출 시 health JSON payload 에 자동 합류 (별도 wire 불요).
+
+### 38.7 Cross-axis 시너지
+
+| Axis | 통합 채널 |
+|---|---|
+| **CP-1** audit | session jsonl 이 Anthropic source 채널 (i). `activity_summary` 응답이 PR-13A 로 `total_cost_usd` 차원 확장 |
+| **CP-3** scheduler | `cost` task (interval=86400s) + `cost-budget-exceeded` predicate (health-status.py) + 6h rolling window state |
+| **CP-4** snapshot | snapshot meta 에 `cost_summary` 포함 검토 (v0.2) |
+| **CP-5** creds | Anthropic admin API key / AWS Cost Explorer 권한 / GitHub PAT 의 1Password ref 등록 채널 재사용 |
+| **CP-6** sync | `cache/aggregate/<src>/<acct>/*.json` 가 cross-machine sync 대상. 단 source 별 dedup 필요 (account 단위 합산이 자연) |
+| **CP-12** work-cwd | repo breakdown (`dim: repo`) 의 cwd 매핑에 활용 |
+
+### 38.8 보안 경계
+
+- **token / API key 본문 sync 영구 금지** — CP-6 의 정책 (rule 26·27) 동일 적용.
+  costwatch 는 *결과 caching* 만, secret 본문은 1Password ref 만.
+- **breakdown 의 PII redact** — `dim: repo` 의 key 가 repo 절대 경로 / branch
+  명 / commit msg 일 가능성 → anvyc redact 함수 재사용. 출구별 정책:
+
+  | 출구 | redact 강도 |
+  |---|---|
+  | stdout (`anvyc cost summary`) | full (user 본인) |
+  | cache jsonl | redacted (commit msg / branch 명 마스킹) |
+  | macOS notification | aggregate only (no breakdown) |
+  | statusline 세그먼트 | total + forecast 만 |
+
+- **org_id 의 명시적 opt-in** — `meta.org_id` 노출은 `anvyc cost summary
+  --include-org-id` 명시 시에만. 기본 미노출.
+
+### 38.9 Out of scope (CP-13 axis 완결 기준)
+
+본 §38 의 v6 범위 외:
+
+- **Pulumi preview cost diff** — AWS Pricing API 매핑 어댑터. CP-14 후보.
+- **Cloudflare / Vercel / Notion 등 추가 SaaS adapter** — `CostAdapter`
+  Protocol 만 v6 에서 동결, 어댑터는 v7 별도 ADR.
+- **Cursor billing 차원** — Cursor 가 official billing API 미공개. v7+.
+- **`finops-engineer` role 신설** — v6 는 devops-engineer 흡수. ADR §5 의
+  분리 trigger 충족 시 v0.2 별도.
+- **Slack 출구** — redaction policy 분리 필요. v0.2 ADR 별도.
+- **다머신 합산 dedup rule** — CP-6 sync 위에서 account 단위 dedup. v0.2.
+- **GitHub Copilot billing** — admin 권한 요구. v7 별도.
+- **Anthropic batch tier 할인 처리** — invoice (ii) 채널 정착 후 검토.
+
+### 38.10 변경 이력
+
+| 일자 | version | 변경 |
+|---|---|---|
+| 2026-05-27 | 1 | 초안 — ADR v1.1 (Accepted 2026-05-27 rbr#90) 의 구조 SoT 본문 1차 작성. PR-13Z-anvyc 로 합류. schema v1 동결 + adapter Protocol + cache layout + doctor 5종 + cross-axis 매핑 + 보안 경계. |
