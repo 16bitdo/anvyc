@@ -117,7 +117,13 @@ case ":$PATH:" in
        export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 
-# ----- 6) 설치 검증 -----
+# ----- 6) git hooks 설치 (pre-push) — 멱등 -----
+# .git 없으면 (예: sdist tarball 환경) skip. 실패해도 dev-install 자체는 계속.
+if [[ -d "$REPO_ROOT/.git" ]]; then
+  bash "$SCRIPT_DIR/install-git-hooks.sh" || warn "git hooks 설치 실패 — 수동 실행: bash scripts/install-git-hooks.sh"
+fi
+
+# ----- 7) 설치 검증 -----
 info "검증: anvyc --version"
 if VER_OUT="$("$WRAPPER_DST" --version 2>&1)"; then
   ok "설치 완료 — $VER_OUT"
