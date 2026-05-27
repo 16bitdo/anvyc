@@ -1,0 +1,124 @@
+# Anthropic 모델 단가 SoT — anvyc/core/cost/pricing/anthropic.yaml
+#
+# CP-13 (Cost observability) 의 가격표 SoT. ADR v6-CP-13 §4.1 + DESIGN §38.2
+# 의 schema 정합. 변경 시 PR review 필수 — ADR §7 Sources 동기화 강제 (R9
+# mitigation: pricing_version 캡처로 historical cost drift 추적).
+#
+# 출처: https://platform.claude.com/docs/en/docs/about-claude/pricing
+#       (2026-05-27 fetch, claude.com/pricing 의 #api 섹션 미러)
+#
+# 단위: USD per million tokens (MTok)
+# 갱신 주기: 분기별 review (doctor `cost-pricing-stale` check — effective_date
+#             90d 초과 시 WARNING).
+
+version: 1
+effective_date: "2026-05-27"
+source_url: "https://platform.claude.com/docs/en/docs/about-claude/pricing"
+schema_version: 1
+
+# 현행 모델 — Opus 4.5+ / Sonnet 4.5+ / Haiku 4.5
+models:
+  claude-opus-4-7:
+    input: 5.00
+    output: 25.00
+    cache_write_5m: 6.25
+    cache_write_1h: 10.00
+    cache_read: 0.50
+  claude-opus-4-6:
+    input: 5.00
+    output: 25.00
+    cache_write_5m: 6.25
+    cache_write_1h: 10.00
+    cache_read: 0.50
+  claude-opus-4-5:
+    input: 5.00
+    output: 25.00
+    cache_write_5m: 6.25
+    cache_write_1h: 10.00
+    cache_read: 0.50
+  claude-opus-4-1:
+    input: 15.00
+    output: 75.00
+    cache_write_5m: 18.75
+    cache_write_1h: 30.00
+    cache_read: 1.50
+  claude-sonnet-4-6:
+    input: 3.00
+    output: 15.00
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
+    cache_read: 0.30
+  claude-sonnet-4-5:
+    input: 3.00
+    output: 15.00
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
+    cache_read: 0.30
+  claude-haiku-4-5:
+    input: 1.00
+    output: 5.00
+    cache_write_5m: 1.25
+    cache_write_1h: 2.00
+    cache_read: 0.10
+
+# Deprecated / retired 모델 — 과거 jsonl session 의 historical cost 계산용 유지.
+# 신규 호출은 raise UnknownModel 대신 deprecated_models 에서 fallback.
+deprecated_models:
+  claude-opus-4:
+    input: 15.00
+    output: 75.00
+    cache_write_5m: 18.75
+    cache_write_1h: 30.00
+    cache_read: 1.50
+  claude-sonnet-4:
+    input: 3.00
+    output: 15.00
+    cache_write_5m: 3.75
+    cache_write_1h: 6.00
+    cache_read: 0.30
+  claude-haiku-3-5:
+    input: 0.80
+    output: 4.00
+    cache_write_5m: 1.00
+    cache_write_1h: 1.60
+    cache_read: 0.08
+
+# Server tool 가격 — token cost 와 별도.
+server_tools:
+  web_search:
+    unit: per_1000_requests
+    price: 10.00
+    notes: "Token cost for search-generated content is separate (counted as input)."
+  web_fetch:
+    unit: per_request
+    price: 0.00
+    notes: "No additional charge beyond token cost of fetched content."
+  code_execution:
+    unit: per_hour
+    price: 0.05
+    free_quota_per_org_per_month: 1550
+    notes: "Free when used with web_search or web_fetch (token cost only)."
+
+# 가격 modifier (multiplier applied to applicable rates).
+# 실제 계산은 loader 가 아닌 adapter (PR-13B) 에서 적용 — yaml 은 정책 SoT 만.
+modifiers:
+  fast_mode:
+    multiplier: 6.0
+    applies_to:
+      - claude-opus-4-7
+      - claude-opus-4-6
+    note: "Premium for fast output. Stacks with prompt caching + data residency. Not available on Batch API / AWS."
+  data_residency_us:
+    multiplier: 1.1
+    applies_to:
+      - claude-opus-4-7
+      - claude-opus-4-6
+      - claude-opus-4-5
+      - claude-sonnet-4-6
+      - claude-sonnet-4-5
+      - claude-haiku-4-5
+    note: "inference_geo='us' 시 모든 token 카테고리에 적용."
+  batch_api:
+    multiplier: 0.5
+    applies_to: all_models
+    note: "Batch API 의 input + output 50% 할인. 캐시 multiplier 와 stack."
