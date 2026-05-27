@@ -59,6 +59,9 @@ mcp = [
 cost-aws = [
   "boto3>=1.34"
 ]
+cost-github = [
+  "httpx>=0.27"
+]
 
 [project.scripts]
 anvyc = "anvyc.cli:app"

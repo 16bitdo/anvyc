@@ -1,9 +1,9 @@
-"""Cost adapters (CP-13 PR-13B1 + PR-13C).
+"""Cost adapters (CP-13 PR-13B1 + PR-13C + PR-13D).
 
-Registry of source-specific adapters. PR-13B1 에서 anthropic, PR-13C 에서
-aws (optional dep `cost-aws`) 등록. boto3 부재 시 lazy import 가
-CostAdapterDepMissingError raise → ADAPTER_REGISTRY 에서 자동 제외 (graceful
-skip, ADR R11). doctor `cost-aws-explorer-iam` 가 부재 시 안내.
+Registry of source-specific adapters. anthropic (core dep), aws (optional
+`cost-aws` — boto3), github (optional `cost-github` — httpx). Optional dep
+부재 시 lazy import 가 entry 미등록 (graceful skip, ADR R11). 각 source 의
+doctor check 가 부재 시 안내.
 """
 
 from anvyc.core.cost.adapters.anthropic import AnthropicAdapter
@@ -20,9 +20,9 @@ __all__ = [
 def _build_registry() -> dict[str, CostAdapter]:
     """source 이름 → adapter 인스턴스. optional dep 부재 시 entry 제외.
 
-    boto3 가용성은 `importlib.util.find_spec` 로 가볍게 확인 (실 import 0,
-    startup 비용 무시 가능). 부재 시 'aws' 키 미등록 → doctor
-    `cost-aws-explorer-iam` 이 안내.
+    boto3 / httpx 가용성은 `importlib.util.find_spec` 로 가볍게 확인 (실
+    import 0, startup 비용 무시 가능). 부재 시 해당 키 미등록 → doctor
+    `cost-<src>-*` check 들이 안내.
     """
     import importlib.util  # noqa: PLC0415
 
@@ -35,6 +35,12 @@ def _build_registry() -> dict[str, CostAdapter]:
         )
 
         registry["aws"] = AwsCostExplorerAdapter()
+    if importlib.util.find_spec("httpx") is not None:
+        from anvyc.core.cost.adapters.github import (  # noqa: PLC0415
+            GitHubBillingAdapter,
+        )
+
+        registry["github"] = GitHubBillingAdapter()
     return registry
 
 
