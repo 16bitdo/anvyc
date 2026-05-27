@@ -49,3 +49,7 @@ CONTEXT.md
 # secret 영역은 절대 commit 금지
 .anvyc-secrets/
 ~/.anvyc-secrets/
+
+# uv — anvyc 는 pyproject.toml 의 dependencies 만 SoT, lock 은 dev workflow 만
+# 영향 (PyPI 배포는 wheel+sdist). 환경별 차이가 잦아 추적 비용 > 재현성 이득.
+uv.lock
