@@ -1,10 +1,39 @@
 # DESIGN.md — anvyc 개발환경 설정 동기화 도구 설계서
 
-> 문서 버전: v0.2
+> 문서 버전: v0.3
 > 작성일: 2026-05-17
-> 개정일: 2026-05-18 (v0.2 — 손상 섹션 복원 및 문맥 정합성 확보)
+> 개정일: 2026-05-27 (v0.3 — CP-13 cost observability 추가, axis 본문 분리)
 > 프로젝트 가칭: `anvyc`
 > 목적: 여러 장치에서 Claude Code, Cursor IDE, AWS CLI, GitHub CLI, Pulumi, iTerm2 등 로컬 개발환경 설정을 안전하고 일관되게 동기화한다.
+
+## 목차
+
+### 핵심 설계
+- [§1 배경과 문제 정의](#1-배경과-문제-정의)
+- [§2 선행 사례: chezmoi](#2-선행-사례-chezmoi)
+- [§3 제품 정의](#3-제품-정의) · [§4 범위](#4-범위) · [§5 설계 원칙](#5-설계-원칙)
+- [§6 주요 명령어](#6-주요-명령어) · [§7 디렉터리 구조](#7-디렉터리-구조) · [§8 Runtime 데이터 구조](#8-runtime-데이터-구조)
+- [§9 설정 파일 예시](#9-설정-파일-예시) · [§10 Core Architecture](#10-core-architecture) · [§11 Adapter 인터페이스](#11-adapter-인터페이스) · [§12 Core Workflow](#12-core-workflow)
+
+### 보안 / 도구별 adapter
+- [§13 Secret Scanner 설계](#13-secret-scanner-설계)
+- [§14 iTerm2](#14-iterm2-adapter-설계) · [§15 Cursor IDE](#15-cursor-ide-adapter-설계) · [§16 Claude Code](#16-claude-code-adapter-설계)
+- [§17 외부 도구 Adapter 모음 (AWS / GitHub CLI / Pulumi / shell_prompt)](#17-외부-도구-adapter-모음-aws--github-cli--pulumi--shell_prompt)
+- [§30 Secret 분리 정책 (1Password)](#30-secret-분리-정책-v010-1password-secret-reference) · [§31 SOPS 통합](#31-sops-통합-v02)
+
+### 진단 / 메타
+- [§18 Metadata](#18-metadata-설계) · [§19 기술 스택](#19-기술-스택) · [§20 테스트 전략](#20-테스트-전략) · [§21 개발 일정](#21-개발-일정)
+- [§22 성공 케이스](#22-성공-케이스) · [§23 실패 케이스](#23-실패-케이스와-대응) · [§24 chezmoi 비교](#24-chezmoi-사용-vs-직접-개발-비교) · [§25 MVP 완료 기준](#25-mvp-완료-기준) · [§26 초기 작업](#26-바로-실행-가능한-초기-작업)
+- [§27 Doctor](#27-doctor-명령-설계) · [§28 의사결정](#28-최종-의사결정) · [§29 로드맵](#29-릴리스-로드맵)
+
+### AI agent integration (P6+ / Control Plane)
+- [§32 project show JSON schema (v0.8.0)](#32-project-show-json-schema-v080-ai-agent-integration)
+- [§33 project list / project doctor (v0.8.1)](#33-project-list--project-doctor-schema-v081)
+- [§34 MCP server (v0.9.0)](#34-mcp-server-architecture-v090-p6)
+- **§35 CP-4 Snapshot** → [docs/design-axes/cp-04-snapshot.md](./docs/design-axes/cp-04-snapshot.md)
+- **§36 CP-5 Credentials** → [docs/design-axes/cp-05-creds.md](./docs/design-axes/cp-05-creds.md)
+- **§37 CP-6 Sync** → [docs/design-axes/cp-06-sync.md](./docs/design-axes/cp-06-sync.md)
+- **§38 CP-13 Cost** → [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md)
 
 ---
 
@@ -225,7 +254,7 @@ anvyc/
 │       │   ├── iterm2.py
 │       │   ├── pulumi.py
 │       │   ├── dev_env.py         # v0.7.0+ — .envrc / .tool-versions / .python-version / .nvmrc
-│       │   └── shell_prompt.py    # v0.13.0+ — starship / powerlevel10k 설정 (§17a)
+│       │   └── shell_prompt.py    # v0.13.0+ — starship / powerlevel10k 설정 (§17.4)
 │       ├── checks/                # doctor check 모듈 (§27.1.1)
 │       │   ├── cross_user.py
 │       │   ├── venv_hidden.py
@@ -750,7 +779,7 @@ Claude Code는 개인 세션과 토큰 유출 가능성이 있으므로, `doctor
 
 ---
 
-## 17. AWS / GitHub CLI / Pulumi Adapter 설계
+## 17. 외부 도구 Adapter 모음 (AWS / GitHub CLI / Pulumi / shell_prompt)
 
 ### 17.1 AWS
 
@@ -775,16 +804,14 @@ Claude Code는 개인 세션과 토큰 유출 가능성이 있으므로, `doctor
 | `~/.pulumi/credentials.json` | 기본 제외 |
 | Access token env | 절대 백업 안 함 |
 
----
-
-## 17a. shell_prompt Adapter 설계 (v0.13.0)
+### 17.4 shell_prompt (v0.13.0)
 
 shell prompt 도구(starship, powerlevel10k)의 **설정 파일**을 백업·동기화한다.
-`anvyc prompt` 명령(§27.10)이 prompt 에 anvyc 라우팅 세그먼트를 노출한다면,
+`anvyc prompt` 명령(§27.9)이 prompt 에 anvyc 라우팅 세그먼트를 노출한다면,
 이 어댑터는 prompt 도구 자신의 설정(컬러·세그먼트 정의 등)을 다른 머신에
 재현할 수 있게 한다.
 
-### 17a.1 포함 / 제외 정책
+#### 17.4.1 포함 / 제외 정책
 
 | 경로 | 정책 | 이유 |
 |---|---|---|
@@ -797,7 +824,7 @@ shell prompt 도구(starship, powerlevel10k)의 **설정 파일**을 백업·동
 **단일 `shell_prompt` 어댑터**로 묶는다 — `collect()` 가 존재하는 파일만
 포함해, 두 도구 동시 설치를 강제하지 않는다.
 
-### 17a.2 어댑터 표면
+#### 17.4.2 어댑터 표면
 
 ```python
 class ShellPromptAdapter:
@@ -813,13 +840,13 @@ class ShellPromptAdapter:
 별도 plist/JSON 파싱 없이 raw 텍스트 동기화. starship.toml 의 TOML 파싱 오류
 검증은 starship 자체에 위임한다 (anvyc 가 도구 동작을 추측하지 않음).
 
-### 17a.3 secret 영역
+#### 17.4.3 secret 영역
 
 starship/p10k 설정 파일은 일반적으로 secret 을 포함하지 않는다. 단, 사용자가
 custom command 에 raw token 을 박을 가능성이 있으므로 secret scanner 의
 일반 패턴(§13)을 그대로 적용한다 — 별도 allowlist 없음.
 
-### 17a.4 호환성 / 마이그레이션
+#### 17.4.4 호환성 / 마이그레이션
 
 - 신규 어댑터 추가 — 어댑터 수 9 → **10** (`anvyc tools list` 카운트 변경).
 - 기존 사용자: `~/.config/starship.toml` 또는 `~/.p10k.zsh` 가 없으면 silent
@@ -1318,7 +1345,7 @@ doctor 세 check 와 `project list`/MCP 진입점은 `resolve_project_roots()` �
 루트를 순회하며 `Path.resolve()` 로 중복 디렉터리를 제거한다. `dev_env` 어댑터는
 별도로 `tools.dev_env.project_roots` config 를 쓰고 SoT 상수는 fallback 으로만 쓴다.
 
-### 27.10 `anvyc prompt` 명령 (v0.13.0)
+### 27.9 `anvyc prompt` 명령 (v0.13.0)
 
 `anvyc prompt` 는 현재 디렉터리의 per-project 계정 라우팅(§32.4a/b/c) 을 shell
 prompt 용 한 줄로 출력한다. `project show` 를 매번 실행하지 않고도 라우팅
@@ -1390,12 +1417,12 @@ MVP는 Python으로 빠르게 구현하고, 실제 Mac 2대에서 end-to-end 검
 | v0.2 | SOPS encryption-at-rest | §31 |
 | v0.5.x | iTerm2 status 정합화 + SOPS per-file override + sops 단독 CLI | §14, §31 |
 | v0.6.x | Homebrew tap + `--from-git` + multi-account doctor checks + 호스트별 overlay | §27.1.1 |
-| v0.7.x | `dev_env` 어댑터 + interactive wizard + `install.sh` one-liner | §17a 인접 |
+| v0.7.x | `dev_env` 어댑터 + interactive wizard + `install.sh` one-liner | §17.4 인접 |
 | v0.8.x | `project show/list/doctor` (AI agent multi-project view) | §32, §33 |
 | v0.9.0 | MCP server (`anvyc serve --mcp`, 5 read-only tool) | §34 |
 | v0.10.0 | MCP tool naming cleanup (`anvyc_` prefix 제거, breaking) | §34.9 |
 | v0.11.0 / v0.12.0 | per-project gh/Claude/Pulumi 계정 라우팅 인식 + 프로젝트 루트 SoT | §27.8, §32.4a/b/c |
-| v0.13.0 | shell prompt 통합 — `anvyc prompt` 세그먼트 + `shell_prompt` 어댑터 + dev wrapper PYTHONPATH | §17a, §27.7, §27.10 |
+| v0.13.0 | shell prompt 통합 — `anvyc prompt` 세그먼트 + `shell_prompt` 어댑터 + dev wrapper PYTHONPATH | §17.4, §27.7, §27.9 |
 
 §21·구 Post-PoC 로드맵의 phase 분류·일일 일정은 v0.1.0 MVP 단계에서 소진되어
 RELEASE_NOTES 의 버전별 릴리스 노트로 대체되었다.
@@ -1892,671 +1919,63 @@ src/anvyc/
 
 ## 35. Snapshot / Rollback 설계 (CP-4)
 
-> Control Plane v2 의 첫 axis. autopilot 의 실수 (예: 브랜치 30 파일 수정) 를
-> 명시적 marker → 복원 가능하게 한다. 본 PR (1/3) 은 capture (`create`) 만;
-> list/diff (2/3), restore (3/3) 는 후속 PR. SoT 트리오는
-> `role-based-ruleset` 측 (ROADMAP §4 CP-4 / DESIGN §7 / manifest).
+> **본 axis 본문은 [docs/design-axes/cp-04-snapshot.md](./docs/design-axes/cp-04-snapshot.md)
+> 로 분리됐습니다.**
 
-### 35.1 설계 원칙
+Control Plane v2 의 첫 axis. autopilot 의 실수 (예: 브랜치 30 파일 수정) 를
+명시적 marker → 복원 가능하게 한다. `git stash` + meta schema v1
+(`schema_version: 1`) + `refs/anvyc-snapshots/<id>` anchor 로 GC 방지.
+`anvyc snapshot {create|list|diff|restore}` 4-layer safety (dry-run 기본 /
+`--force` + confirm / auto pre-restore snapshot / conflict 시 회복 채널 안내).
 
-- **Non-disruptive capture**: `git stash create` 로 commit object 만 생성 —
-  working tree 미변경. `git update-ref refs/anvyc-snapshots/<id>` 로 GC 방지
-  anchor. 사용자가 `git stash drop` 같은 명령을 실행해도 영향 없음.
-- **Workspace-local storage**: `<repo>/.anvyc/snapshots/<id>/meta.json` —
-  기존 `.anvyc/backups/` 와 분리된 sub-tree. portability 가 필요하면 후속
-  polish (예: `~/.anvyc/snapshots/` global mirror).
-- **Schema 우선 안정화** (v1 cut-over 학습 L7 적용): 1/3 머지 시점에
-  `schema_version: 1` 확정 → 2/3 의 list/diff, 3/3 의 restore 가 이 schema
-  를 입력 contract 로 가정.
-
-### 35.2 Snapshot Meta Schema v1
-
-```json
-{
-  "schema_version": 1,
-  "id": "20260524T013000Z-a1b2c3",
-  "label": "before-refactor",
-  "claude_session_id": "abc-def-...",
-  "git_branch": "feat/foo",
-  "git_stash_ref": "refs/anvyc-snapshots/20260524T013000Z-a1b2c3",
-  "git_stash_sha": "<commit-sha>",
-  "created_at": "2026-05-24T01:30:00Z",
-  "uncommitted_count": 5,
-  "working_clean": false
-}
-```
-
-| key | 타입 | 의미 |
-|---|---|---|
-| `schema_version` | int | 현재 `1`. breaking change 시 증가. |
-| `id` | str | `<UTC-timestamp>-<6-hex>` (sortable + unique). |
-| `label` | str \| null | 사람 가독 marker (선택). |
-| `claude_session_id` | str \| null | `--session-id` 명시 우선 → `CLAUDE*_SESSION_ID` env fallback. |
-| `git_branch` | str \| null | 현재 branch (detached HEAD 시 sha). |
-| `git_stash_ref` | str \| null | `refs/anvyc-snapshots/<id>` (clean tree 시 null). |
-| `git_stash_sha` | str \| null | stash commit SHA (clean tree 시 null). |
-| `created_at` | str | ISO8601 UTC. |
-| `uncommitted_count` | int | tracked 변경 + untracked 파일 수. |
-| `working_clean` | bool | `uncommitted_count == 0`. |
-
-### 35.3 명령 contract (CP-4 시리즈)
-
-| 명령 | PR | 안전 등급 | 책임 |
-|---|---|---|---|
-| `anvyc snapshot create [--label X] [--session-id Y]` | 1/3 (#34, merged) | read+create | git stash + meta 적재. clean tree 도 anchor marker. |
-| `anvyc snapshot list [--json] [--limit N]` | 2/3 (#35, merged) | read-only | `.anvyc/snapshots/*/meta.json` 인덱스, `created_at` 내림차순. 손상/version-미스매치 entry silently skip. |
-| `anvyc snapshot diff <id> [--against <other-id>]` | 2/3 (#35, merged) | read-only | snapshot vs 현재 (또는 두 snapshot 간) `git diff`. `working_clean=true` snapshot 은 안내 메시지만. |
-| `anvyc snapshot restore <id> [--force] [--yes]` | **3/3 (본 PR)** | **destructive** | `git stash apply <target.git_stash_sha>`. **dry-run 기본** (--force 없으면 plan 만), `--force` + confirm prompt + auto pre-restore snapshot. `--yes` 자동 수락. §35.7 절차 참조. |
-
-### 35.4 git stash anchor 의 의미
-
-`git update-ref refs/anvyc-snapshots/<id> <sha>` 로 stash commit 을 anchor
-하면:
-- `git stash list` 에는 안 보임 (전용 refspace)
-- `git gc` 가 unreachable 로 판정 안 함 (ref 가 있음)
-- `git stash apply <ref>` 또는 `git checkout <ref>` 로 복원 가능 (3/3 PR)
-- 사용자 의도 명시 (rm refs/anvyc-snapshots/<id>) 시 정리 가능
-
-이 분리는 사용자의 native `git stash` workflow 와 anvyc snapshot 의
-namespace 충돌을 방지한다.
-
-#### Capture 구현 — `stash push -u` + 즉시 `pop --index`
-
-untracked 파일까지 포함하려면 `git stash create -u` 가 자연스러운 후보이나
-git plumbing 제한으로 untracked 가 실제로 캡쳐되지 않는다 (live-demo
-시점에 발견된 behavior gap). 우회:
-
-1. `git stash push -u --quiet -m "anvyc-snapshot-<id>"` — tracked + index +
-   untracked 3-parent stash 생성 (working tree 일시 clean)
-2. `git rev-parse stash@{0}` — top stash SHA 즉시 capture
-3. `git update-ref refs/anvyc-snapshots/<id> <sha>` — anchor (GC 방지)
-4. `git stash pop --quiet --index` — working tree 복원 (anchor 가 있으므로
-   stack 에서 제거되어도 SHA 보존)
-
-이 순서가 안전한 이유:
-- step 4 (pop) 가 실패해도 stash entry 는 stack 에 남고 (msg `anvyc-snapshot-<id>`
-  로 식별), anchor ref 도 이미 등록됨 → 양쪽 채널 모두로 복구 가능
-- step 1~3 사이의 race window 는 단일 subprocess 시퀀스라 실용상 무시
-
-clean working tree (변경 0 + untracked 0) 면 step 1 의 push 가 non-zero —
-clean marker (stash_sha=null) 로 처리.
-
-### 35.5 Out of scope (3/3 본 PR — CP-4 axis 완결 기준)
-
-- snapshot 자동 expiration (예: 30일 후 자동 삭제) — 후속 polish
-- portable export (snapshot 을 다른 머신/repo 로 이동) — 후속 polish
-- snapshot meta 에 anvyc doctor 결과 캡처 — CP-5 (creds) 와 cross-link 시 검토
-- `diff --stat` 같은 git diff 추가 option — polish
-- restore 시 branch 자동 전환 (`git checkout <target.git_branch>`) — 현재는
-  사용자 명시 checkout 권장. autopilot 의 branch 자동 변경은 위험.
-- restore 중 conflict 자동 resolve — 현재는 git conflict marker 그대로 남기고
-  `SnapshotRestoreError` raise (사용자 수동 해결).
-
-### 35.6 보안 경계
-
-- snapshot meta 에 **token 저장 금지** — `claude_session_id` 는 식별자라
-  본문 아님; CP-5 `creds status` 결과는 별도 read-only API 참조로만 cross-link.
-- `.anvyc/snapshots/` 의 stash sha 는 git object — 일반 git 파일 권한 적용.
-  민감 정보가 working tree 에 있던 시점이면 stash 에도 포함됨 — 사용자
-  책임 (rule `26-secrets-1password` 의 1Password 사용 원칙 유지).
-
-### 35.7 Restore 안전 절차 (3/3 추가)
-
-restore 는 destructive — 본 절차로 회복성/재현성 모두 보장한다.
-
-1. **`plan_restore(repo, anvyc_dir, id)`** — target snapshot + 현재 상태 비교,
-   warnings list (branch 불일치, 현재 uncommitted 존재 등) + git apply 명령
-   미리 산출. CLI 가 `--force` 없으면 본 plan 만 출력 후 종료 (working tree
-   무변경 = **dry-run 기본**).
-2. **`--force` 시** confirm prompt 1회 (`--yes` 또는 `-y` 로 자동 수락).
-3. **auto pre-restore snapshot** — 실 apply 직전 현재 working tree 를
-   `label=pre-restore-<target-id>` 로 자동 capture. 실패 시 restore 중단
-   (보호 없이 진행 금지).
-4. **`git stash apply <target.git_stash_sha>`** — 표준 stash apply. 성공 시
-   working tree 가 target 시점 변경분 + 현재 변경분 합쳐진 상태.
-5. **conflict 시** `SnapshotRestoreError` raise + pre-restore snapshot id
-   안내 message 포함. git conflict marker (`<<<<<<<`) 는 working tree 에
-   남음 → 사용자 수동 resolve 또는 `git reset --hard <pre.git_stash_sha>`
-   로 회복.
-6. **branch 전환 안 함** — target.git_branch 와 현재 branch 불일치는
-   warning 만 (실 branch checkout 금지 — autopilot 의 branch 변경은 위험).
-
-회복 채널 요약:
-- restore 가 의도와 달랐다 → `anvyc snapshot list` 에서 `pre-restore-<id>`
-  찾아 `anvyc snapshot restore <pre-id> --force` 로 원상 복구.
-- restore 가 conflict 로 실패했다 → conflict marker 수동 resolve, 또는
-  pre-restore snapshot 의 stash sha 로 `git reset --hard <pre.git_stash_sha>`.
+상세 (schema v1 / 명령 contract / git stash anchor 의미 / capture 구현
+`stash push -u` + 즉시 `pop --index` / restore 안전 절차 6단계) →
+[CP-4 본문](./docs/design-axes/cp-04-snapshot.md).
 
 ## 36. Credentials Lifecycle 설계 (CP-5)
 
-> Control Plane v2 의 마지막 axis. GitHub PAT / AWS session / Claude OAuth
-> 토큰 만료를 사전 감지 + 회전 절차를 1Password CLI 로 연결. 1/3 본 PR 은
-> detection + status 만; 2/3 doctor check 통합, 3/3 rotate (op CLI wrapper)
-> 는 후속 PR.
+> **본 axis 본문은 [docs/design-axes/cp-05-creds.md](./docs/design-axes/cp-05-creds.md)
+> 로 분리됐습니다.**
 
-### 36.1 설계 원칙
+Control Plane v2 의 마지막 axis. GitHub PAT / AWS session / Claude OAuth
+토큰 만료를 사전 감지 + 회전 절차를 native re-auth + 1Password CLI 로 연결.
+`CredentialsReport schema v1` + `anvyc creds {status|rotate}` + doctor
+`creds-expiry-within-7d` check (CP-3 scheduler 자동 합류). rotate 는
+[CP-4 §7](./docs/design-axes/cp-04-snapshot.md) 의 4-layer 안전 패턴 미러.
 
-- **Read-only first**: 1/3·2/3 는 모두 read-only (detection / status / doctor
-  check). 3/3 의 rotate 만 write — destructive 절차는 snapshot/restore (§35.7)
-  같은 confirm + dry-run + auto pre-rotate backup 패턴 적용 예정.
-- **Source 다양성 수용**: 각 credential kind 의 만료 source 가 다름 — SSO
-  는 파일, GitHub 은 HTTP header, Claude 는 keychain. detection 은 source
-  별 helper 로 분리, 공통 `CredentialStatus` 로 합성.
-- **Schema 우선 안정화** (v1 cut-over 학습 L7 적용): 1/3 머지 시점에
-  `schema_version: 1` 확정 → 2/3 doctor check + 3/3 rotate 가 동일 schema
-  를 입력 contract 로 가정. CP-3 health / CP-4 snapshot 과 같은 패턴.
+상세 (schema v1 / 3 kind detection 전략 / CP-3 scheduler 시너지 / rotate
+안전 절차) → [CP-5 본문](./docs/design-axes/cp-05-creds.md).
 
-### 36.2 CredentialStatus / CredentialsReport schema v1
-
-```json
-{
-  "schema_version": 1,
-  "generated_at": "2026-05-25T00:00:00Z",
-  "warn_threshold_days": 7,
-  "credentials": [
-    {
-      "kind": "aws_sso" | "github" | "claude_oauth",
-      "identifier": "<profile/start_url/email>",
-      "source": "<file path 또는 'gh CLI'>",
-      "expires_at": "ISO8601 UTC | null",
-      "expires_in_seconds": int | null,
-      "status": "valid" | "expiring" | "expired" | "unknown"
-    },
-    ...
-  ]
-}
-```
-
-| key | 의미 |
-|---|---|
-| `kind` | credential 종류 (3 kind, 후속 확장 가능) |
-| `identifier` | 사람 식별용 — SSO start_url / GitHub host/user / Claude email |
-| `source` | 발견 위치 — `.aws/sso/cache/*.json` / `.config/gh/hosts.yml` / `.claude*.json` |
-| `expires_at` | ISO8601 UTC. null = 만료 정보 없음 / 미지원 source. |
-| `expires_in_seconds` | now 기준 잔여 초 (음수 = 만료 후 경과 초) |
-| `status` | `valid` (잔여 ≥ threshold) / `expiring` (0 < 잔여 < threshold) / `expired` (잔여 ≤ 0) / `unknown` (`expires_at=null`, 단 detected 면 valid 로 재분류) |
-
-### 36.3 명령 contract (CP-5 시리즈)
-
-| 명령 | PR | 안전 등급 | 책임 |
-|---|---|---|---|
-| `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | 1/3 (#37, merged) | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override. |
-| doctor `creds-expiry-within-7d` check | 2/3 (#38, merged) | read-only | `core/doctor.py` 의 `_REGISTRY` 에 등록 — `collect_credentials(probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. CP-3 scheduler 가 doctor 호출 시 자동 포함. |
-| `anvyc creds rotate <kind> [--force] [--yes] [--timeout N]` | **3/3 (본 PR)** | **destructive** | native re-auth 위임 (`aws sso login` / `gh auth refresh` / claude_oauth = 사용자 수동 안내). dry-run 기본 + `--force` + confirm prompt. token 본문 노출 회피 (stdout/stderr tail 2 KiB 만). `--from-op REF` (1Password 통합) 은 후속 polish. §36.8 참조. |
-
-### 36.4 Source 별 detection 전략 (1/3)
-
-| Kind | Source | Expiry 추출 | Status |
-|---|---|---|---|
-| `aws_sso` | `~/.aws/sso/cache/*.json` | `expiresAt` 필드 직접 read | full classification |
-| `github` | `~/.config/gh/hosts.yml` (간이 YAML parser — PyYAML 미의존) | `gh api -i user --hostname <host>` 의 `X-GitHub-Token-Expiration` 헤더 (없으면 `valid` 로 처리 — classic OAuth 는 만료 없음) | detected → `valid` (probe 실패 시), header 있으면 full |
-| `claude_oauth` | `~/.claude*.json` 의 `oauthAccount` 필드 | 직접 노출 안 됨 (실 token 은 keychain 등 별 location) | `valid` (detected) + `expires_at=null`. keychain 접근 보강은 후속 polish. |
-
-### 36.5 CP-3 scheduler 자연 시너지
-
-CP-3 scheduler 의 `run-scheduler.sh` 가 이미 `anvyc doctor --strict --json`
-일1회 호출 중. **CP-5 2/3 머지 시점**에 `creds_expiry_within_7d` check 가
-doctor 에 자동 합류 → scheduler 가 자동 호출 → CP-3 health JSON 의 doctor
-payload 에 만료 정보 포함 → CP-3 statusline 인디케이터에 자동 노출
-(severity 계산 규칙에 따라 expired→FAIL / expiring→WARN).
-
-**별도 wire 작업 불요** — CP-3 axis 가 만든 일반화된 doctor JSON contract
-의 cross-axis 재사용 가치 입증 (v1 cut-over 학습 L7 의 확장 효과).
-
-### 36.6 Out of scope (3/3 본 PR — CP-5 axis 완결 기준)
-
-- Claude OAuth 의 실 expiry 추출 (keychain 접근) — polish
-- GitHub PAT 의 fine-grained scope 검사 (현재는 만료만)
-- credential 자동 회전 자동화 (CP-3 scheduler 가 자동 호출하는 형태) — polish
-- `--from-op REF` (1Password 통합) — browser-based OAuth 가 다수 케이스에서
-  더 안전. PAT-only 워크플로 사용자만 의미 — polish.
-- `creds rotate` 의 auto pre-rotate backup — credential 자체 backup 은 보안
-  위험이라 의도적 제외 (사용자가 `anvyc creds status` 로 이전 expires_at 만
-  기록 보존하는 정도).
-
-### 36.7 보안 경계
-
-- `creds status` 출력에 **token 본문 노출 금지** — identifier (email/profile
-  이름) 만. expires_at 은 timestamp.
-- `--json` 출력도 동일 — secret 본문 미포함.
-- `rotate` 의 stdout/stderr 는 **tail 2 KiB 만 capture** — 외부 명령이
-  실수로 token 본문을 print 해도 trail 만 보존. anvyc 자체는 token 을
-  직접 핸들 안 함 — 외부 명령 (aws/gh) 에 위임 (rule 26-secrets-1password
-  준수).
-
-### 36.8 Rotate 안전 절차 (3/3 — CP-4 §35.7 패턴 미러)
-
-rotate 는 destructive — snapshot/restore (§35.7) 의 4-layer 안전 패턴 미러.
-
-1. **`plan_rotate(kind)`** — kind 검증 + 실행될 command + warnings 산출.
-   CLI 가 `--force` 없으면 plan + warnings 만 출력 후 종료 (no-op = dry-run).
-2. **`--force` 시** confirm prompt 1회 (`--yes` / `-y` 자동 수락).
-3. **External command 위임** — 각 kind 별 native re-auth:
-
-   | kind | command | 부수효과 |
-   |---|---|---|
-   | `aws_sso` | `aws sso login` | 브라우저 OAuth 흐름 → `~/.aws/sso/cache/*.json` 갱신 |
-   | `github` | `gh auth refresh` | OAuth refresh → `~/.config/gh/hosts.yml` token 갱신 |
-   | `claude_oauth` | (없음) | 사용자 수동 안내만 — Claude Code UI 에서 re-login |
-
-4. **결과 capture**: `RotateResult` 에 `return_code` + `stdout_tail` /
-   `stderr_tail` (각 2 KiB). 외부 명령 부재 → `RotateError("외부 명령 부재")`.
-   timeout (기본 300s — browser 인증 사용자 대기 고려) 초과 →
-   `RotateError("rotation timeout")`.
-
-회복 채널:
-- rotation 후 `anvyc creds status` 로 새 expires_at 확인.
-- rotation 실패 (rc != 0) → CLI 가 exit code 그대로 전파; 사용자가 원인
-  진단 (예: SSO 인증 cancel, gh login 만료된 base credential 등).
-
-**1Password 통합 (`--from-op REF`)** 은 후속 polish — 사용자가 PAT 를
-`op://...` 에 보관한 경우만 의미. AWS SSO + gh OAuth 같은 다수 케이스는
-browser refresh 가 더 안전 (token 자체가 OS keychain / 표준 cache 에 저장).
+---
 
 ## 37. Cross-Machine State Sync 설계 (CP-6)
 
-> Control Plane **v3 의 첫 axis**. 여러 머신 간 control plane mutable
-> state (CP-4 snapshot meta + CP-3 health JSON + CP-5 creds expiry timestamp)
-> 동기화. 1/3 본 PR 은 schema v1 + `sync status` (read-only drift detection)
-> 만; push/pull (2/3), conflict resolution (3/3) 은 후속 PR. SoT 트리오는
-> `role-based-ruleset` 측 (ROADMAP §4 CP-6 / DESIGN §7 / manifest).
+> **본 axis 본문은 [docs/design-axes/cp-06-sync.md](./docs/design-axes/cp-06-sync.md)
+> 로 분리됐습니다.**
 
-### 37.1 설계 원칙
+Control Plane v3 의 첫 axis. 여러 머신 간 control plane mutable state
+(CP-4 snapshot meta + CP-3 health JSON + CP-5 creds expiry timestamp)
+동기화. `SyncTargetManifest schema v1` + `anvyc sync {status|push|pull}` +
+`sync conflict {list|resolve}` (per-entry sha256 명시 해결). auto-policy /
+3-way merge 영구 out-of-scope — 사용자 prompt 가 권위.
 
-- **L12 cross-axis schema 일관성 입증 시점**: CP-3 health JSON + CP-4
-  snapshot meta + CP-5 CredentialsReport 가 모두 `schema_version: 1` 이라
-  sync target adapter 가 일반화 가능. 본 axis 는 L12 의 sync 단위 안정성
-  가치 입증.
-- **단일 schema v1 (local/remote 양쪽 동일)**: SyncTargetManifest 가 local
-  filesystem scan 으로 생성되고, remote target 에 동일 format 으로 저장.
-  diff 는 두 manifest 의 set 연산 + sha256 비교만으로 결정 — 단순성.
-- **kind 별 adapter** (1/3 MVP): `snapshot_meta` + `health_json` 만 지원.
-  creds expiry timestamp 는 live computation 이라 후속 polish.
-- **Remote target = filesystem path** (1/3): local mount (NFS/SMB) / git
-  clone 디렉터리 / sync 폴더 (Dropbox / iCloud / Syncthing). HTTPS/S3
-  backend abstraction 은 후속 polish — 본 axis 는 backend 결정 위임.
-- **단방향 read-only first** (1/3): `sync status` 만. write (push/pull) 는
-  2/3 으로 분리해 schema 안정화 후 진입.
-- **machine_id 명시**: 사용자 명시 (`anvyc.yaml`) > env (`ANVYC_MACHINE_ID`)
-  > default `<user>@<hostname>`.
+상세 (schema v1 / diff 알고리즘 / remote target layout / push-pull 안전
+절차 / conflict resolution 정책) → [CP-6 본문](./docs/design-axes/cp-06-sync.md).
 
-### 37.2 SyncTargetManifest schema v1
-
-```json
-{
-  "schema_version": 1,
-  "machine_id": "edward@mbp-edward",
-  "generated_at": "2026-05-25T10:00:00Z",
-  "items": [
-    {
-      "kind": "snapshot_meta" | "health_json",
-      "relative_path": "anvyc/snapshots/foo-<id>/meta.json",
-      "size": 512,
-      "sha256": "abc123...",
-      "mtime": "2026-05-25T09:30:00Z"
-    },
-    ...
-  ]
-}
-```
-
-### 37.3 명령 contract (CP-6 시리즈)
-
-| 명령 | PR | 안전 등급 | 책임 |
-|---|---|---|---|
-| `anvyc sync status --target <path> [--machine-id X] [--json]` | 1/3 (#44, merged) | read-only | local manifest 생성 + remote manifest 비교 → SyncStatusReport. |
-| `anvyc sync push --target <path> [--force] [--yes]` | 2/3 (#45, merged) | write | local → remote mirror (per-file atomic copy + manifest atomic write). conflict 기본 skip; `--force` overwrite. |
-| `anvyc sync pull --target <path> [--force] [--yes]` | 2/3 (#45, merged) | write | remote → local mirror (relative_path 역매핑). conflict 기본 skip; `--force` local overwrite. |
-| `anvyc sync conflict list --target <path>` | **3/3 (본 PR)** | read-only | 현재 diff (sha256 불일치) entries 만 표시. resolve 후보 인덱스. |
-| `anvyc sync conflict resolve <relative_path> --target <…> --keep local\|remote` | **3/3 (본 PR)** | **destructive** | 단일 conflict 의 명시 해결 — keep=local → remote overwrite (+ manifest 갱신); keep=remote → local overwrite. confirm prompt + atomic copy. rbr rule `27-cross-machine-sync-policy` paired. |
-
-### 37.4 Diff 알고리즘 (compute_sync_status)
-
-local + remote manifest 를 `relative_path` key 로 dict 변환 후 set 연산:
-- `local & remote`: 양쪽 모두 — sha256 일치 = `same`, 불일치 = `diff`
-- `local - remote`: local 만 = `local_only` (push 후보)
-- `remote - local`: remote 만 = `remote_only` (pull 후보)
-
-복잡한 trie / 부분 매칭 없음 — relative_path 정확 일치만. mtime 은 정보용
-(diff 판정 안 함 — sha256 이 권위).
-
-### 37.5 Source 별 scan 전략 (1/3)
-
-| Kind | Source path | Relative path 형태 |
-|---|---|---|
-| `snapshot_meta` | `<home>/dev/*/.anvyc/snapshots/<id>/meta.json` | `anvyc/snapshots/<workspace>-<id>/meta.json` |
-| `health_json` | `<home>/.config/cc-inspect/health/*.json` | `cc-inspect/health/<date>.json` |
-
-workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
-
-### 37.6 Remote target layout (1/3)
-
-```
-<remote_target>/
-├── anvyc-sync-manifest.json    # 단일 machine 의 manifest (1/3 MVP)
-├── anvyc/snapshots/<workspace>-<id>/meta.json
-└── cc-inspect/health/<date>.json
-```
-
-**1/3 MVP 는 단일 machine 기준** — 다중 machine 통합 (예: `<remote>/<machine_id>/...`)
-은 2/3 polish.
-
-### 37.7 Out of scope (3/3 본 PR 기준 — CP-6 axis 완결)
-
-- creds expiry timestamp sync (live computation — 후속 polish)
-- HTTPS / S3 / git remote backend abstraction (현재는 filesystem path 만)
-- 다중 machine_id 통합 (현재는 단일 remote 기준)
-- token / secret 본문 sync (rule 26·27 위반 — 의도적 영구 제외)
-- destructive deletion sync (push/pull/resolve 모두 삭제 안 함 — explicit cleanup 후속)
-- **auto-policy / 3-way merge** (`--policy newer|machine-X`) — rule 27 명시 — 사용자 prompt 우선 (의도적 영구 제외)
-- `--dry-run` flag (CLI 가 항상 plan 먼저 출력 + confirm prompt — 별 flag 불요)
-
-### 37.8 보안 경계
-
-- sync 대상은 **content hash + 메타** 만 manifest 에 노출. 본문은 별 파일
-  로 remote 에 저장 (path 기반).
-- **token / secret 본문 sync 금지** — creds.json 같은 자격 본문은 sync
-  대상 외 (rule 26-secrets-1password 준수).
-- snapshot meta 의 `claude_session_id` 는 식별자라 본문 아님 — sync 안전.
-- remote_target 은 사용자 책임 — Dropbox 같은 cloud sync 는 cloud 운영사
-  policy 준수.
-
-### 37.9 Push/Pull 안전 절차 (2/3 — CP-4 §35.7 패턴 미러)
-
-push/pull 은 file write — snapshot restore §35.7 의 4-layer safety 미러.
-
-1. **dry-run plan**: CLI 가 status entries 출력 (will_copy / will_skip_conflict
-   카운트 + warning). plan 만 보고 종료 가능.
-2. **confirm prompt**: `--yes` / `-y` 없으면 사용자 응답 요구.
-3. **per-file atomic copy**: `tempfile.mkstemp` (dst.parent 와 동일
-   filesystem) + chunked write + `os.replace`. partial write 시 cleanup.
-4. **manifest atomic write** (push 만): 같은 tempfile + replace 패턴.
-
-회복 채널:
-- push 가 일부 file 실패 → `failed_paths` 에 기록. manifest 는 성공한
-  entries 만 반영. 재실행 시 same/local_only 분류로 자연 재시도.
-- pull 이 일부 file 실패 → 동일. local 측은 partial state 가능 — 재실행
-  으로 보완.
-- conflict (sha256 불일치) — 기본 skip + count, 사용자 결정으로 `--force`
-  재실행 가능. 3/3 의 conflict resolution 이 정형화 도구.
-
-**push/pull 모두 destructive deletion 금지** — remote-only / local-only
-items 는 반대 방향 작업에서 자동 보존. 명시적 cleanup 명령은 후속 polish.
-
-### 37.10 Conflict Resolution 정책 (3/3 — rbr rule 27 paired)
-
-push/pull 의 conflict 기본 skip + `--force` overwrite 만으로 부족한 시나리오:
-**entry 별 명시 결정** 이 필요할 때. CP-6 3/3 의 `sync conflict {list,resolve}`
-명령이 도구. 정책 본문은 `role-based-ruleset/common/rules/27-cross-machine-sync-policy`
-에 명문화 (paired secondary).
-
-#### 정책 원칙
-
-1. **자동 merge 영구 금지** — auto-policy (mtime / machine-X-우선 / etc.)
-   는 본 axis 영구 out-of-scope. 사용자 prompt 가 권위.
-2. **token / secret 본문 sync 영구 금지** — rule 26·27 동시 적용. sync
-   대상은 metadata + non-secret content 만.
-3. **entry 별 keep 선택**: `--keep local` (local→remote overwrite,
-   manifest 갱신) | `--keep remote` (remote→local overwrite, local
-   manifest 없음).
-4. **dry-run + confirm prompt** — destructive operation 4-layer safety
-   (L14) 준수. `--yes` 자동 수락 옵션.
-5. **회복 채널** — resolve 가 잘못된 keep 선택했어도 반대 keep 으로 다시
-   resolve 가능 (sync 는 idempotent). snapshot/restore (§35.7) 의 auto
-   pre-restore 와 동등한 회복 단순성.
-
-#### `sync conflict list` 출력 schema (인덱스용)
-
-각 entry 는 1/3 의 `SyncDiffEntry` (relative_path / status=diff / local /
-remote) 그대로. JSON 모드는 `[{relative_path, status, local: SyncItem,
-remote: SyncItem}, ...]`.
-
-#### `sync conflict resolve` 분기
-
-| keep | 동작 | manifest |
-|---|---|---|
-| `local` | `local_source → remote_target/<rel>` atomic copy | remote manifest 의 해당 entry 만 local SyncItem 으로 교체 + atomic write |
-| `remote` | `remote_target/<rel> → local_dst` atomic copy (역매핑) | local 측 manifest 없음 (anvyc 는 local manifest 저장 안 함) |
-
-#### 회복 시나리오
-
-- resolve 실수로 잘못된 keep 선택 → 반대 keep 으로 다시 resolve. sync 자체
-  가 idempotent — 두 머신 본문이 다른 한쪽으로 통일됨.
-- resolve 중 copy 실패 → `SyncError` raise + 사용자 수동 점검.
-- resolve 후 sync status 가 다시 `diff` 일 수 있음 (다른 머신이 동시 변경)
-  → 정상 동작, 재실행으로 수렴.
+---
 
 ## 38. Cost observability 설계 (CP-13)
 
-> CP-13 (Cost observability / costwatch) 의 구조 SoT. 결정 SoT 는
-> [`role-based-ruleset/docs/adr/v6-cp13-cost-observability.md`](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
-> (Accepted v1.1, 2026-05-27 rbr#90 cut-over). audit (CP-1) / scheduler
-> (CP-3) / creds (CP-5) / sync (CP-6) 위에서 AI agent 의 실행 비용
-> (Anthropic + AWS + GitHub) 을 동일 `schema_version: 1` 로 통합. 본 §38 은
-> schema · adapter · cache · doctor · cross-axis 시너지의 본문이며, ADR §4
-> implementation plan 의 PR-13A0 ~ E 가 이를 단계 도입.
+> **본 axis 본문은 [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md)
+> 로 분리됐습니다.**
 
-### 38.1 설계 원칙
+CP-13 의 구조 SoT. 결정 SoT 는 [`role-based-ruleset` ADR
+v6-cp13-cost-observability.md](https://github.com/16bitdo/role-based-ruleset/blob/main/docs/adr/v6-cp13-cost-observability.md)
+(Accepted v1.1, 2026-05-27). AI agent 의 실행 비용 (Anthropic + AWS +
+GitHub) 을 동일 `CostReport schema v1` 로 통합. USD 저장 / KRW 표시
+(`fx_rate_basis` 캡처). admin API (ii) channel 은 v0.2 deferred (공식 endpoint
+미공개). 6h rolling window state 권위 위치 =
+`~/.config/cc-inspect/cost-window.json` (ccinspector owner).
 
-1. **결정 SoT vs 구조 SoT 분리** — 8축 결정 (배치 / 소스 / 구현 순서 / 알림 /
-   통화 / dep / account / PR 분리) 은 ADR §2 가 본문, schema · adapter
-   contract · cache 정책은 본 §38 이 본문. ADR 변경 시 §38 의 schema 본문
-   동기 갱신.
-2. **schema_version 합의** — `CostReport` 는 CP-3 health / CP-4 snapshot /
-   CP-5 creds / CP-6 sync 와 동일 `schema_version: 1` 단일 키. 추가 차원은
-   확장-호환 만 (기존 키 변경 금지, 필드 추가만 허용).
-3. **measurement-cost 자기 관찰 (ADR R1)** — Cost Explorer 호출 자체 비용
-   등 측정 비용을 `meta.measurement_cost_usd` 에 동봉. 자기 잠식 방지.
-4. **원통화 USD 저장 / 표시 시 KRW 변환** — store 는 항상 USD, display 는
-   `fx_rate_basis` (출처 + 날짜) 캡처 후 KRW 변환. 회계 재현성.
-5. **profile 명 = account 1차 키 (ADR R13)** — Claude 3 프로필 (`.claude` /
-   `.claude-edward` / `.claude-jklee`) 의 분리 합산. organization_id 는
-   `meta.org_id` 부속.
-6. **optional dep 격리 (ADR R11)** — `cost-aws` / `cost-anthropic` /
-   `cost-github` 그룹. anvyc core dep (`typer / rich / pathspec / pyyaml`)
-   보존.
-7. **observability only** — cost 는 PostToolUse hook 으로 차단 부적합. CP-2
-   risk-gate 와 채널 분리. 알림은 statusline + CP-3 macOS notification 만.
-
-### 38.2 CostReport schema v1
-
-```yaml
-schema_version: 1
-source: anthropic | aws | github
-account: <profile_name>             # Anthropic: profile 명 (edward / jklee / default)
-                                    # AWS:      aws_profile 명
-                                    # GitHub:   gh login 명 (16bitdo / heisgone)
-period:
-  start: 2026-05-01T00:00:00Z       # 항상 UTC store
-  end:   2026-06-01T00:00:00Z       # exclusive
-currency: USD                       # 항상 USD store
-amount: 123.45                      # period 총합
-breakdown:                          # 차원별 분해 (optional)
-  - dim: model                      # open string. 권장 enum:
-                                    #   model / service / repo / workflow / tag / sku / cache_tier
-    key: claude-sonnet-4-6
-    amount: 67.89
-collected_at: 2026-05-27T..Z
-fx_rate_basis: ecb:2026-05-27       # display 시 사용, TTL=1d / stale 7d WARNING
-meta:
-  measurement_cost_usd: 0.01        # R1 자기 관찰
-  pricing_version: 1                # R9 mitigation (가격표 SoT 버전)
-  org_id: <opt>                     # R13 부속 (Anthropic organization_id 등)
-```
-
-#### 확장 호환 규칙
-
-- 기존 키 의미 변경 금지. 새 차원은 `breakdown[].dim` 의 open string 으로 추가.
-- `meta` 는 source 별 자유. 단 `measurement_cost_usd` / `pricing_version` /
-  `org_id` 3 키는 공통 reserved.
-
-### 38.3 Adapter Protocol + 어댑터 lifecycle
-
-#### CostAdapter Protocol
-
-```python
-class CostAdapter(Protocol):
-    name: str                                       # "anthropic" / "aws" / "github"
-    optional_dep_group: str | None                  # e.g. "cost-aws"
-
-    def discover_accounts(self) -> Iterator[Account]: ...
-    def fetch_period(
-        self, account: Account, period: Period
-    ) -> CostReport: ...
-    def supports_realtime(self) -> bool: ...        # invoice 채널이 (i) 실시간인지
-```
-
-`Account` = `(source, key)` 튜플. 어댑터별 의미:
-
-| source | key | discover 채널 |
-|---|---|---|
-| anthropic | profile 명 | `~/.claude*/projects/` glob |
-| aws | aws_profile 명 | `~/.aws/config` + `project_list` 의 `aws_profile` 보강 |
-| github | gh login 명 | `gh auth status --hostname github.com-<alias>` |
-
-#### 어댑터 채널
-
-| source | (i) 실시간 | (ii) 청구 진실 |
-|---|---|---|
-| anthropic | session jsonl 의 token 합산 × `pricing/anthropic.yaml` (PR-13A0/A) | **v0.2 deferred** — Anthropic 측 admin API 공식 endpoint 미공개 (rbr ADR v1.2 §2.3 / §4.2.3 / §5, 2026-05-27 WebFetch 실측) |
-| aws | `ce:GetCostAndUsage` (PR-13C) | 동일 API + 월말 잠금 |
-| github | `/orgs/{org}/settings/billing/*` (PR-13D) | 동일 API |
-
-(i) 가 MTD 실시간, (ii) 가 월말 진실 — diff > 5% 시 doctor WARNING (§38.6).
-
-#### 어댑터 graceful skip
-
-optional dep 부재 시 `CostAdapterDepMissing(source=...)` raise → 상위 호출자가
-catch + doctor `cost-<src>-dep-missing` WARNING + 설치 안내 (`pip install
-'anvyc[cost-aws]'`).
-
-### 38.4 명령 contract (CP-13 시리즈)
-
-| 명령 | 시점 | 동작 |
-|---|---|---|
-| `anvyc cost collect [--source <s>] [--period <p>]` | scheduler 일1회 + 수동 | 어댑터 호출 → 캐시 저장 → CostReport JSON stdout |
-| `anvyc cost summary [--group-by <dim>] [--period mtd\|eom\|<period>]` | 사용자 ad-hoc / MCP | 캐시 집계 + KRW 표시 + EOM forecast |
-| `anvyc cost ledger [--source <s>] [--meta]` | 회계 검증 | period 별 row table, `--meta` 시 measurement_cost / pricing_version 노출 |
-| `anvyc cost reconcile [--source anthropic]` | 월말 + scheduler | **v0.2 deferred** — (ii) admin API channel 정착 후 (rbr ADR v1.2 §2.3 / §4.2.3 / §5) |
-| `anvyc cost gc [--keep-days N] [--apply]` | retention 정리 | raw 90d 외 cache 파일 삭제. **기본 dry-run** + `--apply` 로 실 삭제 (PR-13B2). aggregate 24m 은 PR-13C/D 의 aggregate 도입 후. |
-
-MCP tool (`anvyc/mcp/server.py`):
-
-| MCP tool | 응답 |
-|---|---|
-| `cost_summary` | `{ source, account, period, total_usd, total_krw, breakdown[], forecast_eom_usd, fx_rate_basis }` |
-| `cost_reconciliation` | `{ source, account, period, (i)_usd, (ii)_usd, gap_pct, status }` |
-
-`activity_summary` (기존, PR-13A 확장): `total_cost_usd` / `cost_by_model` /
-`pricing_version` 키 추가 (확장 호환).
-
-### 38.5 캐시 / Retention 정책
-
-#### 캐시 layout
-
-```
-~/.config/anvyc/cost/
-├── cache/
-│   ├── anthropic/<profile_name>/<YYYY-MM-DD>.json     # raw daily
-│   ├── aws/<aws_profile>/<YYYY-MM-DD>.json
-│   ├── github/<gh_login>/<YYYY-MM-DD>.json
-│   └── fx/<YYYY-MM-DD>.json                            # FX rate (TTL=1d)
-├── aggregate/
-│   └── <source>/<account>/<YYYY-MM>.json               # monthly aggregate
-├── budgets.yml                                         # 사용자 예산 정책
-└── pricing/                                            # PR-13A0 가격표 SoT 사본
-    └── anthropic.yaml
-```
-
-> **§38.5 v7 정정 (PR-13F)**: 6h rolling window state 의 권위 위치는
-> `~/.config/cc-inspect/cost-window.json` 입니다 (ADR §4.5 정합). ccinspector
-> 의 `modules/scheduler/cost-window.py` 가 owner 이며, `cost.sh` task 가 매
-> tick update, `health-status.py` 의 `cost_severity` 가 read. anvyc namespace
-> 의 `cost/state/` 디렉터리는 v0.2 별도 ADR 까지 사용 안 함 (cross-machine
-> sync (CP-6) 통합 후 anvyc 측 mirror 검토).
-
-#### Retention
-
-| 영역 | 기본 | 만료 / 알림 |
-|---|---|---|
-| `cache/<src>/<acct>/*.json` (raw daily) | 90d | 자동 삭제 (`anvyc cost gc`) |
-| `aggregate/<src>/<acct>/*.json` (monthly) | 24m | 자동 삭제 |
-| `~/.config/cc-inspect/cost-window.json` (ccinspector owner, PR-13F) | rolling 6 tick | overwrite (cost.sh task 가 매 tick update) |
-| `cache/fx/*.json` | TTL=1d | stale 7d 시 WARNING, 14d 시 statusline `~` prefix |
-| `pricing/anthropic.yaml` | 90d 갱신 | `effective_date` 90d 초과 시 WARNING (R9) |
-
-#### Atomic write
-
-`tempfile.mkstemp(dir=parent)` + chunked write + `os.replace`. CP-4 snapshot ·
-CP-6 sync 의 atomic write 패턴 미러.
-
-### 38.6 doctor check 등록
-
-`anvyc/checks/_REGISTRY` 에 5종 추가 (CP-3 scheduler 가 자동 호출):
-
-| check id | 동작 | severity |
-|---|---|---|
-| `cost-anthropic-reconciliation` | (i) session sum vs (ii) invoice gap > 5% | WARNING |
-| `cost-<src>-dep-missing` | optional dep import fail | WARNING (graceful skip) |
-| `cost-aws-explorer-iam` | `ce:GetCostAndUsage` 권한 부재 | WARNING + 정책 JSON 출력 |
-| `cost-fx-stale` | FX cache 7d 초과 stale | WARNING |
-| `cost-pricing-stale` | `pricing/anthropic.yaml` 의 `effective_date` 90d 초과 | WARNING |
-
-CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor --strict
---json` 호출 시 health JSON payload 에 자동 합류 (별도 wire 불요).
-
-### 38.7 Cross-axis 시너지
-
-| Axis | 통합 채널 |
-|---|---|
-| **CP-1** audit | session jsonl 이 Anthropic source 채널 (i). `activity_summary` 응답이 PR-13A 로 `total_cost_usd` 차원 확장 |
-| **CP-3** scheduler | `cost` task (interval=86400s) + `cost-budget-exceeded` predicate (health-status.py) + 6h rolling window state |
-| **CP-4** snapshot | snapshot meta 에 `cost_summary` 포함 검토 (v0.2) |
-| **CP-5** creds | Anthropic admin API key / AWS Cost Explorer 권한 / GitHub PAT 의 1Password ref 등록 채널 재사용 |
-| **CP-6** sync | `cache/aggregate/<src>/<acct>/*.json` 가 cross-machine sync 대상. 단 source 별 dedup 필요 (account 단위 합산이 자연) |
-| **CP-12** work-cwd | repo breakdown (`dim: repo`) 의 cwd 매핑에 활용 |
-
-### 38.8 보안 경계
-
-- **token / API key 본문 sync 영구 금지** — CP-6 의 정책 (rule 26·27) 동일 적용.
-  costwatch 는 *결과 caching* 만, secret 본문은 1Password ref 만.
-- **breakdown 의 PII redact** — `dim: repo` 의 key 가 repo 절대 경로 / branch
-  명 / commit msg 일 가능성 → anvyc redact 함수 재사용. 출구별 정책:
-
-  | 출구 | redact 강도 |
-  |---|---|
-  | stdout (`anvyc cost summary`) | full (user 본인) |
-  | cache jsonl | redacted (commit msg / branch 명 마스킹) |
-  | macOS notification | aggregate only (no breakdown) |
-  | statusline 세그먼트 | total + forecast 만 |
-
-- **org_id 의 명시적 opt-in** — `meta.org_id` 노출은 `anvyc cost summary
-  --include-org-id` 명시 시에만. 기본 미노출.
-
-### 38.9 Out of scope (CP-13 axis 완결 기준)
-
-본 §38 의 v6 범위 외:
-
-- **Pulumi preview cost diff** — AWS Pricing API 매핑 어댑터. CP-14 후보.
-- **Cloudflare / Vercel / Notion 등 추가 SaaS adapter** — `CostAdapter`
-  Protocol 만 v6 에서 동결, 어댑터는 v7 별도 ADR.
-- **Cursor billing 차원** — Cursor 가 official billing API 미공개. v7+.
-- **`finops-engineer` role 신설** — v6 는 devops-engineer 흡수. ADR §5 의
-  분리 trigger 충족 시 v0.2 별도.
-- **Slack 출구** — redaction policy 분리 필요. v0.2 ADR 별도.
-- **다머신 합산 dedup rule** — CP-6 sync 위에서 account 단위 dedup. v0.2.
-- **GitHub Copilot billing** — admin 권한 요구. v7 별도.
-- **Anthropic batch tier 할인 처리** — invoice (ii) 채널 정착 후 검토.
-
-### 38.10 변경 이력
-
-| 일자 | version | 변경 |
-|---|---|---|
-| 2026-05-27 | 1 | 초안 — ADR v1.1 (Accepted 2026-05-27 rbr#90) 의 구조 SoT 본문 1차 작성. PR-13Z-anvyc 로 합류. schema v1 동결 + adapter Protocol + cache layout + doctor 5종 + cross-axis 매핑 + 보안 경계. |
-| 2026-05-27 | 2 | PR-13B1 진입 시 (ii) channel defer 반영 (ADR v1.2 / rbr#91). §38.3 의 어댑터 채널 표에서 anthropic (ii) admin API monthly invoice → **v0.2 deferred** 로 정정. 본문 구조 / schema / doctor / cross-axis / 보안 경계 부분은 동결 (확장-호환). |
-| 2026-05-27 | 3 | PR-13B2 진입. §38.4 의 `anvyc cost reconcile` 행을 **v0.2 deferred** 로 정정 ((ii) channel 의존). `anvyc cost gc` 행을 **기본 dry-run / `--apply` 시 실 삭제** 로 정정 (CP-4 snapshot 패턴 미러 — destructive 작업 안전 기본값). retention 의 aggregate 24m 부분은 aggregate cache 도입 (PR-13C/D 이후) 후 활성. KRW display 의 fx 출처 = `open.er-api.com` (ADR v1.2 §2.1 / §7 확정, stdlib urllib 만 사용). |
-| 2026-05-27 | 4 | PR-13C 진입. AWS Cost Explorer adapter 도입 (`core/cost/adapters/aws.py`, optional dep `cost-aws = ["boto3>=1.34"]`). discover_accounts 정책 = **auto-ALL** (`~/.aws/config` 의 모든 profile, sts 호출 없는 정적 read — 비용 0). fetch_period 의 graceful skip 4 분류: `sso_expired` / `access_denied` / `api_error` / dep missing (`meta.extra.error`). doctor `cost-aws-explorer-iam` check 도입 (`SimulatePrincipalPolicy` — 호출 비용 0). IAM policy 템플릿 `templates/aws-cost-readonly.json` (`ce:GetCostAndUsage` + `ce:GetDimensionValues` + `ce:GetTags`). `ADAPTER_REGISTRY` 가 `importlib.util.find_spec("boto3")` 로 lazy 등록 — startup 비용 0, boto3 부재 시 'aws' 키 미등록 (graceful skip). |
-| 2026-05-27 | 5 | PR-13D 진입. GitHub Billing adapter 도입 (`core/cost/adapters/github.py`, optional dep `cost-github = ["httpx>=0.27"]`). endpoint = **Enhanced Billing Platform** (`GET /organizations/{org}/settings/billing/usage` 와 `/users/{user}/settings/billing/usage`) — ADR §1.3/§4.4 의 legacy `/orgs/{org}/settings/billing/{actions,packages,shared-storage}` 는 docs index 비노출 (WebFetch 실측 2026-05-27). discover_accounts = **auto-ALL** (`~/.config/gh*` glob walk + hosts.yml 의 user, indent-flexible parser). account.key 인코딩 = `"<user>"` (user-level) 또는 `"<user>@<org>"` (org-level). graceful skip 4 분류: `unauthorized` / `forbidden` / `enhanced_billing_disabled` / `api_error` (+ `no_token`/`no_config_dir`). 인증 = **fine-grained PAT** — user-level 은 Account `Plan: Read`, org-level 은 Organization `Administration: Read`. 측정 차원 = breakdown dim=`product` (Enhanced billing 의 `usageItems[].product` 자연 매핑, Actions/Packages/Storage/Copilot 통합). doctor `cost-github-pat-scope` check 도입 — user-level billing endpoint smoke 호출로 PAT 권한 검증. `utils/gh_hosts.py` 신규 — `~/.config/gh*` walk + minimal YAML parser (PyYAML 미의존, gh 1.x 2-space 와 신버전 4-space indent 모두 인식). |
-| 2026-05-27 | 6 | polish-anvyc (CP-13 polish 묶음 #3). `summarize_reports` 반환 dict 에 `collected_at_latest` (ISO 8601) 추가 — reports 중 가장 최근 `CostReport.collected_at` 노출. `summary_payload` 가 본 키를 자동 전파 (MCP `cost_summary` / CLI `cost summary` 응답에 노출). 호출자 (ccinspector statusline cost reader, 향후 6h rolling window state, staleness 표시) 가 단일 진입점으로 활용. 확장-호환 (기존 키 변경 0, 추가만). cache.py / ledger.py 의 collected_at 직렬화/역변환은 정상 — 본 polish 는 합산-레벨 노출만 추가. |
-| 2026-05-27 | 7 | PR-13F chore (DESIGN §38.5 정정). 6h rolling window state 의 권위 위치를 `~/.config/cc-inspect/cost-window.json` (ccinspector namespace, ADR §4.5 정합) 으로 정정. 기존 cache layout 의 `state/cost-window.json` (anvyc namespace) 라인 제거. ccinspector 의 `modules/scheduler/cost-window.py` 가 owner — `cost.sh` task 가 매 tick update (per-source totals dict), `health-status.py` 의 `cost_severity` 가 read (어느 source 라도 6h 증가율 ≥ 20% 시 severity 한 단계 상향, cap FAIL). anvyc 측 코드 변경 0 — polish #3 의 `summarize_reports.collected_at_latest` + 기존 `by_source` 가 단일 입력 제공. v0.2 별도 ADR 에서 cross-machine sync (CP-6) 통합 시 anvyc namespace mirror 검토. |
-| 2026-05-27 | 8 | polish-anvyc CP-13H (whatap org-level fix). `anvyc.yaml` 의 top-level `cost.github.accounts` config 옵션 도입 — list of `"<user>"` (user-level) 또는 `"<user>@<org>"` (org-level). `core/config.py` 에 `CostConfig` + `CostGithubConfig` dataclass 추가. `ADAPTER_REGISTRY._build_registry()` 가 `load_anvyc_config()` 호출 → `GitHubBillingAdapter(accounts_override=cfg.cost.github.accounts)` 전달 (빈 list → adapter 자동 discover 유지). 동기 = PR-13D 의 fine-grained PAT (Resource owner=whatap, Org `Administration: Read`) token 은 org-level endpoint 만 호출 가능, adapter 가 default 로 user-level (`/users/heisgone/...`) 호출 → 403 forbidden. 본 config 옵션으로 `heisgone@whatap` 명시 시 org-level (`/organizations/whatap/...`) 호출 → 정상. ADR §4.4 의 account.key 인코딩 자연 확장 (변경 0). config 부재 / 빈 cost section → 기존 동작 보존. |
+상세 (schema v1 / adapter Protocol / cache layout / doctor 5 check / 보안
+경계 / 변경 이력 8 entries) → [CP-13 본문](./docs/design-axes/cp-13-cost.md).
