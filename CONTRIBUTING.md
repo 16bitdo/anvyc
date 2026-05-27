@@ -68,6 +68,22 @@ age-keygen -o ~/.config/sops/age/keys.txt
 
 미설치 시 SOPS 관련 테스트는 자동 skip.
 
+### 2.4 Git hooks (자동)
+
+`scripts/dev-install.sh` 가 마지막 단계로 `scripts/install-git-hooks.sh` 를
+자동 호출해 `.git/hooks/pre-push` 를 설치합니다 (멱등).
+
+- **pre-push**: `pytest -m "not integration"` 으로 unit fast-fail gate (약
+  15 초). 실패 시 push 차단 — CI 의 `Pytest (unit, fast-fail gate)` step
+  과 동일 명령이므로 결과 일관. 의도적 우회: `git push --no-verify`.
+- **SoT**: `scripts/hooks/pre-push.sh` (git 추적). 수동 재설치:
+  `bash scripts/install-git-hooks.sh`.
+- `.venv/bin/pytest` 가 없으면 hook 은 graceful skip — 셋업 직후 첫 push 가
+  실패하지 않습니다.
+
+기존 `.git/hooks/pre-commit` (secret/개인화 파일 차단) 은 별도 도메인의
+hook 으로 이 installer 가 손대지 않습니다.
+
 ## 3. 테스트 실행
 
 ```bash
