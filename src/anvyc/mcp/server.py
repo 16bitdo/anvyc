@@ -177,6 +177,39 @@ def _tool_defs() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="cost_summary",
+            description=(
+                "CP-13 cost observability — period 별 source / account 합산 "
+                "(현재 anthropic (i) session jsonl channel only; AWS/GitHub 는 "
+                "PR-13C/D, admin API (ii) channel 은 v0.2 deferred). 반환: "
+                "{total_amount_usd, currency, by_source, by_account, by_model, "
+                "pricing_versions_seen, period, report_count}."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "description": (
+                            "source 필터 (현재 'anthropic' 만). 미지정 시 모든 "
+                            "등록 어댑터."
+                        ),
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "mtd | YYYY-MM (default: mtd).",
+                    },
+                    "refresh": {
+                        "type": "boolean",
+                        "description": (
+                            "true 시 어댑터 직접 호출 + 캐시 갱신. false "
+                            "(default) 시 캐시 우선 (비어있으면 fallback collect)."
+                        ),
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -255,6 +288,18 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         # CP-11 PR-11E: agent 명시 시 blocked 통계도 그 agent 의 audit 만 필터.
         blocked = aggregate_block_events(collect_block_events(agent=agent))
         return {"tool_call_ranking": ranking, "blocked": blocked}
+
+    if name == "cost_summary":
+        from anvyc.core.cost.api import summary_payload
+
+        source_raw = args.get("source")
+        source = source_raw if isinstance(source_raw, str) else None
+        period_raw = args.get("period")
+        period_spec = period_raw if isinstance(period_raw, str) else "mtd"
+        refresh = bool(args.get("refresh", False))
+        return summary_payload(
+            source=source, period_spec=period_spec, refresh=refresh
+        )
 
     raise ValueError(f"unknown tool: {name}")
 

@@ -2418,7 +2418,7 @@ class CostAdapter(Protocol):
 
 | source | (i) 실시간 | (ii) 청구 진실 |
 |---|---|---|
-| anthropic | session jsonl 의 token 합산 × `pricing/anthropic.yaml` (PR-13A0/A) | admin API monthly invoice (PR-13B 2/3) |
+| anthropic | session jsonl 의 token 합산 × `pricing/anthropic.yaml` (PR-13A0/A) | **v0.2 deferred** — Anthropic 측 admin API 공식 endpoint 미공개 (rbr ADR v1.2 §2.3 / §4.2.3 / §5, 2026-05-27 WebFetch 실측) |
 | aws | `ce:GetCostAndUsage` (PR-13C) | 동일 API + 월말 잠금 |
 | github | `/orgs/{org}/settings/billing/*` (PR-13D) | 동일 API |
 
@@ -2548,3 +2548,4 @@ CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor -
 | 일자 | version | 변경 |
 |---|---|---|
 | 2026-05-27 | 1 | 초안 — ADR v1.1 (Accepted 2026-05-27 rbr#90) 의 구조 SoT 본문 1차 작성. PR-13Z-anvyc 로 합류. schema v1 동결 + adapter Protocol + cache layout + doctor 5종 + cross-axis 매핑 + 보안 경계. |
+| 2026-05-27 | 2 | PR-13B1 진입 시 (ii) channel defer 반영 (ADR v1.2 / rbr#91). §38.3 의 어댑터 채널 표에서 anthropic (ii) admin API monthly invoice → **v0.2 deferred** 로 정정. 본문 구조 / schema / doctor / cross-axis / 보안 경계 부분은 동결 (확장-호환). |

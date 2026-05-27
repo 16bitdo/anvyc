@@ -122,12 +122,13 @@ def test_dispatch_unknown_tool_raises() -> None:
         _dispatch("anvyc_invalid", {})
 
 
-def test_tool_defs_advertises_7_tools() -> None:
+def test_tool_defs_advertises_8_tools() -> None:
     # PR #33 (CP-1 3/3) 에서 activity_summary + tool_call_stats 가 추가되어 5 → 7.
+    # PR-13B1 (CP-13) 에서 cost_summary 추가로 7 → 8.
     from anvyc.mcp.server import _tool_defs
 
     defs = _tool_defs()
-    assert len(defs) == 7
+    assert len(defs) == 8
     names = {t.name for t in defs}
     assert names == {
         "project_show",
@@ -137,4 +138,5 @@ def test_tool_defs_advertises_7_tools() -> None:
         "tools_list",
         "activity_summary",
         "tool_call_stats",
+        "cost_summary",
     }

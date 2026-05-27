@@ -136,6 +136,12 @@ workctx_app = typer.Typer(
 )
 app.add_typer(workctx_app, name="workctx")
 
+cost_app = typer.Typer(
+    name="cost",
+    help="cost observability — CP-13 PR-13B (Anthropic session-side (i) channel 1차).",
+)
+app.add_typer(cost_app, name="cost")
+
 console = Console()
 
 
@@ -2491,6 +2497,59 @@ def workctx_show_cmd(
         table.add_row("age_sec", f"{state.effective_age_sec}s")
         table.add_row("stale", "yes" if state.effective_stale else "no")
     console.print(table)
+
+
+# ---------- cost (CP-13 PR-13B1) -----------------------------------------
+
+
+@cost_app.command("collect")
+def cost_collect(
+    source: str | None = typer.Option(
+        None,
+        "--source",
+        "-s",
+        help="source 필터 (현재 'anthropic' 만, AWS/GitHub 는 PR-13C/D).",
+    ),
+    period: str = typer.Option(
+        "mtd",
+        "--period",
+        "-p",
+        help="mtd | YYYY-MM (default: mtd, UTC store).",
+    ),
+    json_out: bool = typer.Option(
+        False, "--json", help="기계 가독 JSON 출력."
+    ),
+) -> None:
+    """어댑터 직접 호출 + 캐시 저장 + 합산 출력 (refresh)."""
+    from anvyc.core.cost.api import summary_json, summary_text
+
+    if json_out:
+        console.print(
+            summary_json(source=source, period_spec=period, refresh=True)
+        )
+    else:
+        console.print(
+            summary_text(source=source, period_spec=period, refresh=True)
+        )
+
+
+@cost_app.command("summary")
+def cost_summary(
+    source: str | None = typer.Option(
+        None, "--source", "-s", help="source 필터."
+    ),
+    period: str = typer.Option(
+        "mtd", "--period", "-p", help="mtd | YYYY-MM."
+    ),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """캐시 read + 합산 (캐시 비어있으면 즉시 collect)."""
+    from anvyc.core.cost.api import summary_json, summary_text
+
+    if json_out:
+        console.print(summary_json(source=source, period_spec=period))
+    else:
+        console.print(summary_text(source=source, period_spec=period))
 
 
 if __name__ == "__main__":
