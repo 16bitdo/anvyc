@@ -228,7 +228,50 @@ def summary_payload(
             summary["total_amount_krw"] = None
             summary["fx_rate_basis"] = None
             summary["fx_stale"] = None
+
+    # PR-13E2: budget_evaluations 추가 (PR-13B2 의 budgets.py 활용).
+    # ccinspector scheduler 의 health-status.py 가 본 응답을 read 해서
+    # cost-budget-exceeded severity 매핑. budgets.yml 부재 시 [] (graceful).
+    summary["budget_evaluations"] = _build_budget_evaluations(reports)
     return summary
+
+
+def _build_budget_evaluations(
+    reports: list[CostReport],
+) -> list[dict[str, Any]]:
+    """`~/.config/anvyc/cost/budgets.yml` load + (source, account) 별 합산
+    → 각 budget evaluate → JSON-serializable dict list.
+
+    부재 / 빈 budgets / 매칭 0 — 모두 graceful (`[]`).
+    """
+    from anvyc.core.cost.budgets import evaluate as evaluate_budgets
+    from anvyc.core.cost.budgets import load_budgets
+
+    try:
+        budgets = load_budgets()
+    except Exception:
+        return []
+    if not budgets:
+        return []
+
+    actuals: dict[tuple[str, str], float] = {}
+    for r in reports:
+        key = (r.source, r.account)
+        actuals[key] = actuals.get(key, 0.0) + r.amount
+
+    evaluations = evaluate_budgets(actuals, budgets)
+    return [
+        {
+            "source": e.budget.source,
+            "account": e.budget.account,
+            "period": e.budget.period,
+            "amount_usd_limit": e.budget.amount_usd,
+            "actual_usd": e.actual_usd,
+            "usage_pct": e.usage_pct,
+            "severity": e.severity.value,
+        }
+        for e in evaluations
+    ]
 
 
 def _format_summary_text(summary: dict[str, Any]) -> str:
@@ -263,6 +306,17 @@ def _format_summary_text(summary: dict[str, Any]) -> str:
         lines.append(
             f"pricing_versions_seen: {summary['pricing_versions_seen']}"
         )
+    # PR-13E2: budgets (있을 때만 표시). 색상 prefix 는 ccinspector statusline
+    # 에서 처리 — 본 CLI 는 평문.
+    evals = summary.get("budget_evaluations", [])
+    if evals:
+        lines.append("budgets:")
+        for e in evals:
+            lines.append(
+                f"  {e['source']}:{e['account']:10s} "
+                f"${e['actual_usd']:.2f} / ${e['amount_usd_limit']:.2f} "
+                f"({e['usage_pct']:.1f}% {e['severity']})"
+            )
     lines.append(f"reports: {summary['report_count']}")
     return "\n".join(lines)
 
