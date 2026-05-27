@@ -82,8 +82,14 @@ jobs:
       - name: Install anvyc + dev deps
         run: uv pip install --system -e ".[dev,encryption,mcp]"
 
-      - name: Pytest
-        run: pytest
+      # 2 step 분리 — unit 회귀가 발생하면 integration step 으로 넘어가지 않고
+      # 빠르게 fail 보고 (CI 분 절약 + 피드백 단축). 자동 마킹은
+      # tests/integration/conftest.py 의 pytest_collection_modifyitems hook 이 담당.
+      - name: Pytest (unit, fast-fail gate)
+        run: pytest -m "not integration"
+
+      - name: Pytest (integration)
+        run: pytest -m integration
 
   # macOS 실 플랫폼 회귀 — main push(병합 후)에만 실행한다.
   # macOS 러너는 10× 과금이므로 빈번한 PR 단계에서는 제외 (위 주석 참고).
@@ -107,5 +113,8 @@ jobs:
       - name: Install anvyc + dev deps
         run: uv pip install --system -e ".[dev,encryption,mcp]"
 
-      - name: Pytest
-        run: pytest
+      - name: Pytest (unit, fast-fail gate)
+        run: pytest -m "not integration"
+
+      - name: Pytest (integration)
+        run: pytest -m integration
