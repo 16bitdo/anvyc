@@ -1130,7 +1130,11 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (14종, v0.12.0)
+#### 27.1.1 등록된 check 목록 (20종, CP-13 머지 시점)
+
+SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
+
+**기본 환경 / adapter**
 
 | check_name | 영역 | 추가 |
 |---|---|---|
@@ -1140,14 +1144,40 @@ touch src/anvyc/cli.py
 | `adapter-validate` | adapter 자체 validate wrap | v0.1.0 |
 | `cursor-projects-suggest` | candidate root 의 `.cursor/` 발견 안내 | v0.1.0 |
 | `sops-keys-available` | sops/age binary + age identity | v0.2.0 |
+
+**MCP**
+
+| check_name | 영역 | 추가 |
+|---|---|---|
 | `mcp-tokens-warn` | mcp.json 의 raw token 패턴 | v0.2.1 |
+| `mcp-extra-importable` | `[mcp]` extra 미설치 silent failure 차단 | v0.15.2 |
+
+**per-project 계정 라우팅** (§32.4)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
 | `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
-| `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
-| `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias + `~/.claude-*` | v0.6.1 |
-| `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
 | `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ GitHub origin ssh alias | v0.11.0 |
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 | `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
+
+**multi-account 환경 진단**
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
+| `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias + `~/.claude-*` | v0.6.1 |
+| `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
+
+**Control plane axes** (각 axis 본문은 [docs/design-axes/](../docs/design-axes/) 참조)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `creds-expiry-within-7d` | AWS SSO / GitHub PAT / Claude OAuth 만료 사전 감지 (CP-5) | v0.14.0 |
+| `cost-aws-explorer-iam` | `SimulatePrincipalPolicy` 로 `ce:GetCostAndUsage` 권한 부재 감지 (CP-13) | CP-13 |
+| `cost-github-pat-scope` | fine-grained PAT 의 billing endpoint smoke 호출 (CP-13) | CP-13 |
+| `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
+| `work-cwd-track-wired` | work-cwd hook + `env.WORK_CWD_CACHE` 주입 검증 (CP-12) | v0.15.0 |
 
 ### 27.2 모듈 구조
 
