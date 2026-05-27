@@ -602,15 +602,23 @@ def apply(
         None, "--backup-id", help="적용할 backup id. 미지정 시 current/최신."
     ),
     only: list[str] | None = typer.Option(None, "--only", help="특정 도구만 (반복 가능)."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="실제 변경 없이 적용 시나리오만 출력."),
+    apply_changes: bool = typer.Option(
+        False, "--apply", help="실제 적용 (기본 dry-run — 계획만 출력)."
+    ),
     force: bool = typer.Option(False, "--force", help="medium 위험까지 허용하고 진행."),
 ) -> None:
-    """backup 의 설정을 현재 target 에 적용한다. 적용 전 local-backup 자동 생성.
+    """backup 의 설정을 현재 target 에 적용 (default dry-run, v0.16.0+).
 
-    처음 사용 시 --dry-run 으로 변경 예정 사항을 먼저 확인 권장.
-    예) anvyc apply --dry-run
-        anvyc apply --only shell --dry-run
+    안전 표준 — `snapshot restore` / `creds rotate` / `cost gc` / `sync push/pull`
+    과 동일:
+    - 기본: 계획만 출력 (target 무변경)
+    - `--apply` 명시 시 실 적용 (적용 전 local-backup 자동 생성)
+
+    예) anvyc apply                # 계획 출력 (dry-run)
+        anvyc apply --apply        # 실제 적용
+        anvyc apply --only shell   # 특정 도구의 계획만
     """
+    dry_run = not apply_changes
     try:
         report = run_apply(
             root=root,
@@ -636,6 +644,12 @@ def apply(
         raise typer.Exit(code=1) from e
 
     _print_apply_report(report)
+    if dry_run:
+        console.print(
+            "\n[yellow]note[/yellow] v0.15.x 와 동작이 다릅니다 — "
+            "`anvyc apply` 는 이제 dry-run 입니다."
+        )
+        console.print("  실제 적용: [bold]anvyc apply --apply[/bold]")
     if not dry_run and report.has_error():
         raise typer.Exit(code=3)
 

@@ -132,8 +132,8 @@ anvyc --version
 ```bash
 anvyc init --from-git git@github.com:<you>/anvyc-config.git
 anvyc doctor
-anvyc apply --dry-run
-anvyc apply
+anvyc apply           # dry-run plan (default)
+anvyc apply --apply   # 실 적용
 ```
 
 `--from-git` 은 target `.anvyc/` 이 이미 있으면 fail-fast — 덮어쓰지 않는다.
@@ -205,8 +205,8 @@ anvyc status
 
 # 5) 다른 장비에서 복원
 anvyc diff
-anvyc apply --dry-run
-anvyc apply
+anvyc apply           # dry-run plan (default, v0.16.0+)
+anvyc apply --apply   # 실 적용
 ```
 
 ---
@@ -265,7 +265,7 @@ anvyc doctor                   # 환경 진단 (20 check, CP-13 까지)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력
-anvyc apply [--dry-run]        # source 설정 적용 (전 local backup 자동)
+anvyc apply [--apply]          # default dry-run plan; --apply 시 실 적용 (전 local backup 자동, v0.16.0+)
 anvyc restore <backup-id>      # 특정 backup으로 복원
 anvyc list                     # 백업 목록
 anvyc scan-secrets             # secret 패턴 스캔

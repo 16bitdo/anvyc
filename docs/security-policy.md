@@ -34,7 +34,7 @@ anvyc backup
 
 # 5) 다른 머신에서 apply 후 1Password 로그인만 하면 동일 환경
 op signin           # 새 머신에서
-anvyc apply
+anvyc apply --apply   # v0.16.0+: default 가 dry-run 이라 --apply 명시
 ```
 
 ### 1.2 scanner 의 false-positive 강등
@@ -86,7 +86,7 @@ anvyc backup
 # → backup_dir/pulumi/sops/credentials.json.sops.json (encrypted)
 
 # 5) 다른 머신에서 — 같은 age private key 가 있어야 복호화
-anvyc apply   # SOPS 자동 복호화 후 target 에 평문 저장
+anvyc apply --apply   # SOPS 자동 복호화 후 target 에 평문 저장 (v0.16.0+: --apply 명시)
 ```
 
 ### 2.1 두 채널 공존
