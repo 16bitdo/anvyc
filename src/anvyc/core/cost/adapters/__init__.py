@@ -23,6 +23,11 @@ def _build_registry() -> dict[str, CostAdapter]:
     boto3 / httpx 가용성은 `importlib.util.find_spec` 로 가볍게 확인 (실
     import 0, startup 비용 무시 가능). 부재 시 해당 키 미등록 → doctor
     `cost-<src>-*` check 들이 안내.
+
+    github adapter 는 `anvyc.yaml` 의 `cost.github.accounts` 가 있으면
+    accounts override 로 전달 (polish CP-13H). 빈 list → adapter 가 자동
+    discover (`~/.config/gh*` glob walk). load_anvyc_config 호출 비용 = yaml
+    read 1회 (~ms), startup 영향 무시 가능.
     """
     import importlib.util  # noqa: PLC0415
 
@@ -36,11 +41,17 @@ def _build_registry() -> dict[str, CostAdapter]:
 
         registry["aws"] = AwsCostExplorerAdapter()
     if importlib.util.find_spec("httpx") is not None:
+        from anvyc.core.config import load_anvyc_config  # noqa: PLC0415
         from anvyc.core.cost.adapters.github import (  # noqa: PLC0415
             GitHubBillingAdapter,
         )
 
-        registry["github"] = GitHubBillingAdapter()
+        try:
+            _cfg = load_anvyc_config()
+            _accounts = _cfg.cost.github.accounts or None
+        except Exception:  # noqa: BLE001 — config 부재/오류 시 graceful 자동 discover
+            _accounts = None
+        registry["github"] = GitHubBillingAdapter(accounts_override=_accounts)
     return registry
 
 

@@ -139,3 +139,19 @@ doctor:
       - "~/.claude/settings.json"
       - "~/.claude/CLAUDE.md"
     severity_overrides: {}     # path glob → "info"|"warning"|"critical"
+
+# CP-13 PR-13D + polish CP-13H — cost observability adapter 설정.
+# 부재 시 GitHub adapter 가 ~/.config/gh* glob walk 으로 자동 discover
+# (user-level 만). 사용자가 org-level billing 도 가시화하려면 본 옵션에
+# "user@org" syntax 명시.
+#
+# fine-grained PAT 의 Resource owner / scope 매핑:
+#   - "16bitdo"          → /users/16bitdo/.../billing/usage     (Account Plan:Read 또는 OAuth user scope)
+#   - "heisgone@whatap"  → /organizations/whatap/.../billing/usage (Org Administration:Read)
+cost:
+  github:
+    accounts: []
+    # 예 (multi-account billing visibility):
+    # accounts:
+    #   - "16bitdo"
+    #   - "heisgone@whatap"
