@@ -2463,12 +2463,17 @@ MCP tool (`anvyc/mcp/server.py`):
 │   └── fx/<YYYY-MM-DD>.json                            # FX rate (TTL=1d)
 ├── aggregate/
 │   └── <source>/<account>/<YYYY-MM>.json               # monthly aggregate
-├── state/
-│   └── cost-window.json                                # 6h rolling window (CP-3 wire)
 ├── budgets.yml                                         # 사용자 예산 정책
 └── pricing/                                            # PR-13A0 가격표 SoT 사본
     └── anthropic.yaml
 ```
+
+> **§38.5 v7 정정 (PR-13F)**: 6h rolling window state 의 권위 위치는
+> `~/.config/cc-inspect/cost-window.json` 입니다 (ADR §4.5 정합). ccinspector
+> 의 `modules/scheduler/cost-window.py` 가 owner 이며, `cost.sh` task 가 매
+> tick update, `health-status.py` 의 `cost_severity` 가 read. anvyc namespace
+> 의 `cost/state/` 디렉터리는 v0.2 별도 ADR 까지 사용 안 함 (cross-machine
+> sync (CP-6) 통합 후 anvyc 측 mirror 검토).
 
 #### Retention
 
@@ -2476,7 +2481,7 @@ MCP tool (`anvyc/mcp/server.py`):
 |---|---|---|
 | `cache/<src>/<acct>/*.json` (raw daily) | 90d | 자동 삭제 (`anvyc cost gc`) |
 | `aggregate/<src>/<acct>/*.json` (monthly) | 24m | 자동 삭제 |
-| `state/cost-window.json` | rolling 6 tick | overwrite |
+| `~/.config/cc-inspect/cost-window.json` (ccinspector owner, PR-13F) | rolling 6 tick | overwrite (cost.sh task 가 매 tick update) |
 | `cache/fx/*.json` | TTL=1d | stale 7d 시 WARNING, 14d 시 statusline `~` prefix |
 | `pricing/anthropic.yaml` | 90d 갱신 | `effective_date` 90d 초과 시 WARNING (R9) |
 
@@ -2553,3 +2558,4 @@ CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor -
 | 2026-05-27 | 4 | PR-13C 진입. AWS Cost Explorer adapter 도입 (`core/cost/adapters/aws.py`, optional dep `cost-aws = ["boto3>=1.34"]`). discover_accounts 정책 = **auto-ALL** (`~/.aws/config` 의 모든 profile, sts 호출 없는 정적 read — 비용 0). fetch_period 의 graceful skip 4 분류: `sso_expired` / `access_denied` / `api_error` / dep missing (`meta.extra.error`). doctor `cost-aws-explorer-iam` check 도입 (`SimulatePrincipalPolicy` — 호출 비용 0). IAM policy 템플릿 `templates/aws-cost-readonly.json` (`ce:GetCostAndUsage` + `ce:GetDimensionValues` + `ce:GetTags`). `ADAPTER_REGISTRY` 가 `importlib.util.find_spec("boto3")` 로 lazy 등록 — startup 비용 0, boto3 부재 시 'aws' 키 미등록 (graceful skip). |
 | 2026-05-27 | 5 | PR-13D 진입. GitHub Billing adapter 도입 (`core/cost/adapters/github.py`, optional dep `cost-github = ["httpx>=0.27"]`). endpoint = **Enhanced Billing Platform** (`GET /organizations/{org}/settings/billing/usage` 와 `/users/{user}/settings/billing/usage`) — ADR §1.3/§4.4 의 legacy `/orgs/{org}/settings/billing/{actions,packages,shared-storage}` 는 docs index 비노출 (WebFetch 실측 2026-05-27). discover_accounts = **auto-ALL** (`~/.config/gh*` glob walk + hosts.yml 의 user, indent-flexible parser). account.key 인코딩 = `"<user>"` (user-level) 또는 `"<user>@<org>"` (org-level). graceful skip 4 분류: `unauthorized` / `forbidden` / `enhanced_billing_disabled` / `api_error` (+ `no_token`/`no_config_dir`). 인증 = **fine-grained PAT** — user-level 은 Account `Plan: Read`, org-level 은 Organization `Administration: Read`. 측정 차원 = breakdown dim=`product` (Enhanced billing 의 `usageItems[].product` 자연 매핑, Actions/Packages/Storage/Copilot 통합). doctor `cost-github-pat-scope` check 도입 — user-level billing endpoint smoke 호출로 PAT 권한 검증. `utils/gh_hosts.py` 신규 — `~/.config/gh*` walk + minimal YAML parser (PyYAML 미의존, gh 1.x 2-space 와 신버전 4-space indent 모두 인식). |
 | 2026-05-27 | 6 | polish-anvyc (CP-13 polish 묶음 #3). `summarize_reports` 반환 dict 에 `collected_at_latest` (ISO 8601) 추가 — reports 중 가장 최근 `CostReport.collected_at` 노출. `summary_payload` 가 본 키를 자동 전파 (MCP `cost_summary` / CLI `cost summary` 응답에 노출). 호출자 (ccinspector statusline cost reader, 향후 6h rolling window state, staleness 표시) 가 단일 진입점으로 활용. 확장-호환 (기존 키 변경 0, 추가만). cache.py / ledger.py 의 collected_at 직렬화/역변환은 정상 — 본 polish 는 합산-레벨 노출만 추가. |
+| 2026-05-27 | 7 | PR-13F chore (DESIGN §38.5 정정). 6h rolling window state 의 권위 위치를 `~/.config/cc-inspect/cost-window.json` (ccinspector namespace, ADR §4.5 정합) 으로 정정. 기존 cache layout 의 `state/cost-window.json` (anvyc namespace) 라인 제거. ccinspector 의 `modules/scheduler/cost-window.py` 가 owner — `cost.sh` task 가 매 tick update (per-source totals dict), `health-status.py` 의 `cost_severity` 가 read (어느 source 라도 6h 증가율 ≥ 20% 시 severity 한 단계 상향, cap FAIL). anvyc 측 코드 변경 0 — polish #3 의 `summarize_reports.collected_at_latest` + 기존 `by_source` 가 단일 입력 제공. v0.2 별도 ADR 에서 cross-machine sync (CP-6) 통합 시 anvyc namespace mirror 검토. |
