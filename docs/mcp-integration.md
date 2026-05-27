@@ -1,6 +1,6 @@
 # anvyc MCP integration (v0.9.0+)
 
-> AI agent (Claude Code / Cursor / 다른 MCP 호환 client) 가 anvyc 의 5
+> AI agent (Claude Code / Cursor / 다른 MCP 호환 client) 가 anvyc 의 8
 > read-only tool 을 stdio Model Context Protocol 로 직접 호출.
 
 자매 문서:
@@ -57,7 +57,7 @@ project-local: `<project>/.mcp.json`
 }
 ```
 
-Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
+Claude Code 재시작 후 8 tool 사용 가능. 호출 예 (Claude Code 안):
 
 ```
 > 이 프로젝트의 AWS profile 알려줘
@@ -90,7 +90,7 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 
 ---
 
-## 4. 노출 tool (5 read-only)
+## 4. 노출 tool (8 read-only)
 
 | tool name | 매핑 anvyc 명령 | 입력 | 출력 schema |
 |---|---|---|---|
@@ -99,6 +99,9 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 | `project_doctor` | `anvyc project doctor` | `{path?}` | `{path, results}` (DESIGN §33.2) |
 | `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (20 check) |
 | `tools_list` | `anvyc tools list --json` | `{}` | array of `{tool, enabled, detected, files, secrets}` |
+| `activity_summary` | `anvyc activity --json` | `{agent?}` | `{total_sessions, total_events, total_tool_calls, total_duration_seconds, oldest, newest, tools_used}` (CP-1, CP-7) |
+| `tool_call_stats` | (MCP 전용 — CLI 미노출) | `{top?, agent?}` | `{tool_call_ranking: [{name, count}], blocked: {total_blocks, by_hook, by_agent, oldest_block_at, newest_block_at}}` (CP-1, CP-8, CP-11) |
+| `cost_summary` | `anvyc cost summary --json` | `{source?, period?, refresh?}` | `{total_amount_usd, currency, by_source, by_account, by_model, pricing_versions_seen, period, report_count}` ([CP-13](./design-axes/cp-13-cost.md)) |
 
 ### 4.1 의도적 미포함 (write 영역)
 
@@ -220,9 +223,9 @@ source build 가 필요한 환경은 `pip install maturin` 선행 후 재시도.
 
 ## 8. 한계 / Roadmap
 
-### 8.1 현재 (v0.10.0)
+### 8.1 현재 (v0.15.2+ / CP-13 머지 시점)
 
-- read-only 5 tool
+- read-only 8 tool (5 project/doctor/tools + 2 CP-1 activity + 1 CP-13 cost)
 - stdio transport 만
 - D11c redaction default
 
