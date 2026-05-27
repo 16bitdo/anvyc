@@ -114,11 +114,31 @@ class DoctorConfig:
 
 
 @dataclass
+class CostGithubConfig:
+    """CP-13 GitHub adapter (PR-13D + polish CP-13H) 의 account override.
+
+    빈 list 면 adapter 가 `~/.config/gh*` glob walk 으로 자동 discover. 명시 시
+    discover 대체. 각 entry 는 `"<gh_login>"` (user-level) 또는
+    `"<gh_login>@<org>"` (org-level) syntax — PR-13D account.key 인코딩 정합.
+    """
+
+    accounts: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CostConfig:
+    """CP-13 cost observability 의 통합 config section."""
+
+    github: CostGithubConfig = field(default_factory=CostGithubConfig)
+
+
+@dataclass
 class AnvycConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     tools: dict[str, ToolConfig] = field(default_factory=dict)
     doctor: DoctorConfig = field(default_factory=DoctorConfig)
+    cost: CostConfig = field(default_factory=CostConfig)
     project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
     source: Path | None = None  # 로드된 base yaml 경로 (debug 용)
     overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
@@ -249,11 +269,23 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         severity_overrides=dict(cu.get("severity_overrides") or {}),
     )
 
+    cost_raw = raw.get("cost") or {}
+    cost_gh_raw = cost_raw.get("github") or {}
+    cost = CostConfig(
+        github=CostGithubConfig(
+            accounts=[
+                str(a) for a in (cost_gh_raw.get("accounts") or [])
+                if isinstance(a, str)
+            ],
+        ),
+    )
+
     return AnvycConfig(
         storage=storage,
         security=security,
         tools=tools,
         doctor=doctor,
+        cost=cost,
         project_roots=list(raw.get("project_roots") or []),
         source=source,
         overlay_source=overlay_source,
