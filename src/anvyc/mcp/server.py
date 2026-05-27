@@ -4,14 +4,15 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
 
   {"mcpServers": {"anvyc": {"command": "anvyc", "args": ["serve", "--mcp"]}}}
 
-7 read-only tool 노출 (D21 + CP-1 3/3):
+8 read-only tool 노출 (D21 + CP-1 3/3 + CP-13):
   project_show       cwd 의 단일 project connection
   project_list       root 아래 모든 project matrix
   project_doctor     cwd 의 정합성 8 check
-  doctor             anvyc 환경 진단 (18 check)
-  tools_list         9 도구 enabled / detect
+  doctor             anvyc 환경 진단 (20 check)
+  tools_list         10 도구 enabled / detect
   activity_summary   Claude Code session 통합 통계 (CP-1)
   tool_call_stats    tool 별 사용 카운트 ranking (CP-1)
+  cost_summary       period 별 source / account 합산 (CP-13)
 
 write 영역 (backup/apply/restore) 은 의도적 미포함 — agent 가 destructive
 실행 못 함. 사용자가 CLI 로 명시 실행.
@@ -103,10 +104,12 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="doctor",
             description=(
-                "anvyc 환경 진단 (global, 18 check). "
+                "anvyc 환경 진단 (global, 20 check). "
                 "cross-user / venv-hidden / op-references / sops / mcp-tokens / "
                 "project-aws-profile-mapping / aws-profile-status / "
-                "multi-account-detected / unused-aws-profiles 등."
+                "multi-account-detected / unused-aws-profiles / creds-expiry / "
+                "cost-aws-explorer-iam / cost-github-pat-scope / "
+                "hook-integrity-risk-gate / work-cwd-track-wired 등."
             ),
             inputSchema={
                 "type": "object",
@@ -119,9 +122,9 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="tools_list",
             description=(
-                "anvyc 가 관리하는 9 도구의 enabled / detect / file-count. "
+                "anvyc 가 관리하는 10 도구의 enabled / detect / file-count. "
                 "shell / git / aws / gh / cursor / claude / iterm2 / pulumi "
-                "/ dev_env."
+                "/ dev_env / shell_prompt."
             ),
             inputSchema={"type": "object", "properties": {}},
         ),

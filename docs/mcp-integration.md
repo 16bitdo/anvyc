@@ -97,7 +97,7 @@ Claude Code 재시작 후 5 tool 사용 가능. 호출 예 (Claude Code 안):
 | `project_show` | `anvyc project show` | `{path?, reveal_secrets?}` | ProjectInfo (DESIGN §32) |
 | `project_list` | `anvyc project list` | `{roots?, reveal_secrets?}` | array of ProjectInfo (DESIGN §33.1) |
 | `project_doctor` | `anvyc project doctor` | `{path?}` | `{path, results}` (DESIGN §33.2) |
-| `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (18 check) |
+| `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (20 check) |
 | `tools_list` | `anvyc tools list --json` | `{}` | array of `{tool, enabled, detected, files, secrets}` |
 
 ### 4.1 의도적 미포함 (write 영역)
