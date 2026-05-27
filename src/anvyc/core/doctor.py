@@ -10,6 +10,7 @@ from pathlib import Path
 from anvyc.checks.adapter_validate import AdapterValidationCheck
 from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
 from anvyc.checks.base import Check, CheckContext, CheckResult, Severity
+from anvyc.checks.cost_aws_explorer_iam import CostAwsExplorerIamCheck
 from anvyc.checks.creds_expiry import CredsExpiryWithin7dCheck
 from anvyc.checks.cross_user import CrossUserCheck
 from anvyc.checks.cursor_projects_suggest import CursorProjectsSuggestCheck
@@ -60,6 +61,7 @@ _REGISTRY: dict[str, Check] = {
     "multi-account-detected": MultiAccountDetectedCheck(),
     "unused-aws-profiles": UnusedAwsProfilesCheck(),
     "creds-expiry-within-7d": CredsExpiryWithin7dCheck(),
+    "cost-aws-explorer-iam": CostAwsExplorerIamCheck(),
     "hook-integrity-risk-gate": HookIntegrityRiskGateCheck(),
     "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
 }

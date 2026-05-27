@@ -56,6 +56,9 @@ encryption = [
 mcp = [
   "mcp>=1.0"
 ]
+cost-aws = [
+  "boto3>=1.34"
+]
 
 [project.scripts]
 anvyc = "anvyc.cli:app"
