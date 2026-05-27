@@ -27,6 +27,7 @@ def _mk_report(
     *,
     model_breakdown: dict[str, float] | None = None,
     pricing_version: int | None = 1,
+    collected_at: datetime | None = None,
 ) -> CostReport:
     return CostReport(
         source=source,
@@ -40,6 +41,7 @@ def _mk_report(
             BreakdownItem(dim="model", key=m, amount=a)
             for m, a in (model_breakdown or {}).items()
         ],
+        collected_at=collected_at,
         meta=CostReportMeta(pricing_version=pricing_version),
     )
 
@@ -95,6 +97,37 @@ def test_summarize_empty_reports() -> None:
     assert s["by_model"] == {}
     assert s["pricing_versions_seen"] == []
     assert s["report_count"] == 0
+    assert s["collected_at_latest"] is None
+
+
+def test_summarize_collected_at_latest_picks_max() -> None:
+    t1 = datetime(2026, 5, 10, 12, 0, tzinfo=UTC)
+    t2 = datetime(2026, 5, 15, 9, 30, tzinfo=UTC)
+    t3 = datetime(2026, 5, 14, 23, 59, tzinfo=UTC)
+    reports = [
+        _mk_report("anthropic", "default", 1.0, collected_at=t1),
+        _mk_report("aws", "ws-dev", 2.0, collected_at=t2),
+        _mk_report("github", "16bitdo", 3.0, collected_at=t3),
+    ]
+    s = summarize_reports(reports)
+    assert s["collected_at_latest"] == t2.isoformat()
+
+
+def test_summarize_collected_at_latest_ignores_none() -> None:
+    """일부 report 만 collected_at 보유 시 None 제외."""
+    t = datetime(2026, 5, 20, tzinfo=UTC)
+    reports = [
+        _mk_report("anthropic", "default", 1.0, collected_at=None),
+        _mk_report("aws", "ws-dev", 2.0, collected_at=t),
+    ]
+    s = summarize_reports(reports)
+    assert s["collected_at_latest"] == t.isoformat()
+
+
+def test_summarize_collected_at_latest_all_none() -> None:
+    reports = [_mk_report("anthropic", "default", 1.0, collected_at=None)]
+    s = summarize_reports(reports)
+    assert s["collected_at_latest"] is None
 
 
 def test_summarize_aggregates_across_sources_accounts_models() -> None:

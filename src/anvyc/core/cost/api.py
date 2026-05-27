@@ -122,13 +122,18 @@ def summarize_reports(
 
     출력 구조:
       total_amount_usd, currency, by_source, by_account, by_model,
-      pricing_versions_seen, report_count
+      pricing_versions_seen, report_count, collected_at_latest
+
+    `collected_at_latest` = 본 reports 중 가장 최근의 `CostReport.collected_at`
+    (ISO 8601 UTC). 모든 report 가 None 이면 None. 호출자가 staleness 평가
+    (statusline `~` prefix, 6h rolling window 입력 등) 단일 진입점.
     """
     total = 0.0
     by_source: dict[str, float] = {}
     by_account: dict[str, float] = {}
     by_model: dict[str, float] = {}
     pricing_versions: set[int] = set()
+    collected_at_latest: datetime | None = None
 
     for r in reports:
         total += r.amount
@@ -140,6 +145,11 @@ def summarize_reports(
                 by_model[b.key] = by_model.get(b.key, 0.0) + b.amount
         if r.meta.pricing_version is not None:
             pricing_versions.add(r.meta.pricing_version)
+        if r.collected_at is not None and (
+            collected_at_latest is None
+            or r.collected_at > collected_at_latest
+        ):
+            collected_at_latest = r.collected_at
 
     return {
         "total_amount_usd": round(total, 6),
@@ -149,6 +159,9 @@ def summarize_reports(
         "by_model": {k: round(v, 6) for k, v in by_model.items()},
         "pricing_versions_seen": sorted(pricing_versions),
         "report_count": len(reports),
+        "collected_at_latest": (
+            collected_at_latest.isoformat() if collected_at_latest else None
+        ),
     }
 
 
