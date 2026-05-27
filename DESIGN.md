@@ -18,7 +18,7 @@
 ### 보안 / 도구별 adapter
 - [§13 Secret Scanner 설계](#13-secret-scanner-설계)
 - [§14 iTerm2](#14-iterm2-adapter-설계) · [§15 Cursor IDE](#15-cursor-ide-adapter-설계) · [§16 Claude Code](#16-claude-code-adapter-설계)
-- [§17 AWS / GitHub CLI / Pulumi](#17-aws--github-cli--pulumi-adapter-설계) · [§17a shell_prompt](#17a-shell_prompt-adapter-설계-v0130)
+- [§17 외부 도구 Adapter 모음 (AWS / GitHub CLI / Pulumi / shell_prompt)](#17-외부-도구-adapter-모음-aws--github-cli--pulumi--shell_prompt)
 - [§30 Secret 분리 정책 (1Password)](#30-secret-분리-정책-v010-1password-secret-reference) · [§31 SOPS 통합](#31-sops-통합-v02)
 
 ### 진단 / 메타
@@ -254,7 +254,7 @@ anvyc/
 │       │   ├── iterm2.py
 │       │   ├── pulumi.py
 │       │   ├── dev_env.py         # v0.7.0+ — .envrc / .tool-versions / .python-version / .nvmrc
-│       │   └── shell_prompt.py    # v0.13.0+ — starship / powerlevel10k 설정 (§17a)
+│       │   └── shell_prompt.py    # v0.13.0+ — starship / powerlevel10k 설정 (§17.4)
 │       ├── checks/                # doctor check 모듈 (§27.1.1)
 │       │   ├── cross_user.py
 │       │   ├── venv_hidden.py
@@ -779,7 +779,7 @@ Claude Code는 개인 세션과 토큰 유출 가능성이 있으므로, `doctor
 
 ---
 
-## 17. AWS / GitHub CLI / Pulumi Adapter 설계
+## 17. 외부 도구 Adapter 모음 (AWS / GitHub CLI / Pulumi / shell_prompt)
 
 ### 17.1 AWS
 
@@ -804,16 +804,14 @@ Claude Code는 개인 세션과 토큰 유출 가능성이 있으므로, `doctor
 | `~/.pulumi/credentials.json` | 기본 제외 |
 | Access token env | 절대 백업 안 함 |
 
----
-
-## 17a. shell_prompt Adapter 설계 (v0.13.0)
+### 17.4 shell_prompt (v0.13.0)
 
 shell prompt 도구(starship, powerlevel10k)의 **설정 파일**을 백업·동기화한다.
-`anvyc prompt` 명령(§27.10)이 prompt 에 anvyc 라우팅 세그먼트를 노출한다면,
+`anvyc prompt` 명령(§27.9)이 prompt 에 anvyc 라우팅 세그먼트를 노출한다면,
 이 어댑터는 prompt 도구 자신의 설정(컬러·세그먼트 정의 등)을 다른 머신에
 재현할 수 있게 한다.
 
-### 17a.1 포함 / 제외 정책
+#### 17.4.1 포함 / 제외 정책
 
 | 경로 | 정책 | 이유 |
 |---|---|---|
@@ -826,7 +824,7 @@ shell prompt 도구(starship, powerlevel10k)의 **설정 파일**을 백업·동
 **단일 `shell_prompt` 어댑터**로 묶는다 — `collect()` 가 존재하는 파일만
 포함해, 두 도구 동시 설치를 강제하지 않는다.
 
-### 17a.2 어댑터 표면
+#### 17.4.2 어댑터 표면
 
 ```python
 class ShellPromptAdapter:
@@ -842,13 +840,13 @@ class ShellPromptAdapter:
 별도 plist/JSON 파싱 없이 raw 텍스트 동기화. starship.toml 의 TOML 파싱 오류
 검증은 starship 자체에 위임한다 (anvyc 가 도구 동작을 추측하지 않음).
 
-### 17a.3 secret 영역
+#### 17.4.3 secret 영역
 
 starship/p10k 설정 파일은 일반적으로 secret 을 포함하지 않는다. 단, 사용자가
 custom command 에 raw token 을 박을 가능성이 있으므로 secret scanner 의
 일반 패턴(§13)을 그대로 적용한다 — 별도 allowlist 없음.
 
-### 17a.4 호환성 / 마이그레이션
+#### 17.4.4 호환성 / 마이그레이션
 
 - 신규 어댑터 추가 — 어댑터 수 9 → **10** (`anvyc tools list` 카운트 변경).
 - 기존 사용자: `~/.config/starship.toml` 또는 `~/.p10k.zsh` 가 없으면 silent
@@ -1347,7 +1345,7 @@ doctor 세 check 와 `project list`/MCP 진입점은 `resolve_project_roots()` �
 루트를 순회하며 `Path.resolve()` 로 중복 디렉터리를 제거한다. `dev_env` 어댑터는
 별도로 `tools.dev_env.project_roots` config 를 쓰고 SoT 상수는 fallback 으로만 쓴다.
 
-### 27.10 `anvyc prompt` 명령 (v0.13.0)
+### 27.9 `anvyc prompt` 명령 (v0.13.0)
 
 `anvyc prompt` 는 현재 디렉터리의 per-project 계정 라우팅(§32.4a/b/c) 을 shell
 prompt 용 한 줄로 출력한다. `project show` 를 매번 실행하지 않고도 라우팅
@@ -1419,12 +1417,12 @@ MVP는 Python으로 빠르게 구현하고, 실제 Mac 2대에서 end-to-end 검
 | v0.2 | SOPS encryption-at-rest | §31 |
 | v0.5.x | iTerm2 status 정합화 + SOPS per-file override + sops 단독 CLI | §14, §31 |
 | v0.6.x | Homebrew tap + `--from-git` + multi-account doctor checks + 호스트별 overlay | §27.1.1 |
-| v0.7.x | `dev_env` 어댑터 + interactive wizard + `install.sh` one-liner | §17a 인접 |
+| v0.7.x | `dev_env` 어댑터 + interactive wizard + `install.sh` one-liner | §17.4 인접 |
 | v0.8.x | `project show/list/doctor` (AI agent multi-project view) | §32, §33 |
 | v0.9.0 | MCP server (`anvyc serve --mcp`, 5 read-only tool) | §34 |
 | v0.10.0 | MCP tool naming cleanup (`anvyc_` prefix 제거, breaking) | §34.9 |
 | v0.11.0 / v0.12.0 | per-project gh/Claude/Pulumi 계정 라우팅 인식 + 프로젝트 루트 SoT | §27.8, §32.4a/b/c |
-| v0.13.0 | shell prompt 통합 — `anvyc prompt` 세그먼트 + `shell_prompt` 어댑터 + dev wrapper PYTHONPATH | §17a, §27.7, §27.10 |
+| v0.13.0 | shell prompt 통합 — `anvyc prompt` 세그먼트 + `shell_prompt` 어댑터 + dev wrapper PYTHONPATH | §17.4, §27.7, §27.9 |
 
 §21·구 Post-PoC 로드맵의 phase 분류·일일 일정은 v0.1.0 MVP 단계에서 소진되어
 RELEASE_NOTES 의 버전별 릴리스 노트로 대체되었다.
