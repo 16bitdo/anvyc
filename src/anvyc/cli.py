@@ -2552,5 +2552,117 @@ def cost_summary(
         console.print(summary_text(source=source, period_spec=period))
 
 
+@cost_app.command("ledger")
+def cost_ledger(
+    source: str | None = typer.Option(
+        None, "--source", "-s", help="source 필터."
+    ),
+    account: str | None = typer.Option(
+        None, "--account", "-a", help="account 필터."
+    ),
+    period: str | None = typer.Option(
+        None,
+        "--period",
+        "-p",
+        help="mtd | YYYY-MM (미지정 시 모든 cache row).",
+    ),
+    include_meta: bool = typer.Option(
+        False, "--meta", help="measurement_cost / org_id / collected_at 추가."
+    ),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """period 의 cache rows 표 출력 (CP-13 PR-13B2)."""
+    import json as _json
+
+    from rich.table import Table
+
+    from anvyc.core.cost.api import ledger_rows, resolve_period
+
+    period_obj = resolve_period(period) if period else None
+    rows = ledger_rows(
+        period=period_obj,
+        source=source,
+        account=account,
+        include_meta=include_meta,
+    )
+
+    if json_out:
+        console.print(_json.dumps(rows, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title=f"cost ledger ({len(rows)} rows)")
+    cols = [
+        "cache_date",
+        "source",
+        "account",
+        "amount_usd",
+        "models",
+        "pricing_v",
+    ]
+    if include_meta:
+        cols += ["measurement_cost", "org_id", "collected_at"]
+    for c in cols:
+        table.add_column(c)
+    for r in rows:
+        row_vals = [
+            str(r["cache_date"]),
+            str(r["source"]),
+            str(r["account"]),
+            f"${r['amount_usd']:.4f}",
+            str(r["model_breakdown_count"]),
+            str(r["pricing_version"])
+            if r["pricing_version"] is not None
+            else "-",
+        ]
+        if include_meta:
+            row_vals += [
+                f"${r.get('measurement_cost_usd', 0):.4f}",
+                str(r.get("org_id") or "-"),
+                str(r.get("collected_at") or "-"),
+            ]
+        table.add_row(*row_vals)
+    console.print(table)
+
+
+@cost_app.command("gc")
+def cost_gc(
+    keep_days: int = typer.Option(
+        90,
+        "--keep-days",
+        help="raw daily cache retention (default 90d, DESIGN §38.5).",
+    ),
+    apply_changes: bool = typer.Option(
+        False,
+        "--apply",
+        help="기본 dry-run. --apply 시 실 삭제 (확인 prompt 없이).",
+    ),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """raw daily cache retention 정리 (PR-13B2)."""
+    import json as _json
+
+    from anvyc.core.cost.api import gc_raw_daily
+
+    result = gc_raw_daily(keep_days=keep_days, dry_run=not apply_changes)
+
+    if json_out:
+        console.print(_json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    if result["dry_run"]:
+        console.print(
+            "[yellow]dry-run[/yellow] — --apply 로 실 삭제. 아래는 예정 동작."
+        )
+    console.print(
+        f"today: {result['today']}, cutoff: {result['cutoff']} "
+        f"(keep {result['keep_days']}d)"
+    )
+    action = "would remove" if result["dry_run"] else "removed"
+    console.print(
+        f"{action}: [red]{result['removed_count']}[/red] files, "
+        f"kept: [green]{result['kept_count']}[/green] files"
+    )
+
+
 if __name__ == "__main__":
     app()

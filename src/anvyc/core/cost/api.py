@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -182,11 +182,15 @@ def summary_payload(
     cache_root: Path | None = None,
     home: Path | None = None,
     refresh: bool = False,
+    include_krw: bool = True,
 ) -> dict[str, Any]:
     """MCP `cost_summary` / CLI `cost summary` 의 단일 진입점.
 
     `refresh=True` 시 어댑터 직접 호출 (캐시 갱신), 기본은 캐시 우선 + 부재 시
     어댑터 호출 fallback.
+
+    `include_krw=True` (default) 시 fx 가용하면 KRW 추가 (PR-13B2). fx 실패 시
+    USD only — graceful (`total_amount_krw = None`).
     """
     period = resolve_period(period_spec)
     if refresh:
@@ -207,6 +211,23 @@ def summary_payload(
     summary["period"] = period.to_dict()
     summary["source_filter"] = source
     summary["refresh"] = refresh
+
+    # PR-13B2: KRW 추가 (fx 가용 시 — fx fetch 실패 / cache 14d 이상 stale 시
+    # graceful None 으로 fallback).
+    if include_krw:
+        from anvyc.core.cost.fx import try_get_usd_to_krw_rate
+
+        fx_rate = try_get_usd_to_krw_rate(cache_root=cache_root)
+        if fx_rate is not None:
+            summary["total_amount_krw"] = round(
+                summary["total_amount_usd"] * fx_rate.rate, 2
+            )
+            summary["fx_rate_basis"] = fx_rate.basis_string()
+            summary["fx_stale"] = fx_rate.is_stale
+        else:
+            summary["total_amount_krw"] = None
+            summary["fx_rate_basis"] = None
+            summary["fx_stale"] = None
     return summary
 
 
@@ -217,7 +238,17 @@ def _format_summary_text(summary: dict[str, Any]) -> str:
     lines.append(
         f"period: {p.get('start', '?')} → {p.get('end', '?')}  ({summary['currency']})"
     )
-    lines.append(f"total:  ${summary['total_amount_usd']:.4f}")
+    # PR-13B2: KRW 라인 (fx 가용 시).
+    krw = summary.get("total_amount_krw")
+    if krw is not None:
+        stale = "~" if summary.get("fx_stale") else ""
+        basis = summary.get("fx_rate_basis", "")
+        lines.append(
+            f"total:  ${summary['total_amount_usd']:.4f}"
+            f"  ≈  {stale}₩{krw:,.0f}  (fx: {basis})"
+        )
+    else:
+        lines.append(f"total:  ${summary['total_amount_usd']:.4f}")
     if summary["by_source"]:
         lines.append("by source:")
         for k, v in summary["by_source"].items():
@@ -274,14 +305,98 @@ def summary_json(
     return json.dumps(s, ensure_ascii=False, indent=2)
 
 
-# timedelta import (linters 가 unused 라 안 보고 mtd 의 future 확장에서 사용 검토)
-_KEEP_TIMEDELTA = timedelta  # noqa: F841
+# PR-13B2: retention / ledger helpers ----------------------------------------
+
+
+def gc_raw_daily(
+    keep_days: int = 90,
+    *,
+    cache_root: Path | None = None,
+    dry_run: bool = False,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """raw daily cache 의 `keep_days` 이전 파일 정리 (DESIGN §38.5).
+
+    cache 파일명이 `YYYY-MM-DD.json` 형식 — 그 외 (fx/*.json 등 future) 는 skip.
+    `dry_run=True` 시 삭제하지 않고 list 만 반환.
+    """
+    today_actual = today or datetime.now(UTC).date()
+    cutoff = today_actual - timedelta(days=keep_days)
+    removed: list[Path] = []
+    kept: list[Path] = []
+    for path in iter_cache_files(root=cache_root):
+        try:
+            day = date.fromisoformat(path.stem)
+        except ValueError:
+            kept.append(path)
+            continue
+        if day < cutoff:
+            removed.append(path)
+            if not dry_run:
+                path.unlink(missing_ok=True)
+        else:
+            kept.append(path)
+    return {
+        "today": today_actual.isoformat(),
+        "cutoff": cutoff.isoformat(),
+        "keep_days": keep_days,
+        "removed_count": len(removed),
+        "kept_count": len(kept),
+        "removed_paths": [str(p) for p in removed],
+        "dry_run": dry_run,
+    }
+
+
+def ledger_rows(
+    *,
+    period: Period | None = None,
+    source: str | None = None,
+    account: str | None = None,
+    cache_root: Path | None = None,
+    include_meta: bool = False,
+) -> list[dict[str, Any]]:
+    """`anvyc cost ledger` 의 row 자료원 — period 의 cache rows.
+
+    `include_meta=True` 시 measurement_cost_usd / org_id / collected_at 추가.
+    """
+    rows: list[dict[str, Any]] = []
+    for path in iter_cache_files(
+        source=source, account=account, root=cache_root
+    ):
+        r = read_cache(path)
+        if r is None:
+            continue
+        if period is not None and not _period_intersects(r.period, period):
+            continue
+        row: dict[str, Any] = {
+            "cache_date": path.stem,
+            "source": r.source,
+            "account": r.account,
+            "period_start": r.period.start.isoformat(),
+            "period_end": r.period.end.isoformat(),
+            "amount_usd": round(r.amount, 6),
+            "model_breakdown_count": sum(
+                1 for b in r.breakdown if b.dim == "model"
+            ),
+            "pricing_version": r.meta.pricing_version,
+        }
+        if include_meta:
+            row["measurement_cost_usd"] = r.meta.measurement_cost_usd
+            row["org_id"] = r.meta.org_id
+            row["collected_at"] = (
+                r.collected_at.isoformat() if r.collected_at else None
+            )
+        rows.append(row)
+    return rows
+
 
 __all__ = [
     "InvalidPeriodSpecError",
     "UnknownSourceError",
     "collect_and_persist",
     "collect_reports",
+    "gc_raw_daily",
+    "ledger_rows",
     "read_cached_reports",
     "resolve_period",
     "summarize_reports",

@@ -2437,8 +2437,8 @@ catch + doctor `cost-<src>-dep-missing` WARNING + 설치 안내 (`pip install
 | `anvyc cost collect [--source <s>] [--period <p>]` | scheduler 일1회 + 수동 | 어댑터 호출 → 캐시 저장 → CostReport JSON stdout |
 | `anvyc cost summary [--group-by <dim>] [--period mtd\|eom\|<period>]` | 사용자 ad-hoc / MCP | 캐시 집계 + KRW 표시 + EOM forecast |
 | `anvyc cost ledger [--source <s>] [--meta]` | 회계 검증 | period 별 row table, `--meta` 시 measurement_cost / pricing_version 노출 |
-| `anvyc cost reconcile [--source anthropic]` | 월말 + scheduler | (i) ≠ (ii) gap 비교, > 5% 시 exit 1 |
-| `anvyc cost gc [--keep-days N]` | retention 정리 | raw 90d / aggregate 24m 외 자동 삭제 |
+| `anvyc cost reconcile [--source anthropic]` | 월말 + scheduler | **v0.2 deferred** — (ii) admin API channel 정착 후 (rbr ADR v1.2 §2.3 / §4.2.3 / §5) |
+| `anvyc cost gc [--keep-days N] [--apply]` | retention 정리 | raw 90d 외 cache 파일 삭제. **기본 dry-run** + `--apply` 로 실 삭제 (PR-13B2). aggregate 24m 은 PR-13C/D 의 aggregate 도입 후. |
 
 MCP tool (`anvyc/mcp/server.py`):
 
@@ -2549,3 +2549,4 @@ CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor -
 |---|---|---|
 | 2026-05-27 | 1 | 초안 — ADR v1.1 (Accepted 2026-05-27 rbr#90) 의 구조 SoT 본문 1차 작성. PR-13Z-anvyc 로 합류. schema v1 동결 + adapter Protocol + cache layout + doctor 5종 + cross-axis 매핑 + 보안 경계. |
 | 2026-05-27 | 2 | PR-13B1 진입 시 (ii) channel defer 반영 (ADR v1.2 / rbr#91). §38.3 의 어댑터 채널 표에서 anthropic (ii) admin API monthly invoice → **v0.2 deferred** 로 정정. 본문 구조 / schema / doctor / cross-axis / 보안 경계 부분은 동결 (확장-호환). |
+| 2026-05-27 | 3 | PR-13B2 진입. §38.4 의 `anvyc cost reconcile` 행을 **v0.2 deferred** 로 정정 ((ii) channel 의존). `anvyc cost gc` 행을 **기본 dry-run / `--apply` 시 실 삭제** 로 정정 (CP-4 snapshot 패턴 미러 — destructive 작업 안전 기본값). retention 의 aggregate 24m 부분은 aggregate cache 도입 (PR-13C/D 이후) 후 활성. KRW display 의 fx 출처 = `open.er-api.com` (ADR v1.2 §2.1 / §7 확정, stdlib urllib 만 사용). |
