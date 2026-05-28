@@ -2833,16 +2833,48 @@ def mcp_install(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="--apply 시의 confirm prompt 자동 수락."
     ),
+    absolute_path: bool = typer.Option(
+        False,
+        "--absolute-path",
+        help="entry 의 command 를 `shutil.which('anvyc')` 절대 경로로 박음 (PATH 의존 회피, dev-install / multi-account 환경에서 robust).",
+    ),
+    claude_config_dirs: str = typer.Option(
+        "",
+        "--claude-config-dirs",
+        help="multi-account 일괄 등록 — csv 로 여러 CLAUDE_CONFIG_DIR 지정 (예: `~/.claude,~/.claude-edward`). 단일 `CLAUDE_CONFIG_DIR` env 와 `--ide claude` 의 claude 항목을 override.",
+    ),
 ) -> None:
     """anvyc 를 Claude Code / Cursor 의 mcp.json 에 자동 등록.
 
-    안전 절차 (CP-4/CP-5/cost gc 의 destructive 패턴 미러):
+    안전 절차 (CP-4/CP-5/cost cleanup 의 destructive 패턴 미러):
     - 기본 dry-run — plan 표 출력만 (파일 무변경).
     - --apply 시 atomic write (tempfile + os.replace).
     - 기존 mcpServers 의 다른 entry 는 항상 보존.
     - 기존 anvyc entry 가 다른 command 면 .bak 자동 생성 후 표준값으로 overwrite.
+
+    --absolute-path: dev wrapper (`~/.local/bin/anvyc`) 또는 IDE 가 다른 PATH 에서
+    spawn 하는 환경에서 `anvyc` not-found 회피.
+
+    --claude-config-dirs: multi-account 일괄 등록. 각 dir 마다 `<dir>/mcp.json` 에
+    entry 작성. 예: `--claude-config-dirs ~/.claude,~/.claude-edward`.
     """
+    import shutil
+
     from anvyc.core.mcp_setup import apply_install, plan_install, resolve_ides
+
+    command_path: str | None = None
+    if absolute_path:
+        resolved = shutil.which("anvyc")
+        if resolved is None:
+            print_error(
+                "anvyc binary 가 PATH 에 없습니다 — --absolute-path 사용 불가. "
+                "anvyc 를 먼저 설치하거나 PATH 를 확인하세요."
+            )
+            raise typer.Exit(code=2)
+        command_path = resolved
+        console.print(f"[dim]absolute-path: {_short_home(Path(command_path))}[/dim]")
+
+    claude_dirs_list = _parse_csv(claude_config_dirs, [])
 
     try:
         ides = resolve_ides(
@@ -2865,6 +2897,8 @@ def mcp_install(
         ides,
         scope=scope,
         claude_config_dir=os.environ.get("CLAUDE_CONFIG_DIR"),
+        claude_config_dirs=claude_dirs_list or None,
+        command_path=command_path,
     )
     _print_install_plans(plans, action="install")
 
