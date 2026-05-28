@@ -1,3 +1,9 @@
+# anvyc.yaml — 모든 옵션의 explicit reference.
+# `anvyc init` 가 작성하는 minimal default 는 `src/anvyc/templates.py` 의
+# `DEFAULT_ANVYC_YAML` (옵션 값을 비우면 adapter defaults 사용 의도).
+# 본 파일은 그 default 와 동일한 값을 explicit 하게 적은 reference — 사용자가
+# 어떤 옵션이 있는지 한 파일에서 보고 자기 환경에 맞게 조정하기 위한 것.
+
 version: 1
 
 storage:
@@ -119,6 +125,31 @@ tools:
       - "~/.pulumi/config.json"
     exclude:
       - "~/.pulumi/credentials.json"
+
+  # dev_env adapter (v0.7.0+) — direnv/asdf/pyenv/nvm 등 프로젝트별 환경 파일 추적.
+  # default disabled — 사용자가 명시 enable 해야 안전 시작 (project scan 부담 회피).
+  dev_env:
+    enabled: false
+    project_roots:
+      - "~/dev"
+    patterns:
+      - ".envrc"
+      - ".tool-versions"
+      - ".python-version"
+      - ".nvmrc"
+    exclude:
+      - "**/node_modules/**"
+      - "**/.venv/**"
+      - "**/venv/**"
+      - "**/.git/**"
+      - "**/__pycache__/**"
+
+  # shell_prompt adapter (v0.13.0+) — starship / powerlevel10k prompt 설정.
+  shell_prompt:
+    enabled: true
+    include:
+      - "~/.config/starship.toml"
+      - "~/.p10k.zsh"
 
 doctor:
   cross_user:
