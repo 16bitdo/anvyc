@@ -266,6 +266,10 @@ def _print_init_next_steps() -> None:
         "[dim]  AI agent 통합: [cyan]anvyc mcp install[/]   "
         "(Claude Code / Cursor 의 mcp.json 자동 등록)[/]"
     )
+    console.print(
+        "[dim]  shell completion: [cyan]anvyc --install-completion[/]   "
+        "(zsh/bash/fish 자동 완성)[/]"
+    )
 
 
 # wizard 의 도구별 default 값 (file-based adapter 만 file path 입력 필요)
@@ -801,7 +805,7 @@ def scan_secrets(
         False, "--staged", help="현재 cwd 의 git 저장소에서 staged 파일만 스캔."
     ),
     root: Path | None = typer.Option(None, "--root", help="--staged 의 git repo 경로 override."),
-    json_out: bool = typer.Option(False, "--json", help="JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     quiet: bool = typer.Option(
         False, "--quiet", help="발견 시에도 메시지 최소화 (pre-commit hook 용)."
     ),
@@ -1225,7 +1229,7 @@ def config_show(
         help="default 값까지 채워진 effective view (default: raw).",
     ),
     json_out: bool = typer.Option(
-        False, "--json", help="machine-readable JSON (--effective 와 함께 권장)."
+        False, "--json", help="기계 가독 JSON 출력 (--effective 와 함께 권장)."
     ),
     config: Path | None = typer.Option(None, "--config"),
 ) -> None:
@@ -1306,7 +1310,7 @@ def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
 @tools_app.command("list")
 def tools_list(
     config: Path | None = typer.Option(None, "--config"),
-    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
     rows = _collect_tools_rows(config)
@@ -1348,7 +1352,7 @@ def tools_list(
 @project_app.command("show")
 def project_show(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
-    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     reveal_secrets: bool = typer.Option(
         False,
         "--reveal-secrets",
@@ -1442,7 +1446,7 @@ def serve(
 @app.command(rich_help_panel=PANEL_PROJECT)
 def prompt(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 디렉터리 (default: cwd)."),
-    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력 (key→value)."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력 (key→value 매핑)."),
 ) -> None:
     """현재 디렉터리의 계정 라우팅을 shell prompt 용 한 줄로 출력 (v0.13.0+).
 
@@ -1478,7 +1482,7 @@ def prompt(
 @project_app.command("doctor")
 def project_doctor(
     path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
-    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
     """cwd (또는 --path) 의 connection 정합성 8 check.
@@ -1540,7 +1544,7 @@ def project_list(
         "--root",
         help="scan root (반복 가능, 미지정 시 anvyc.yaml project_roots 또는 표준 루트).",
     ),
-    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     reveal_secrets: bool = typer.Option(
         False,
         "--reveal-secrets",
@@ -1601,7 +1605,7 @@ def project_list(
 
 @app.command(rich_help_panel=PANEL_CONTROL)
 def activity(
-    json_out: bool = typer.Option(False, "--json", help="JSON 출력"),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     limit: int | None = typer.Option(None, "--limit", help="최대 표시 session 수"),
     agent: str | None = typer.Option(
         None,
@@ -2313,7 +2317,7 @@ def sync_conflict_list(
     machine_id: str | None = typer.Option(None, "--machine-id"),
     home: Path | None = typer.Option(None, "--home"),
     dev_root: Path | None = typer.Option(None, "--dev-root"),
-    json_out: bool = typer.Option(False, "--json"),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """현재 conflict (sha256 불일치) entries 만 표시 — resolve 후보 인덱스.
 
@@ -2493,7 +2497,7 @@ def workctx_show_cmd(
         "--profile",
         help="cache profile. $WORK_CWD_CACHE env 우선.",
     ),
-    json_out: bool = typer.Option(False, "--json", help="JSON 출력 (스크립트 친화)."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """Current effective work-cwd + cache state.
 
@@ -2587,7 +2591,7 @@ def cost_summary(
     period: str = typer.Option(
         "mtd", "--period", "-p", help="mtd | YYYY-MM."
     ),
-    json_out: bool = typer.Option(False, "--json"),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """캐시 read + 합산 (캐시 비어있으면 즉시 collect)."""
     from anvyc.core.cost.api import summary_json, summary_text
@@ -2615,7 +2619,7 @@ def cost_ledger(
     include_meta: bool = typer.Option(
         False, "--meta", help="measurement_cost / org_id / collected_at 추가."
     ),
-    json_out: bool = typer.Option(False, "--json"),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """period 의 cache rows 표 출력 (CP-13 PR-13B2)."""
     import json as _json
@@ -2670,8 +2674,8 @@ def cost_ledger(
     console.print(table)
 
 
-@cost_app.command("gc")
-def cost_gc(
+@cost_app.command("cleanup")
+def cost_cleanup(
     keep_days: int = typer.Option(
         90,
         "--keep-days",
@@ -2682,9 +2686,9 @@ def cost_gc(
         "--apply",
         help="기본 dry-run. --apply 시 실 삭제 (확인 prompt 없이).",
     ),
-    json_out: bool = typer.Option(False, "--json"),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
-    """raw daily cache retention 정리 (PR-13B2)."""
+    """raw daily cache retention 정리 — cache GC (alias: `gc`, PR-13B2)."""
     import json as _json
 
     from anvyc.core.cost.api import gc_raw_daily
@@ -2708,6 +2712,24 @@ def cost_gc(
         f"{action}: [red]{result['removed_count']}[/red] files, "
         f"kept: [green]{result['kept_count']}[/green] files"
     )
+
+
+@cost_app.command("gc")
+def cost_gc(
+    keep_days: int = typer.Option(
+        90,
+        "--keep-days",
+        help="raw daily cache retention (default 90d, DESIGN §38.5).",
+    ),
+    apply_changes: bool = typer.Option(
+        False,
+        "--apply",
+        help="기본 dry-run. --apply 시 실 삭제 (확인 prompt 없이).",
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """Alias of `anvyc cost cleanup` — cache GC (raw daily cache retention)."""
+    cost_cleanup(keep_days=keep_days, apply_changes=apply_changes, json_out=json_out)
 
 
 # ---------- mcp (PR A — anvyc mcp install/uninstall/status) ----------------

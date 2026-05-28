@@ -209,6 +209,12 @@ anvyc apply           # dry-run plan (default, v0.16.0+)
 anvyc apply --apply   # 실 적용
 ```
 
+선택 — shell 자동완성을 활성화하면 sub-command/flag tab 보완을 받을 수 있다:
+
+```bash
+anvyc --install-completion zsh   # bash / fish 도 동일
+```
+
 ---
 
 ## 7. 디렉터리 구조
@@ -295,9 +301,10 @@ anvyc sync conflict {list|resolve}
                                # cross-machine state sync — control-plane 자산 머신 간 동기화 (CP-6, v0.14.0+)
 anvyc workctx {switch|clear|show}
                                # agent 의 work-cwd explicit override (CP-12, v0.15.0+)
-anvyc cost {collect|summary|ledger|gc}
+anvyc cost {collect|summary|ledger|cleanup}
                                # cost observability — Anthropic (i) / AWS Cost Explorer / GitHub Billing
                                # 통합 합산 + KRW 표시 + EOM forecast + budget 평가 (CP-13, in-flight)
+                               # (cleanup = cache GC; `gc` alias 도 지원)
 
 # --- MCP / Git / SOPS ---
 anvyc serve --mcp              # MCP server (8 read-only tool, Claude Code/Cursor 직접 호출, v0.9.0+)
