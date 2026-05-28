@@ -22,11 +22,12 @@ def _enter_only(n: int) -> str:
 def test_wizard_all_default_writes_yaml(tmp_path: Path) -> None:
     """모든 도구 Y + file default 그대로 + 마지막 Y → yaml 작성."""
     # 10 enable confirm + 6 file prompt (shell/shell_prompt/git/aws/gh/pulumi) +
-    # 2 dev_env prompt (roots, patterns) + 1 final write confirm = 19 Enter
+    # cursor 추가 3 prompt (mask N, gsa "", projects N — 모두 default) +
+    # 1 final write confirm. 안전 여유 → 25 Enter (남으면 무해).
     proc = _anvyc(
         "init", "--interactive",
         "--root", str(tmp_path),
-        input_str=_enter_only(19),
+        input_str=_enter_only(25),
         cwd=tmp_path,
     )
     assert proc.returncode == 0, proc.stderr or proc.stdout
@@ -72,6 +73,9 @@ def test_wizard_partial_disable(tmp_path: Path) -> None:
         "",       # pulumi enable Y
         "",       # pulumi files
         "",       # cursor enable Y
+        "",       # cursor mask_mcp_tokens (default N)
+        "",       # cursor globalStorage allowlist (default empty)
+        "",       # cursor projects.enabled (default N)
         "",       # claude enable Y
         "n",      # iterm2 disable
         "",       # dev_env (default n)
@@ -92,6 +96,72 @@ def test_wizard_partial_disable(tmp_path: Path) -> None:
     assert tools["iterm2"]["enabled"] is False
     assert tools["shell"]["enabled"] is True
     assert tools["aws"]["enabled"] is True
+
+
+def test_wizard_cursor_advanced_options(tmp_path: Path) -> None:
+    """cursor 의 mask_mcp_tokens / globalStorage_allowlist / projects.enabled 활성."""
+    answers = [
+        "n",                 # shell disable
+        "n",                 # shell_prompt disable
+        "n",                 # git disable
+        "n",                 # aws disable
+        "n",                 # gh disable
+        "n",                 # pulumi disable
+        "",                  # cursor enable Y
+        "y",                 # cursor mask_mcp_tokens YES
+        "anysphere.cursor-mcp, ms-python.python",  # cursor gsa csv
+        "y",                 # cursor projects.enabled YES
+        "~/dev, ~/workspace",  # cursor projects.roots csv
+        "n",                 # claude disable
+        "n",                 # iterm2 disable
+        "n",                 # dev_env disable
+        "",                  # final write confirm Y
+    ]
+    input_str = "\n".join(answers) + "\n"
+
+    proc = _anvyc(
+        "init", "--interactive",
+        "--root", str(tmp_path),
+        input_str=input_str,
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    parsed = yaml.safe_load((tmp_path / ".anvyc" / "anvyc.yaml").read_text())
+    cursor = parsed["tools"]["cursor"]
+    assert cursor["enabled"] is True
+    assert cursor["global"]["mask_mcp_tokens"] is True
+    assert cursor["ide"]["global_storage_allowlist"] == [
+        "anysphere.cursor-mcp",
+        "ms-python.python",
+    ]
+    assert cursor["projects"]["enabled"] is True
+    assert cursor["projects"]["roots"] == ["~/dev", "~/workspace"]
+
+
+def test_wizard_cursor_defaults_minimal(tmp_path: Path) -> None:
+    """cursor enable + 모든 추가 prompt default → entry 에 minimal cursor schema 박힘."""
+    answers = [
+        "n", "n", "n", "n", "n", "n",   # 6 file-based 도구 disable
+        "",                              # cursor enable Y
+        "",                              # cursor mask default N
+        "",                              # cursor gsa default empty
+        "",                              # cursor projects default N
+        "n", "n", "n",                   # claude / iterm2 / dev_env disable
+        "",                              # final write Y
+    ]
+    proc = _anvyc(
+        "init", "--interactive",
+        "--root", str(tmp_path),
+        input_str="\n".join(answers) + "\n",
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    cursor = yaml.safe_load((tmp_path / ".anvyc" / "anvyc.yaml").read_text())["tools"]["cursor"]
+    assert cursor["enabled"] is True
+    assert cursor["global"]["mask_mcp_tokens"] is False
+    assert cursor["ide"]["global_storage_allowlist"] == []
+    assert cursor["projects"]["enabled"] is False
+    assert cursor["projects"]["roots"] == []
 
 
 def test_wizard_mutual_exclusion_with_from_git(tmp_path: Path) -> None:
