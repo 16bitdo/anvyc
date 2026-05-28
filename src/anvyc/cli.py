@@ -334,6 +334,38 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
                 default=", ".join(default_files),
             )
             entry["files"] = _parse_csv(answer, default_files)
+        elif tool == "cursor":
+            # Cursor 3-layer (DESIGN §15.1) 의 핵심 토글만 노출 — 나머지는 adapter defaults.
+            mask = typer.confirm(
+                "  Layer A: mask MCP tokens (mcp.json 의 token 자동 마스킹, v0.2+)?",
+                default=False,
+            )
+            gsa_ans = typer.prompt(
+                "  Layer B: globalStorage allowlist csv (빈 입력 = 없음)",
+                default="",
+            )
+            gsa = _parse_csv(gsa_ans, [])
+            proj_enabled = typer.confirm(
+                "  Layer C: enable project-local cursor configs (~/<root>/.cursor)?",
+                default=False,
+            )
+            proj_cfg: dict[str, Any] = {"enabled": proj_enabled, "roots": []}
+            if proj_enabled:
+                proj_roots_ans = typer.prompt(
+                    "    project_roots",
+                    default="~/dev",
+                )
+                proj_cfg["roots"] = _parse_csv(proj_roots_ans, ["~/dev"])
+            entry["global"] = {"mask_mcp_tokens": mask}
+            entry["ide"] = {"global_storage_allowlist": gsa}
+            entry["projects"] = proj_cfg
+        elif tool == "claude":
+            console.print(
+                "  [dim]advanced (include/exclude) 는 yaml 직접 편집 권장 — adapter defaults 사용[/]"
+            )
+        elif tool == "iterm2":
+            # mode 는 'safe' 단일 (DESIGN §14.2). 추가 prompt 불요 — adapter default 가 채움.
+            pass
         elif tool == "dev_env":
             roots_ans = typer.prompt(
                 "  project_roots",
