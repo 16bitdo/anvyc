@@ -175,6 +175,33 @@ def test_wizard_mutual_exclusion_with_from_git(tmp_path: Path) -> None:
     assert "동시 사용 불가" in proc.stdout or "동시 사용 불가" in proc.stderr
 
 
+def test_wizard_prompts_show_enter_default_hint(tmp_path: Path) -> None:
+    """모든 confirm prompt 가 'Enter=Yes' / 'Enter=No' 힌트로 default 를 명시한다.
+
+    25 Enter 입력 시 cursor 도 enable 되므로 Layer A / Layer C 도 출력된다.
+    기대 카운트:
+      - Enter=Yes: 9 (shell/shell_prompt/git/aws/gh/pulumi/cursor/claude/iterm2) + 1 (Write) = 10
+      - Enter=No:  1 (dev_env) + 2 (Layer A, Layer C) = 3
+    """
+    proc = _anvyc(
+        "init", "--interactive",
+        "--root", str(tmp_path),
+        input_str=_enter_only(25),
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    out = proc.stdout
+    assert out.count("(Enter=Yes)") == 10, (
+        f"expected 10 Enter=Yes prompts, got {out.count('(Enter=Yes)')}\n--- stdout ---\n{out}"
+    )
+    assert out.count("(Enter=No)") == 3, (
+        f"expected 3 Enter=No prompts, got {out.count('(Enter=No)')}\n--- stdout ---\n{out}"
+    )
+    # dev_env 만 Enter=No 인 확인 (회귀 가드)
+    assert "Enable dev_env? (Enter=No)" in out
+    assert "Enable shell? (Enter=Yes)" in out
+
+
 def test_wizard_existing_yaml_without_force_fails(tmp_path: Path) -> None:
     """기존 anvyc.yaml 존재 + --force 없음 → exit 1."""
     anvyc_dir = tmp_path / ".anvyc"

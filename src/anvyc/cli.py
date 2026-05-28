@@ -307,6 +307,16 @@ def _parse_csv(answer: str, default: list[str]) -> list[str]:
     return [p.strip() for p in a.split(",") if p.strip()]
 
 
+def _confirm(prompt: str, *, default: bool) -> bool:
+    """typer.confirm wrapper — prompt 에 'Enter=Yes/No' 힌트를 명시.
+
+    Why: [Y/n] 의 대소문자만으로 default 를 전달하면 비숙련 사용자가
+    Enter 시 적용 값을 즉시 알기 어렵다.
+    """
+    hint = "Enter=Yes" if default else "Enter=No"
+    return typer.confirm(f"{prompt} ({hint})", default=default)
+
+
 def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
     """대화형 wizard — 10 도구의 enable/path 를 prompt 한 후 yaml 작성."""
     import yaml as _yaml
@@ -322,7 +332,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
     tools_cfg: dict[str, dict[str, Any]] = {}
     for tool in _WIZARD_TOOLS_ORDER:
         default_enabled = tool != "dev_env"  # dev_env 은 default disabled (안전)
-        enabled = typer.confirm(f"Enable {tool}?", default=default_enabled)
+        enabled = _confirm(f"Enable {tool}?", default=default_enabled)
         entry: dict[str, Any] = {"enabled": enabled}
         if not enabled:
             tools_cfg[tool] = entry
@@ -336,7 +346,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
             entry["files"] = _parse_csv(answer, default_files)
         elif tool == "cursor":
             # Cursor 3-layer (DESIGN §15.1) 의 핵심 토글만 노출 — 나머지는 adapter defaults.
-            mask = typer.confirm(
+            mask = _confirm(
                 "  Layer A: mask MCP tokens (mcp.json 의 token 자동 마스킹, v0.2+)?",
                 default=False,
             )
@@ -345,7 +355,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
                 default="",
             )
             gsa = _parse_csv(gsa_ans, [])
-            proj_enabled = typer.confirm(
+            proj_enabled = _confirm(
                 "  Layer C: enable project-local cursor configs (~/<root>/.cursor)?",
                 default=False,
             )
@@ -396,7 +406,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
     console.print("\n[bold]preview:[/]")
     console.print(Syntax(yaml_text, "yaml", line_numbers=False))
 
-    confirm_write = typer.confirm(f"\nWrite to {config_path}?", default=True)
+    confirm_write = _confirm(f"\nWrite to {config_path}?", default=True)
     if not confirm_write:
         console.print("[yellow]aborted — nothing written[/]")
         raise typer.Exit(code=0)
