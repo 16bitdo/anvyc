@@ -153,8 +153,17 @@ def _read_mcp_json(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _make_anvyc_entry() -> dict[str, Any]:
-    return {"command": ANVYC_MCP_COMMAND, "args": list(ANVYC_MCP_ARGS)}
+def _make_anvyc_entry(command_path: str | None = None) -> dict[str, Any]:
+    """anvyc mcp entry dict. command_path 가 set 이면 절대 경로로 박힘 (PATH 의존 회피).
+
+    - command_path=None (default): `{"command": "anvyc", "args": [...]}` — PATH lookup.
+    - command_path="/path/to/anvyc": IDE 가 PATH 와 다른 env 에서 spawn 해도 실행 가능.
+      dev-install (`~/.local/bin/anvyc`) 또는 multi-account 환경에서 robust.
+    """
+    return {
+        "command": command_path or ANVYC_MCP_COMMAND,
+        "args": list(ANVYC_MCP_ARGS),
+    }
 
 
 def _existing_other_servers(data: dict[str, Any] | None) -> list[str]:
@@ -193,6 +202,7 @@ class McpInstallPlan:
     will_write_new_file: bool
     existing_servers: list[str]
     backup_path: Path | None  # `.bak` (current_state == "present_diff" 일 때만 set)
+    command_path: str | None = None  # entry 의 `command` 값 (None → "anvyc" PATH lookup)
 
 
 @dataclass(frozen=True)
@@ -209,48 +219,94 @@ def plan_install(
     home: Path | None = None,
     claude_config_dir: str | None = None,
     cwd: Path | None = None,
+    command_path: str | None = None,
+    claude_config_dirs: list[str] | None = None,
 ) -> list[McpInstallPlan]:
-    """install 의 dry-run plan — 파일 변경 없음."""
+    """install 의 dry-run plan — 파일 변경 없음.
+
+    - `command_path`: set 이면 entry 의 `command` 가 절대 경로로 박힘 (PATH 의존 회피).
+    - `claude_config_dirs`: set 이면 IDE_CLAUDE 항목을 각 dir 의 mcp.json 으로 batch
+      생성. multi-account (`~/.claude` + `~/.claude-edward` 등) 동시 등록 시 사용.
+      이 옵션이 set 이면 단일 `claude_config_dir` 는 무시되고 ides 의 claude 도
+      각 dir 로 펼쳐짐.
+    """
     plans: list[McpInstallPlan] = []
-    target_entry = _make_anvyc_entry()
+    target_entry = _make_anvyc_entry(command_path=command_path)
 
     for ide in ides:
-        path = _config_path_for(ide, scope=scope, home=home, claude_config_dir=claude_config_dir, cwd=cwd)
-        data = _read_mcp_json(path)
-        existing = _existing_other_servers(data)
-        anvyc_existing = _anvyc_entry_in(data)
-
-        if data is None:
-            state = "missing"
-            backup = None
-        elif anvyc_existing is None:
-            state = "absent_entry"
-            backup = None
-        elif _entries_equal(anvyc_existing, target_entry):
-            state = "present_same"
-            backup = None
-        else:
-            state = "present_diff"
-            backup = path.with_name(path.name + ".bak")
-
+        if ide == IDE_CLAUDE and claude_config_dirs:
+            for dir_path in claude_config_dirs:
+                plans.append(
+                    _build_plan(
+                        ide=ide,
+                        scope=scope,
+                        home=home,
+                        claude_config_dir=dir_path,
+                        cwd=cwd,
+                        target_entry=target_entry,
+                    )
+                )
+            continue
         plans.append(
-            McpInstallPlan(
-                target_path=path,
+            _build_plan(
                 ide=ide,
                 scope=scope,
-                current_state=state,
-                will_write_new_file=(data is None),
-                existing_servers=existing,
-                backup_path=backup,
+                home=home,
+                claude_config_dir=claude_config_dir,
+                cwd=cwd,
+                target_entry=target_entry,
             )
         )
 
     return plans
 
 
+def _build_plan(
+    *,
+    ide: str,
+    scope: str,
+    home: Path | None,
+    claude_config_dir: str | None,
+    cwd: Path | None,
+    target_entry: dict[str, Any],
+) -> McpInstallPlan:
+    """plan_install 의 단일 (ide, claude_config_dir) 쌍 처리 — multi-account batch 시 재사용."""
+    path = _config_path_for(ide, scope=scope, home=home, claude_config_dir=claude_config_dir, cwd=cwd)
+    data = _read_mcp_json(path)
+    existing = _existing_other_servers(data)
+    anvyc_existing = _anvyc_entry_in(data)
+
+    if data is None:
+        state = "missing"
+        backup = None
+    elif anvyc_existing is None:
+        state = "absent_entry"
+        backup = None
+    elif _entries_equal(anvyc_existing, target_entry):
+        state = "present_same"
+        backup = None
+    else:
+        state = "present_diff"
+        backup = path.with_name(path.name + ".bak")
+
+    cmd = target_entry.get("command")
+    return McpInstallPlan(
+        target_path=path,
+        ide=ide,
+        scope=scope,
+        current_state=state,
+        will_write_new_file=(data is None),
+        existing_servers=existing,
+        backup_path=backup,
+        command_path=cmd if cmd != ANVYC_MCP_COMMAND else None,
+    )
+
+
 def apply_install(plans: list[McpInstallPlan]) -> list[McpInstallResult]:
-    """plan_install 결과를 실 적용 — atomic write."""
-    target_entry = _make_anvyc_entry()
+    """plan_install 결과를 실 적용 — atomic write.
+
+    각 plan 의 `command_path` (set 이면 absolute path) 가 entry 의 command 에 박힘.
+    """
     results: list[McpInstallResult] = []
 
     for plan in plans:
@@ -258,6 +314,7 @@ def apply_install(plans: list[McpInstallPlan]) -> list[McpInstallResult]:
             results.append(McpInstallResult(plan=plan, written=False, backup_written=False))
             continue
 
+        target_entry = _make_anvyc_entry(command_path=plan.command_path)
         path = plan.target_path
         path.parent.mkdir(parents=True, exist_ok=True)
 

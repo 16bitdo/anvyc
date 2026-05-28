@@ -316,3 +316,75 @@ def test_collect_status_via_claude_config_dir(tmp_path: Path) -> None:
     by_ide = {r.ide: r for r in rows}
     assert by_ide[IDE_CLAUDE].path == custom.resolve() / "mcp.json"
     assert by_ide[IDE_CLAUDE].has_anvyc is True
+
+
+# ---------- new in PR-C: --absolute-path / --claude-config-dirs ------------
+
+
+def test_plan_install_command_path_propagates(tmp_path: Path) -> None:
+    """command_path 가 plan + apply 의 entry 에 박힘 (PATH 의존 회피)."""
+    abs_path = "/opt/homebrew/bin/anvyc"
+    plans = plan_install([IDE_CURSOR], home=tmp_path, command_path=abs_path)
+    assert plans[0].command_path == abs_path
+
+    apply_install(plans)
+    data = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert data["mcpServers"][ANVYC_MCP_KEY]["command"] == abs_path
+    assert data["mcpServers"][ANVYC_MCP_KEY]["args"] == list(ANVYC_MCP_ARGS)
+
+
+def test_plan_install_command_path_present_same_with_matching_abs(tmp_path: Path) -> None:
+    """기존 mcp.json 의 command 가 command_path 와 동일 → present_same (write 안 함)."""
+    abs_path = "/opt/homebrew/bin/anvyc"
+    (tmp_path / ".cursor").mkdir()
+    cfg = tmp_path / ".cursor" / "mcp.json"
+    cfg.write_text(json.dumps({"mcpServers": {ANVYC_MCP_KEY: {"command": abs_path, "args": list(ANVYC_MCP_ARGS)}}}))
+    plans = plan_install([IDE_CURSOR], home=tmp_path, command_path=abs_path)
+    assert plans[0].current_state == "present_same"
+
+
+def test_plan_install_multi_claude_config_dirs(tmp_path: Path) -> None:
+    """multi-account batch — IDE_CLAUDE 가 각 dir 마다 plan 으로 펼쳐짐."""
+    dir_a = tmp_path / ".claude"
+    dir_b = tmp_path / ".claude-edward"
+    dir_a.mkdir()
+    dir_b.mkdir()
+
+    plans = plan_install(
+        [IDE_CLAUDE, IDE_CURSOR],
+        home=tmp_path,
+        claude_config_dirs=[str(dir_a), str(dir_b)],
+    )
+    # 결과: claude 2 plan (각 dir) + cursor 1 plan = 3
+    claude_plans = [p for p in plans if p.ide == IDE_CLAUDE]
+    cursor_plans = [p for p in plans if p.ide == IDE_CURSOR]
+    assert len(claude_plans) == 2
+    assert len(cursor_plans) == 1
+    assert {p.target_path for p in claude_plans} == {
+        dir_a.resolve() / "mcp.json",
+        dir_b.resolve() / "mcp.json",
+    }
+
+
+def test_apply_install_multi_claude_writes_both(tmp_path: Path) -> None:
+    """multi-account batch apply — 양쪽 dir 의 mcp.json 모두 작성."""
+    dir_a = tmp_path / ".claude"
+    dir_b = tmp_path / ".claude-edward"
+    dir_a.mkdir()
+    dir_b.mkdir()
+
+    plans = plan_install(
+        [IDE_CLAUDE],
+        home=tmp_path,
+        claude_config_dirs=[str(dir_a), str(dir_b)],
+    )
+    apply_install(plans)
+
+    for d in (dir_a, dir_b):
+        cfg = d / "mcp.json"
+        assert cfg.is_file()
+        data = json.loads(cfg.read_text())
+        assert data["mcpServers"][ANVYC_MCP_KEY] == {
+            "command": ANVYC_MCP_COMMAND,
+            "args": list(ANVYC_MCP_ARGS),
+        }
