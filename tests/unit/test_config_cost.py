@@ -131,7 +131,10 @@ def test_adapter_registry_passes_accounts_override(
 
     # load_anvyc_config 의 candidate path 가 yaml_dir/anvyc.yaml 발견하도록
     # cwd 변경 (candidate path 의 우선순위 = CWD/anvyc.yaml).
+    # HOME 도 함께 isolate — `_candidate_paths` 의 `~/.anvyc/anvyc.yaml` fallback
+    # 이 호스트 사용자의 실 파일을 읽지 못하도록 (CI 환경엔 없지만 dev 머신엔 있을 수 있음).
     monkeypatch.chdir(yaml_dir)
+    monkeypatch.setenv("HOME", str(yaml_dir))
 
     from anvyc.core.cost.adapters import _build_registry  # noqa: PLC0415
     from anvyc.core.cost.adapters.github import GitHubBillingAdapter  # noqa: PLC0415
@@ -156,8 +159,11 @@ def test_adapter_registry_config_absent_falls_back_to_auto_discover(
     if iutil.find_spec("httpx") is None:
         pytest.skip("httpx not installed")
 
-    # yaml_dir 안에 anvyc.yaml 없음 — cwd 변경해도 load_anvyc_config 가 빈 cfg
+    # yaml_dir 안에 anvyc.yaml 없음 — cwd 변경해도 load_anvyc_config 가 빈 cfg.
+    # HOME 도 isolate — `~/.anvyc/anvyc.yaml` fallback 이 호스트 사용자의 실 파일을
+    # 읽으면 `gh._accounts_override` 가 None 아닌 leak 된 값으로 채워짐 (CI 무관, dev 머신 한정).
     monkeypatch.chdir(yaml_dir)
+    monkeypatch.setenv("HOME", str(yaml_dir))
 
     from anvyc.core.cost.adapters import _build_registry  # noqa: PLC0415
     from anvyc.core.cost.adapters.github import GitHubBillingAdapter  # noqa: PLC0415
