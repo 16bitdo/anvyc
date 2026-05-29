@@ -91,7 +91,7 @@ class SecretBackend(Protocol):
 
 | backend | add (입력 위임) | reference | resolve_cmd | verify (재사용) |
 |---|---|---|---|---|
-| `op` | `op item create` (op 자체 프롬프트/biometric) | `op://v/i/f` | `op read --no-newline <ref>` | `op-references-valid` (`checks/op_references.py`) |
+| `op` | `--generate`→`op item create --generate-password` (op이 난수 생성) / `--ref` 기존 item 등록 | `op://v/i/f` | `op read --no-newline <ref>` | `op-references-valid` (`checks/op_references.py`) |
 | `sops` | `sops edit <file>` (`$EDITOR` 보호 버퍼) | `sops:<file>#<key>` | `sops -d --extract '["<key>"]' <file>` | `sops-keys-available` (`checks/sops_keys.py`) |
 | `keychain` | `security add-generic-password`(stdin) / `keyring` | `keychain:<service>/<account>` | `security find-generic-password -w` (biometric) | 항목 존재 확인 |
 | `aws-vault` | `aws-vault add <profile>` (자체 프롬프트) | `aws-vault:<profile>` | `aws-vault exec <profile> -- …` | `project-aws-profile-mapping` (`~/.aws/config` 정합) |
@@ -99,15 +99,46 @@ class SecretBackend(Protocol):
 > 구현 메모: `op read` 의 stdout 폐기 패턴은 `checks/op_references.py:50-52` 에 이미
 > 존재 — `resolve_cmd` 의 "값 비캡처" 계약과 동일 정신.
 
+### 3.1 Phase 2 add / get 위임 메커니즘 (확정 2026-05-29)
+
+**불변식 유지**: Phase 2 는 anvyc 가 secret 값을 메모리·argv·temp 어디에도 보유하지
+않는다. 값 입력은 backend 네이티브 경로에 위임하며, **기존 값의 직접 타이핑
+(hidden-input)은 Phase 2 범위 밖 — Phase 3(passthrough)** 이다. (op 의 assignment
+statement 는 argv 노출, JSON 템플릿 stdin 은 anvyc 가 값 구성 → 둘 다 불변식 위반이라
+Phase 2 에서 금지.)
+
+#### add — `anvyc secret add <name> --backend <b> [핸들옵션] [--wire <dotfile>] [--apply]`
+
+| backend | Phase 2 입력 위임 | anvyc 가 하는 일 (값 미접촉) |
+|---|---|---|
+| `op` | `--generate` → `op item create --generate-password`(op이 난수 생성·저장) / `--ref op://…` (기존 item) | 결과 `op://` reference 등록 + `op read` exit code 검증 |
+| `sops` | `sops edit <file>` (`$EDITOR` 보호 버퍼 — sops가 암복호화, 값은 sops tmpfs 에만) | 편집 종료 후 `file`(+`key`) 등록 + SOPS metadata 검증 |
+| `keychain` / `aws-vault` | Phase 2.5 (`security add-generic-password` 대화형 / `aws-vault add` 자체 프롬프트) | — (2.5) |
+
+- **dry-run 기본**: plan(실행될 backend 명령 + 등록될 entry) 출력 후 종료. `--apply` 로 실행.
+- 성공 시 `anvyc.yaml secrets.entries` 에 entry 추가 → `secret-registry-valid` 1회 자동 검증.
+  anvyc.yaml 수정 전 local-backup (CP-4 §7 패턴).
+- `--wire <dotfile>` 는 reference 를 dotfile 에 삽입(최소 형태). 스타일/.envrc 본격 주입은 `inject-wire`(Phase 2.5).
+
+#### get — `anvyc secret get <name> [--reveal]`
+
+- 기본 sink = **클립보드 + 자동 만료**: backend resolve 명령 stdout → `pbcopy` stdin **직접 파이프**
+  (anvyc Python 은 값 미캡처/미문자열화). `secrets.get.clipboard_clear_seconds`(기본 20) 후 클립보드를
+  빈 값으로 덮어 누출 최소화.
+- **비-TTY(파이프/CI) → 거부** (`secret get | cat` 같은 캡처 차단). `--reveal` 은 TTY 한정 opt-in + 경고.
+- resolve 명령: op `op read --no-newline op://…` / sops `sops -d --extract '["<key>"]' <file>`(inplace)·`sops -d <file>`(binary).
+  keychain/aws-vault 는 Phase 2.5. pbcopy 부재(Linux) → `--reveal` 안내 + 거부(xclip/wl-copy 탐지는 polish).
+- 접근 감사: `core/audit_log.py` redacted-event 재사용 — `name`+`ts` 만 (§5).
+
 ## 4. 명령 contract (CP-15 시리즈)
 
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
-| `anvyc secret list [--json]` | 1/N | read-only | 레지스트리 entry + 각 backend `verify()` 상태(`ok`/`expiring`/`unresolved`). **값 미출력.** |
-| doctor `secret-registry-valid` | 1/N | read-only | 모든 entry `verify()` 묶음. unresolved→WARNING, 미지 backend→INFO. CP-3 scheduler 자연 포함. |
-| `anvyc secret add <name> --backend <b> [핸들 옵션] [--dry-run]` | 2/N | write (비-secret) | backend 네이티브 입력 호출 → 핸들 회수 → 레지스트리 등록 + (옵션) dotfile 와이어링. **dry-run 기본**, local-backup 안전망. |
-| `anvyc secret get <name> [--clipboard \| --reveal]` | 3/N | read (게이팅) | 기본 클립보드 + 자동 만료, stdout 미출력. `--reveal` opt-in(TTY 한정). 접근 감사(§5). |
-| `anvyc secret inject-wire --target <.envrc> --name <name>` | 4/N | write (비-secret) | JIT 주입 구문 생성(dev_env 연계). reference 만 기록, 값 아님. |
+| `anvyc secret list [--json]` | Phase 1 ✓ | read-only | 레지스트리 entry + 각 backend `verify()` 상태(`ok`/`expiring`/`unresolved`). **값 미출력.** |
+| doctor `secret-registry-valid` | Phase 1 ✓ | read-only | 모든 entry `verify()` 묶음. unresolved→WARNING, 미지 backend→INFO. CP-3 scheduler 자연 포함. |
+| `anvyc secret add <name> --backend <b> [--generate\|--ref\|--file] [--wire <dotfile>] [--apply]` | **Phase 2** | write (비-secret) | op: `--generate`/`--ref`, sops: `sops edit` 위임 → 핸들 등록. **값 미접촉**, dry-run 기본, local-backup 안전망. §3.1. |
+| `anvyc secret get <name> [--reveal]` | **Phase 2** | read (게이팅) | 기본 클립보드(tool→pbcopy 직접 파이프)+자동 만료, stdout 미출력, 비-TTY 거부. `--reveal` TTY opt-in. §3.1/§5. |
+| `anvyc secret inject-wire --target <.envrc> --name <name>` | Phase 2.5 | write (비-secret) | JIT 주입 구문 생성(dev_env 연계). reference 만 기록, 값 아님. keychain/aws-vault backend 동반. |
 | `anvyc secret add … --passthrough` | N/N | **destructive 경계** | getpass→stdin 무보관 스트림. **거버넌스 PR 선행** + opt-in 플래그 + 런타임 경고(§8). |
 
 각 `add` 는 §2 schema 의 entry 한 건을 추가/갱신하며, 성공 직후 `secret-registry-valid`
@@ -191,4 +222,5 @@ class SecretBackend(Protocol):
 |---|---|
 | draft 2026-05-29 | CP-15 axis 신설 — Broker 패턴 + Registry schema v1 + SecretBackend protocol(4 backend) + 명령 contract + phased 실행 계획. DESIGN §39 등재. |
 | fix 2026-05-29 | axis 번호 CP-14 → **CP-15** 재배정. CP-14 는 rbr `metadata/control-plane-roadmap.yaml` / `docs/control-plane-v7-l4-execution-engine.md` §10 에서 "실행 엔진(L4 autopilot executor)" 축으로 선예약됨 — 충돌 회피. rbr ROADMAP §4 + manifest 정식 등록 동반. |
-| feat 2026-05-29 | **Phase 1 구현** — `secrets:` Registry schema v1(`core/config.py`) + `core/secrets.py`(SecretBackend verify, 값 미캡처) + `anvyc secret list [--json] [--no-probe]` + `secret-registry-valid` doctor check + `examples/anvyc.yaml` 샘플 + unit tests(16건). read-only, 불변식 무수정. |
+| feat 2026-05-29 | **Phase 1 구현** — `secrets:` Registry schema v1(`core/config.py`) + `core/secrets.py`(SecretBackend verify, 값 미캡처) + `anvyc secret list [--json] [--no-probe]` + `secret-registry-valid` doctor check + `examples/anvyc.yaml` 샘플 + unit tests(16건). read-only, 불변식 무수정. (anvyc#113) |
+| design 2026-05-29 | **Phase 2 설계 확정** (§3.1) — add: op `--generate`/`--ref` + sops `sops edit`($EDITOR) 위임(값 미접촉, hidden-input 은 Phase 3) / get: 클립보드(tool→pbcopy 직접 파이프)+자동 만료, `--reveal` TTY-only, 비-TTY 거부. op CLI 2.34 / sops 3.13 실측 기반. |
