@@ -1,4 +1,4 @@
-# CP-14 — Secret Broker 설계
+# CP-15 — Secret Broker 설계
 
 > 사용 편의성을 높이면서 **"anvyc 는 secret 평문을 보유하지 않는다"** 불변식을
 > 유지하는 secret 관리 axis. 값 custody 는 외부 도구(op / sops / keychain /
@@ -99,7 +99,7 @@ class SecretBackend(Protocol):
 > 구현 메모: `op read` 의 stdout 폐기 패턴은 `checks/op_references.py:50-52` 에 이미
 > 존재 — `resolve_cmd` 의 "값 비캡처" 계약과 동일 정신.
 
-## 4. 명령 contract (CP-14 시리즈)
+## 4. 명령 contract (CP-15 시리즈)
 
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
@@ -176,7 +176,7 @@ class SecretBackend(Protocol):
 권장 진행 순서: **Phase 1 → 2 → 2.5**(불변식 무수정 구간에서 최대 UX 확보) 후,
 필요성이 입증되면 거버넌스 게이트를 거쳐 Phase 3.
 
-## 10. Out of scope (CP-14 axis 완결 기준)
+## 10. Out of scope (CP-15 axis 완결 기준)
 
 - anvyc 자체 secret store/vault 구현 — Broker 원칙상 **의도적 제외**.
 - 비대화형(CI) hidden input — op/sops/aws-vault 직접 사용 권장.
@@ -189,4 +189,5 @@ class SecretBackend(Protocol):
 
 | 버전 | 변경 |
 |---|---|
-| draft 2026-05-29 | CP-14 axis 신설 — Broker 패턴 + Registry schema v1 + SecretBackend protocol(4 backend) + 명령 contract + phased 실행 계획. DESIGN §39 등재. |
+| draft 2026-05-29 | CP-15 axis 신설 — Broker 패턴 + Registry schema v1 + SecretBackend protocol(4 backend) + 명령 contract + phased 실행 계획. DESIGN §39 등재. |
+| fix 2026-05-29 | axis 번호 CP-14 → **CP-15** 재배정. CP-14 는 rbr `metadata/control-plane-roadmap.yaml` / `docs/control-plane-v7-l4-execution-engine.md` §10 에서 "실행 엔진(L4 autopilot executor)" 축으로 선예약됨 — 충돌 회피. rbr ROADMAP §4 + manifest 정식 등록 동반. |
