@@ -462,6 +462,11 @@ def _summary_counts(report: DoctorReport) -> dict[str, int]:
     return {s.value: len(buckets[s]) for s in Severity}
 
 
+def _severity_rank(s: Severity) -> int:
+    """정렬용 순위 — 클수록 심각 (Severity 정의 순서: info … critical)."""
+    return list(Severity).index(s)
+
+
 def _print_summary(report: DoctorReport) -> None:
     buckets = report.by_severity()
     total = sum(len(v) for v in buckets.values())
@@ -480,8 +485,11 @@ def _print_summary(report: DoctorReport) -> None:
         table.add_row(f"[{style}]{s.value}[/]", str(cnt))
     console.print(table)
 
-    # 상위 5건 location 노출
-    head = report.results[:5]
+    # 상위 5건 노출 — severity 내림차순(critical→warning→info) 정렬해 심각 항목이
+    # info noise 에 묻히지 않게 한다. blocking(warning↑) finding 은 remediation
+    # (suggestion)을 한 줄로 함께 표시해 기본 출력만으로 조치법을 알 수 있게 한다.
+    ordered = sorted(report.results, key=lambda r: _severity_rank(r.severity), reverse=True)
+    head = ordered[:5]
     if head:
         console.print("\n[bold]Top findings:[/]")
         for r in head:
@@ -490,8 +498,10 @@ def _print_summary(report: DoctorReport) -> None:
             console.print(
                 f"  [{_severity_style(r.severity)}]{r.severity.value}[/] {loc}{line} — {r.message}"
             )
-        if len(report.results) > 5:
-            console.print(f"  ... and {len(report.results) - 5} more (use --verbose)")
+            if r.severity.is_blocking and r.suggestion:
+                console.print(f"    [dim]→ {r.suggestion}[/]")
+        if len(ordered) > 5:
+            console.print(f"  ... and {len(ordered) - 5} more (use --verbose)")
 
 
 def _print_verbose(report: DoctorReport) -> None:
