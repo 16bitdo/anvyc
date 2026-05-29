@@ -138,9 +138,31 @@ anvyc --version  # X.Y.Z
 
 ---
 
-## 추후 자동화 후보 (v0.7+)
+## 자동화 (구현됨 — url+sha256 PR)
 
-- GitHub Actions 가 release 후 자동으로 tap repo 의 Formula 도 갱신 (PR
-  생성) — 현재는 PAT 권한 보안 검토 필요로 수동 유지.
-- `poet` 또는 `dottie` 같은 도구를 release.yml 에 통합하여 resource sha256
-  자동 산출.
+`release.yml` 의 **`update-homebrew-tap`** job 이 `vX.Y.Z` tag release 후 tap repo
+(`16bitdo/homebrew-anvyc`) Formula 의 **url + 최상위 sha256** 만 자동 bump 하여 **PR 을
+생성**한다. 위 §1~§3 의 수동 절차를 대체한다 (§4 resource 갱신은 여전히 수동 — 아래 참고).
+
+### 활성화 (1회 설정)
+
+1. **fine-grained PAT 생성** — `16bitdo/homebrew-anvyc` repo 에 대해 **Contents: write**
+   + **Pull requests: write** 권한. (anvyc repo 의 기본 `GITHUB_TOKEN` 은 다른 repo 에
+   접근 불가하므로 PAT 필요.)
+2. anvyc repo 의 **Settings → Secrets and variables → Actions** 에 `HOMEBREW_TAP_TOKEN`
+   으로 등록.
+
+> secret 미설정 시 job 은 `::notice` 로그 후 **graceful skip** — release 자체엔 영향 없고,
+> 설정하면 다음 release 부터 자동 활성화된다.
+
+### 동작 + 한계
+
+- bump 대상: `url` (v태그) + **최상위 `sha256`** (release `SHA256SUMS` 의 sdist 값). PR 로
+  제안하므로 머지 전 검토 가능.
+- **resource block 은 자동 갱신하지 않는다.** runtime `dependencies`(pyproject) 가 바뀐
+  release 면 PR 머지 전 §4 절차로 resource `url`+`sha256` 을 수동 보강해야
+  `brew install` 이 성공한다 (PR body 에 경고 포함).
+
+### 추후 후보
+
+- `poet` / `dottie` 를 release.yml 에 통합해 resource sha256 자동 산출 → resource 갱신까지 완전 자동화.

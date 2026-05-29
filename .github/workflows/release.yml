@@ -6,8 +6,11 @@ name: Release
 # runner 는 ubuntu-latest (1× 과금) — anvyc 는 순수 Python 패키지라
 # `uv build` 산출물(anvyc-*-py3-none-any.whl + sdist)이 플랫폼 무관이다.
 #
-# tap repo 의 Formula 갱신은 docs/homebrew-publishing.md 의 follow-up 절차로
-# 사용자가 수동 수행한다 (PAT 권한 보안 검토 후 자동화는 v0.7+).
+# tap repo(16bitdo/homebrew-anvyc) 의 Formula(url+sha256) 갱신은 release 후
+# update-homebrew-tap job 이 PR 로 자동 제안한다 — secrets.HOMEBREW_TAP_TOKEN
+# (tap repo 에 contents+pull-requests write 권한의 fine-grained PAT) 설정 시 활성화,
+# 미설정 시 graceful skip(release 자체엔 영향 없음). resource block(의존 변경 시) 은
+# 자동 갱신하지 않으므로 PR 머지 전 수동 보강한다 (docs/homebrew-publishing.md §4).
 
 on:
   push:
@@ -21,6 +24,8 @@ jobs:
   release:
     name: Build and publish release artifacts
     runs-on: ubuntu-latest
+    outputs:
+      sdist_sha256: ${{ steps.sums.outputs.sdist_sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -41,10 +46,12 @@ jobs:
           uv build
 
       - name: Compute SHA256 sums
+        id: sums
         run: |
           cd dist
           shasum -a 256 anvyc-*.whl anvyc-*.tar.gz > SHA256SUMS
           cat SHA256SUMS
+          echo "sdist_sha256=$(awk '/\.tar\.gz$/ {print $1}' SHA256SUMS)" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -66,3 +73,70 @@ jobs:
             ```bash
             uv tool install https://github.com/16bitdo/anvyc/releases/download/${{ github.ref_name }}/anvyc-${{ github.ref_name }}-py3-none-any.whl
             ```
+
+  update-homebrew-tap:
+    name: Bump Homebrew tap formula (PR)
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard — HOMEBREW_TAP_TOKEN 존재 확인
+        id: guard
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN 미설정 — tap 자동 갱신 skip (수동: docs/homebrew-publishing.md)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout tap repo (16bitdo/homebrew-anvyc)
+        if: steps.guard.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: 16bitdo/homebrew-anvyc
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Bump formula (url + 최상위 sha256) + open PR
+        if: steps.guard.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}                       # vX.Y.Z
+          SDIST_SHA256: ${{ needs.release.outputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"                                    # X.Y.Z
+          if [ -z "$SDIST_SHA256" ]; then
+            echo "::error::release job 의 sdist_sha256 output 이 비어 있음 — tap bump 중단."
+            exit 1
+          fi
+          cd tap
+          # url + 최상위 sha256 만 교체. resource 블록의 sha256(2번째 이후)은 건드리지
+          # 않는다 — 의존 변경 시엔 PR 머지 전 수동 보강 (docs/homebrew-publishing.md §4).
+          sed -i -E \
+            "s#releases/download/v[0-9.]+/anvyc-[0-9.]+\.tar\.gz#releases/download/v${VER}/anvyc-${VER}.tar.gz#" \
+            Formula/anvyc.rb
+          sed -i -E "0,/^( *)sha256 \"[0-9a-f]{64}\"/s//\1sha256 \"${SDIST_SHA256}\"/" Formula/anvyc.rb
+          if git diff --quiet Formula/anvyc.rb; then
+            echo "::notice::tap formula 이미 ${VER} — 변경 없음, PR skip."
+            exit 0
+          fi
+          BRANCH="bump-anvyc-${VER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add Formula/anvyc.rb
+          git commit -m "chore: anvyc ${VER}"
+          git push --force-with-lease -u origin "$BRANCH"
+          gh pr create --repo 16bitdo/homebrew-anvyc --base main --head "$BRANCH" \
+            --title "chore: anvyc ${VER}" \
+            --body "anvyc \`${TAG}\` release 자동 bump (release.yml / update-homebrew-tap).
+
+          - url → \`v${VER}/anvyc-${VER}.tar.gz\`
+          - sha256 → \`${SDIST_SHA256}\` (release SHA256SUMS 의 sdist 값)
+
+          ⚠️ 이 release 에서 runtime dependencies(pyproject \`dependencies\`)가 바뀌었다면
+          resource block 도 갱신해야 \`brew install\` 이 성공한다 — 머지 전 docs/homebrew-publishing.md §4 확인." \
+            || echo "::warning::PR 생성 실패 (동일 branch PR 이 이미 열려 있을 수 있음) — tap 수동 확인."
