@@ -520,6 +520,35 @@ class AdapterMeta:
 `test_wizard_sot`(순서가 ADAPTERS 전체 커버), `test_gen_supported_tools`(README↔SoT 동기).
 상세 설계/진행: `docs/archive/improvement-plan-tools-selection.md`.
 
+### 11.2 ExtraReq — 동반 도구(외부 CLI + Python extras) 의존성 SoT
+
+anvyc 의 일부 기능은 PATH 의 **외부 CLI 바이너리**(sops/age/op/aws-vault/gh/…) 또는
+**pip extras**(boto3/httpx/textual/mcp/cryptography)가 있어야 동작한다. 이 의존성 메타와
+설치 안내(`brew install …` / `pip install 'anvyc[…]'`)의 단일 SoT 는
+`src/anvyc/core/extras.py` 의 `EXTRAS_REGISTRY` 다 (AdapterMeta(§11.1)와 동형 패턴).
+
+```python
+@dataclass(frozen=True)
+class ExtraReq:
+    name: str            # 'sops', 'boto3'
+    kind: str            # 'binary' | 'pyextra'
+    label: str
+    purpose: str         # 잠금 해제하는 anvyc 기능
+    probe: tuple[str, ...]      # binary: which 후보 / pyextra: dist 이름
+    install_cmd: str
+    pip_extra: str | None = None    # pyextra 의 pyproject extras 키
+    install_url: str | None = None
+    required: bool = False          # git 등 핵심 vs 선택
+    platform: str | None = None     # 'darwin' (pbcopy/security)
+```
+
+헬퍼 `is_available(name)` / `install_hint(name)` / `installed_version(name)` /
+`collect_extras_status()` 를 제공한다. 과거 `shutil.which`+`brew install …` 안내가
+`core/sops.py`·`core/secrets.py`·`checks/sops_keys.py`·`checks/op_references.py`·`cli.py`
+에 분산·불일치했던 것을 이 레지스트리 참조로 일원화했다 — 안내 문구 drift 제거.
+소비처: 위 call site(설치 여부·안내) + `anvyc extras` 명령 + doctor 발견성 힌트.
+정합성은 `test_extras_registry`(필수 필드·kind 허용값·핵심 도구 존재·헬퍼 계약)로 강제한다.
+
 ---
 
 ## 12. Core Workflow

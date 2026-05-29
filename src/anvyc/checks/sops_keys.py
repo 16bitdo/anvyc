@@ -7,10 +7,10 @@ DESIGN.md §31.7. sops/age binary 설치 + age identity file 존재 여부 확�
 """
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import install_hint, is_available
 
 DEFAULT_AGE_IDENTITY = Path("~/.config/sops/age/keys.txt").expanduser()
 
@@ -21,23 +21,23 @@ class SopsKeysCheck:
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
         results: list[CheckResult] = []
 
-        if not shutil.which("sops"):
+        if not is_available("sops"):
             results.append(
                 CheckResult(
                     check_name=self.name,
                     severity=Severity.WARNING,
                     message="sops binary 미설치 — secret_files 백업/적용 불가",
-                    suggestion="brew install sops  (또는 https://github.com/getsops/sops)",
+                    suggestion=install_hint("sops"),
                 )
             )
 
-        if not shutil.which("age"):
+        if not is_available("age"):
             results.append(
                 CheckResult(
                     check_name=self.name,
                     severity=Severity.WARNING,
                     message="age binary 미설치 — SOPS age backend 사용 불가",
-                    suggestion="brew install age",
+                    suggestion=install_hint("age"),
                 )
             )
 

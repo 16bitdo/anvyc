@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shutil
 import subprocess
 from pathlib import Path
+
+from anvyc.core.extras import install_hint, is_available
 
 _TIMEOUT_S = 30
 SOPS_BIN = "sops"
@@ -33,7 +34,7 @@ class SopsError(RuntimeError):
 
 
 def sops_available() -> bool:
-    return shutil.which(SOPS_BIN) is not None
+    return is_available("sops")
 
 
 def guess_inplace_type(path: Path) -> str:
@@ -60,7 +61,7 @@ def encrypt(
                     인식 불가능한 확장자는 자동으로 binary 폴백.
     """
     if not sops_available():
-        raise SopsError("sops binary 미설치 (brew install sops)")
+        raise SopsError(f"sops binary 미설치 — {install_hint('sops')}")
     if not recipients:
         raise SopsError("age_recipients 비어 있음 (anvyc.yaml security.sops.age_recipients)")
     if not src.is_file():
@@ -103,7 +104,7 @@ def decrypt(
     inplace 모드는 src 의 확장자로 input-type 자동 추론.
     """
     if not sops_available():
-        raise SopsError("sops binary 미설치 (brew install sops)")
+        raise SopsError(f"sops binary 미설치 — {install_hint('sops')}")
     if not src.is_file():
         raise SopsError(f"source 파일 없음: {src}")
 
