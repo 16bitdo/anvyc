@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -103,6 +103,16 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 
 class Iterm2Adapter:
     name = "iterm2"
+    meta = AdapterMeta(
+        name="iterm2",
+        label="iTerm2",
+        summary="iTerm2 profiles / key mappings / color presets 백업 (window state 제외)",
+        category="terminal",
+        includes=("profiles", "key mappings", "color presets"),
+        excludes=("window state", "recent sessions", "window arrangements"),
+        config_kind="structured",
+        since="v0.1.0",
+    )
 
     def __init__(self) -> None:
         self._stage_dir: Path | None = None

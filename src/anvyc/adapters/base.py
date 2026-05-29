@@ -22,9 +22,42 @@ class ApplyResult:
     notes: list[str] = field(default_factory=list)
 
 
+# AdapterMeta.category 허용값 — list/configure/wizard 의 그룹핑 키.
+# drift 방지: 테스트(test_adapter_meta)가 meta.category 가 이 집합에 속하는지 강제한다.
+ADAPTER_CATEGORIES: frozenset[str] = frozenset(
+    {"shell", "vcs", "cloud", "iac", "ide", "ai-agent", "terminal", "dev-env"}
+)
+
+
+@dataclass(frozen=True)
+class AdapterMeta:
+    """도구별 *정적* 메타데이터 — tools list / configure / wizard / MCP / README 의 단일 SoT.
+
+    런타임 파생값(enabled / detected / file·secret count)은 담지 않는다. 인스턴스
+    상태·secret 과 무관한 '설명용' 정보만 보유한다. 각 adapter 가 `name` 처럼 클래스
+    속성으로 노출하므로 인스턴스 생성 없이 `cls.meta` 로 접근할 수 있다.
+
+    - file-based adapter 는 `includes=DEFAULT_FILES` 로 모듈 상수를 *동일 객체* 참조해
+      drift 를 원천 차단한다.
+    - `excludes` 는 사용자에게 보여줄 '기본 제외' 표시용 목록이다. 경로형 adapter 는
+      실제 `exclude()` 의 부분집합이어야 한다(테스트가 강제 — 거짓 표시 방지).
+    """
+
+    name: str
+    label: str
+    summary: str
+    category: str
+    includes: tuple[str, ...]
+    excludes: tuple[str, ...]
+    default_enabled: bool = True
+    config_kind: str = "files"  # "files" | "structured"
+    since: str = ""
+
+
 @runtime_checkable
 class Adapter(Protocol):
     name: str
+    meta: AdapterMeta
 
     def detect(self) -> bool: ...
 

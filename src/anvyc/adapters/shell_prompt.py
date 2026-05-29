@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -24,6 +24,15 @@ DEFAULT_FILES: tuple[str, ...] = (
 
 class ShellPromptAdapter:
     name = "shell_prompt"
+    meta = AdapterMeta(
+        name="shell_prompt",
+        label="Shell Prompt",
+        summary="starship / powerlevel10k prompt 설정 백업 (instant-prompt 캐시 미수집)",
+        category="shell",
+        includes=DEFAULT_FILES,
+        excludes=(),
+        since="v0.13.0",
+    )
 
     def __init__(self, files: tuple[str, ...] | None = None) -> None:
         self._files = files if files is not None else DEFAULT_FILES

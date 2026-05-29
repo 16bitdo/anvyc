@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -18,6 +18,15 @@ DEFAULT_FILES: tuple[str, ...] = (
 
 class ShellAdapter:
     name = "shell"
+    meta = AdapterMeta(
+        name="shell",
+        label="Shell (zsh)",
+        summary="zsh dotfile (.zshrc / .zprofile 등) 백업·동기화 (shell history 제외)",
+        category="shell",
+        includes=DEFAULT_FILES,
+        excludes=("~/.zsh_history", "~/.zsh_sessions", "~/.zcompdump*"),
+        since="v0.1.0",
+    )
 
     def __init__(self, files: tuple[str, ...] | None = None) -> None:
         self._files = files if files is not None else DEFAULT_FILES

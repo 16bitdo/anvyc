@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pathspec import PathSpec
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -75,6 +75,16 @@ DEFAULT_EXCLUDES: tuple[str, ...] = (
 
 class ClaudeAdapter:
     name = "claude"
+    meta = AdapterMeta(
+        name="claude",
+        label="Claude Code",
+        summary="~/.claude 설정 / hooks / plugins 백업 (sessions·tokens·cache 제외)",
+        category="ai-agent",
+        includes=DEFAULT_INCLUDES,
+        excludes=("sessions", "tokens", "cache", "logs", "projects", "config.json"),
+        config_kind="structured",
+        since="v0.1.0",
+    )
 
     def __init__(
         self,

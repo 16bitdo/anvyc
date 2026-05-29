@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -15,6 +15,15 @@ DEFAULT_FILES: tuple[str, ...] = (
 
 class AwsAdapter:
     name = "aws"
+    meta = AdapterMeta(
+        name="aws",
+        label="AWS CLI",
+        summary="~/.aws/config 백업 (credentials·SSO cache 제외)",
+        category="cloud",
+        includes=DEFAULT_FILES,
+        excludes=("~/.aws/credentials", "~/.aws/sso/cache"),
+        since="v0.1.0",
+    )
 
     def __init__(self, files: tuple[str, ...] | None = None) -> None:
         self._files = files if files is not None else DEFAULT_FILES
