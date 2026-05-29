@@ -249,8 +249,8 @@ def collect_secrets(
 # - get: resolve 명령의 stdout 을 sink(pbcopy/터미널)로 직접 흘리고 anvyc 는 미캡처.
 # keychain / aws-vault add·get 은 Phase 2.5. 기존 값의 hidden-input 은 Phase 3(passthrough).
 
-ADD_BACKENDS = (BACKEND_OP, BACKEND_SOPS)
-_ADD_TIMEOUT_S = 300  # 대화형(op item create / $EDITOR) 사용자 대기 고려
+ADD_BACKENDS = (BACKEND_OP, BACKEND_SOPS, BACKEND_KEYCHAIN, BACKEND_AWS_VAULT)
+_ADD_TIMEOUT_S = 300  # 대화형(op item create / $EDITOR / security / aws-vault) 사용자 대기 고려
 
 
 class SecretAddError(ValueError):
@@ -283,8 +283,12 @@ def plan_add(
     title: str | None = None,
     file: str | None = None,
     key: str | None = None,
+    service: str | None = None,
+    account: str | None = None,
+    profile: str | None = None,
 ) -> AddPlan:
-    """backend 별 add plan 산출. **값을 받지 않는다** (op generate/ref, sops edit 위임).
+    """backend 별 add plan 산출. **값을 받지 않는다** — 입력은 backend 네이티브 경로
+    (op generate/ref · sops edit · security 대화형 프롬프트 · aws-vault add)에 위임.
 
     Raises:
       SecretAddError: 지원 밖 backend / 필수 옵션 누락.
@@ -325,16 +329,43 @@ def plan_add(
             )
         raise SecretAddError("op backend 는 --generate (신규 생성) 또는 --ref (기존 등록) 중 하나 필요")
 
-    # BACKEND_SOPS
-    if not file:
-        raise SecretAddError("sops backend 는 --file (SOPS 파일 경로) 필요")
-    entry = SecretEntry(name=name, backend=BACKEND_SOPS, file=file, key=key)
-    cmd = ["sops", "edit", str(Path(file).expanduser())]
-    suffix = f"#{key}" if key else ""
+    if backend == BACKEND_SOPS:
+        if not file:
+            raise SecretAddError("sops backend 는 --file (SOPS 파일 경로) 필요")
+        entry = SecretEntry(name=name, backend=BACKEND_SOPS, file=file, key=key)
+        cmd = ["sops", "edit", str(Path(file).expanduser())]
+        suffix = f"#{key}" if key else ""
+        return AddPlan(
+            name, backend, cmd, entry,
+            f"sops edit {file} ($EDITOR 보호 버퍼) → sops:{file}{suffix} 등록",
+            ["값 입력은 $EDITOR(sops tmpfs)에서 — anvyc 는 값 미접촉."],
+        )
+
+    if backend == BACKEND_KEYCHAIN:
+        if not (service and account):
+            raise SecretAddError("keychain backend 는 --service + --account 필요")
+        entry = SecretEntry(name=name, backend=BACKEND_KEYCHAIN, service=service, account=account)
+        # `-w` 를 마지막에 두면 security 가 hidden 프롬프트로 값을 받음 (anvyc 미접촉).
+        # `-U` 로 기존 항목 업데이트 허용.
+        cmd = ["security", "add-generic-password", "-U", "-s", service, "-a", account, "-w"]
+        return AddPlan(
+            name, backend, cmd, entry,
+            f"security add-generic-password (hidden 프롬프트) → keychain:{service}/{account} 등록",
+            ["값 입력은 security 의 hidden 프롬프트에서 — anvyc 는 값 미접촉.", "macOS 전용."],
+        )
+
+    # BACKEND_AWS_VAULT
+    if not profile:
+        raise SecretAddError("aws-vault backend 는 --profile 필요")
+    entry = SecretEntry(name=name, backend=BACKEND_AWS_VAULT, profile=profile)
+    cmd = ["aws-vault", "add", profile]
     return AddPlan(
         name, backend, cmd, entry,
-        f"sops edit {file} ($EDITOR 보호 버퍼) → sops:{file}{suffix} 등록",
-        ["값 입력은 $EDITOR(sops tmpfs)에서 — anvyc 는 값 미접촉."],
+        f"aws-vault add {profile} (access key 프롬프트) → aws-vault:{profile} 등록",
+        [
+            "access key id / secret 입력은 aws-vault 프롬프트에서 — anvyc 는 값 미접촉.",
+            "조회는 단일 값이 아니라 `aws-vault exec` 주입 모델 — `secret get` 대신 inject-wire(Phase 2.5b) / exec 사용.",
+        ],
     )
 
 
@@ -431,6 +462,15 @@ def resolve_command(entry: SecretEntry) -> list[str]:
         if entry.key:
             return ["sops", "-d", "--extract", f'["{entry.key}"]', f]
         return ["sops", "-d", f]
-    raise SecretGetError(
-        f"Phase 2 get 는 op / sops 만 지원 (요청: {entry.backend!r}). keychain / aws-vault 는 Phase 2.5."
-    )
+    if entry.backend == BACKEND_KEYCHAIN:
+        # -w → 값을 stdout 으로 (clipboard 파이프용). OS 가 keychain unlock 게이팅.
+        return [
+            "security", "find-generic-password", "-w",
+            "-s", entry.service or "", "-a", entry.account or "",
+        ]
+    if entry.backend == BACKEND_AWS_VAULT:
+        raise SecretGetError(
+            "aws-vault 는 단일 값 get 모델이 아님 (exec 주입). "
+            "`aws-vault exec <profile> -- <cmd>` 또는 inject-wire(Phase 2.5b) 사용."
+        )
+    raise SecretGetError(f"미지의 backend: {entry.backend!r}")

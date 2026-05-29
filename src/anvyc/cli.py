@@ -2170,21 +2170,26 @@ def secret_list(
 @secret_app.command("add")
 def secret_add(
     name: str = typer.Argument(..., help="레지스트리 논리 이름 (고유)."),
-    backend: str = typer.Option(..., "--backend", "-b", help="op | sops (keychain/aws-vault 는 Phase 2.5)."),
+    backend: str = typer.Option(..., "--backend", "-b", help="op | sops | keychain | aws-vault."),
     generate: bool = typer.Option(False, "--generate", help="op: 난수 password 생성 위임 (op item create --generate-password)."),
     ref: str | None = typer.Option(None, "--ref", help="op: 기존 op://<vault>/<item>/<field> 등록."),
     vault: str | None = typer.Option(None, "--vault", help="op --generate 시 대상 vault."),
     title: str | None = typer.Option(None, "--title", help="op --generate 시 item title (기본 name)."),
     file: Path | None = typer.Option(None, "--file", help="sops: SOPS 파일 경로."),
     key: str | None = typer.Option(None, "--key", help="sops: inplace dotted key (binary 면 생략)."),
+    service: str | None = typer.Option(None, "--service", help="keychain: service 이름."),
+    account: str | None = typer.Option(None, "--account", help="keychain: account 이름."),
+    profile: str | None = typer.Option(None, "--profile", help="aws-vault: profile 이름."),
     apply_changes: bool = typer.Option(False, "--apply", help="실제 수행 (기본 dry-run — 계획만)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="--apply 시 confirm prompt 자동 수락."),
     config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
-    """secret 핸들 등록 — 값 입력은 backend 에 위임 (값 미접촉, CP-15 Phase 2).
+    """secret 핸들 등록 — 값 입력은 backend 네이티브 프롬프트에 위임 (값 미접촉, CP-15 Phase 2/2.5).
 
-    op:   `--generate --vault V` (op 난수 생성) 또는 `--ref op://…` (기존 등록).
-    sops: `--file F [--key K]` → `sops edit` ($EDITOR 보호 버퍼).
+    op:       `--generate --vault V` (op 난수 생성) 또는 `--ref op://…` (기존 등록).
+    sops:     `--file F [--key K]` → `sops edit` ($EDITOR 보호 버퍼).
+    keychain: `--service S --account A` → `security add-generic-password` hidden 프롬프트.
+    aws-vault:`--profile P` → `aws-vault add` access key 프롬프트.
     기본 dry-run; `--apply` 로 backend 명령 실행 후 anvyc.yaml 등록(쓰기 전 .bak).
     """
     from anvyc.core.secrets import (
@@ -2201,6 +2206,7 @@ def secret_add(
             name, backend,
             generate=generate, ref=ref, vault=vault, title=title,
             file=str(file) if file else None, key=key,
+            service=service, account=account, profile=profile,
         )
     except SecretAddError as exc:
         print_error(str(exc))
