@@ -1,5 +1,28 @@
 # anvyc 릴리즈 노트
 
+## Unreleased (post-v0.16.0)
+
+### CP-15 Secret Broker — secret 입력/조회 broker (anvyc#111~#117)
+
+"anvyc 는 secret 평문을 보유하지 않는다" 불변식을 유지하며 secret 입력/조회 편의를
+추가. 값 custody 는 외부 도구(op / sops / keychain / aws-vault)에 두고 anvyc 는
+**reference 레지스트리 + 검증 + JIT 와이어링**만 담당 (Broker, not Vault).
+설계: `docs/design-axes/cp-15-secret-broker.md` (DESIGN §39).
+
+- **`anvyc secret list [--json] [--no-probe]`** — `anvyc.yaml` 의 `secrets:` 레지스트리
+  (값 없는 핸들) 조회 + backend verify 상태. **값 미출력.**
+- **`anvyc secret add <name> -b <op|sops|keychain|aws-vault> … [--apply]`** — 값 입력은
+  backend 네이티브 프롬프트 위임 (op `--generate`/`--ref`, sops `sops edit`, keychain
+  `security` hidden 프롬프트, aws-vault `aws-vault add`). dry-run 기본 + 쓰기 전 `.bak`.
+  **anvyc 는 값 미접촉** (backend 명령 stdio 상속).
+- **`anvyc secret get <name> [--reveal]`** — 기본 클립보드(backend stdout → `pbcopy`
+  직접 파이프, Python 미캡처) + 자동 만료. `--reveal` 은 TTY 한정(비-TTY 거부).
+- **`anvyc secret inject-wire <name> --target <.envrc> [--env-var]`** — `export VAR="$(…)"`
+  JIT 주입 라인 생성(값 미저장 — direnv 로드 시 backend resolve). aws-vault 는 exec 가이드.
+- **doctor `secret-registry-valid`** + `anvyc.yaml` `secrets:` 블록 schema v1.
+- Phase 3 (passthrough — anvyc 가 기존 값을 직접 hidden-input) 은 `rule 26-secrets-1password`
+  / `SECURITY.md` 위협모델 재정의 거버넌스 PR 선행으로 **추후**.
+
 ## v0.16.0 — 2026-05-27 (minor — cost observability MVP + UX 친화도 개선)
 
 [v0.15.2 → v0.16.0 — 15 PR 통합 release] CP-13 cost observability (8 PR),
