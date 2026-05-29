@@ -280,6 +280,7 @@ anvyc scan-secrets             # secret 패턴 스캔
 anvyc config edit              # $EDITOR 로 anvyc.yaml 편집 + schema 검증 (v0.6.3+)
 anvyc config show [--effective] [--json]   # raw 또는 default 적용된 yaml/json (v0.6.3+/v0.8.0)
 anvyc tools list [--json]      # 10 도구의 메타데이터+상태 (label/category/요약/enabled/detect); --json 은 포함·제외 등 전체 (v0.6.3+)
+anvyc tools configure [--yes]  # 도구 enable/disable 대화형 선택 → anvyc.yaml 반영 (재실행, 저장 전 미리보기 + .bak)
 
 anvyc project show [--path P] [--json] [--reveal-secrets]
                                # cwd 의 AWS/GitHub/Pulumi/dev_env 통합 view (v0.8.0+)

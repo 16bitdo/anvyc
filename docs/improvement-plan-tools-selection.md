@@ -90,7 +90,7 @@ class AdapterMeta:
 |----|------|-----------|------------|------|
 | **PR1** | `AdapterMeta` SoT — dataclass + Protocol 확장 + 10 adapter 채움 + drift 가드 테스트 | `adapters/base.py`, `adapters/*.py`(10), `tests/unit/test_adapter_meta.py` | 없음(기반) | ✅ merged (#120) |
 | **PR2** | `tools list` 강화(human+`--json` 추가키) + MCP `tools_list` payload + 푸터 SoT화 | `cli.py`, `mcp/server.py` | 즉시 가치(풍부한 목록) | ✅ 구현 · PR open |
-| **PR3** | 순수 선택모델 + 안전 yaml writer/merge + `tools configure`(폴백 경로, textual 無로 완전 동작) | `core/tools_select.py`(신규), `cli.py` | configure 사용 가능(번호 토글) | 예정 |
+| **PR3** | 순수 선택모델 + 안전 yaml writer/merge + `tools configure`(폴백 경로, textual 無로 완전 동작) | `core/tools_select.py`(신규), `cli.py` | configure 사용 가능(번호 토글) | ✅ 구현 · PR open |
 | **PR4** | Textual TUI view + `[tui]` extra + `tui-extra-importable` check + 미설치 폴백 | `ui/tui.py`(신규), `pyproject.toml`, `checks/tui_extra.py`(신규) | TUI 경험 | 예정 |
 | **PR5** | `init --interactive` 리팩터 → SoT+선택모델+writer 재사용, `_WIZARD_*` 제거 | `cli.py` | 동작 동일, 중복 제거 | 예정 |
 | **PR6** | 문서 — README §4 생성/§8 갱신 + DESIGN/RELEASE_NOTES/CONTEXT + 본 계획 archive | `scripts/gen_supported_tools.py`(신규), `README.md`, `DESIGN.md` 외 | 문서 정합 | 예정 |
@@ -115,7 +115,7 @@ PR1–2 만으로도 "풍부한 목록" 선배포 가능. 각 PR 독립 머지·
 - [x] 계획 수립 + 본 문서 작성
 - [x] PR1 — AdapterMeta SoT (#120 merged)
 - [x] PR2 — tools list 강화 + MCP payload (PR open)
-- [ ] PR3 — 선택모델 + 안전 writer + configure 폴백
+- [x] PR3 — 선택모델 + 안전 writer + configure 폴백 (PR open)
 - [ ] PR4 — Textual TUI + [tui] extra + doctor check
 - [ ] PR5 — wizard 리팩터 (중복 제거)
 - [ ] PR6 — 문서 생성/정합 + 본 문서 archive
