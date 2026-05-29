@@ -280,19 +280,11 @@ def _print_init_next_steps() -> None:
     )
 
 
-# wizard 의 도구별 default 값 (file-based adapter 만 file path 입력 필요)
-_WIZARD_FILE_DEFAULTS: dict[str, list[str]] = {
-    "shell": ["~/.zshrc", "~/.zprofile"],
-    "shell_prompt": ["~/.config/starship.toml", "~/.p10k.zsh"],
-    "git": ["~/.gitconfig", "~/.gitignore_global"],
-    "aws": ["~/.aws/config"],
-    "gh": ["~/.config/gh/config.yml"],
-    "pulumi": ["~/.pulumi/config.json"],
-}
-_WIZARD_DEV_ENV_DEFAULTS = {
-    "project_roots": ["~/dev"],
-    "patterns": [".envrc", ".tool-versions", ".python-version", ".nvmrc"],
-}
+# wizard 의 도구 prompt 순서 — file-based 그룹을 먼저(파일 경로 입력을 묶음), 이후 구조형.
+# 이 순서는 wizard UX 전용이라 ADAPTERS 레지스트리 순서와 다르므로 명시 유지한다.
+# 누락 방지: test_wizard_sot 가 이 튜플이 ADAPTERS 전체를 정확히 덮는지 강제한다.
+# 도구별 enable 기본값 / 기본 포함 파일 / dev_env patterns 는 AdapterMeta SoT 에서
+# 가져온다 (PR5 — 과거 _WIZARD_FILE_DEFAULTS / _WIZARD_DEV_ENV_DEFAULTS 중복 제거).
 _WIZARD_TOOLS_ORDER = (
     "shell",
     "shell_prompt",
@@ -305,6 +297,9 @@ _WIZARD_TOOLS_ORDER = (
     "iterm2",
     "dev_env",
 )
+# dev_env project_roots 의 wizard 제안 default — adapter 의 broad scan 기본
+# (DEFAULT_PROJECT_ROOTS, 7 루트) 과 달리 사용자가 편집하기 쉬운 단일 루트 제안.
+_WIZARD_DEV_ENV_PROJECT_ROOTS = ["~/dev"]
 
 
 def _parse_csv(answer: str, default: list[str]) -> list[str]:
@@ -326,9 +321,15 @@ def _confirm(prompt: str, *, default: bool) -> bool:
 
 
 def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
-    """대화형 wizard — 10 도구의 enable/path 를 prompt 한 후 yaml 작성."""
+    """대화형 wizard — 10 도구의 enable/path 를 prompt 한 후 yaml 작성.
+
+    enable 기본값 / 기본 포함 파일 / dev_env patterns 는 AdapterMeta SoT 에서 가져온다
+    (PR5 — _WIZARD_FILE_DEFAULTS / _WIZARD_DEV_ENV_DEFAULTS 중복 제거).
+    """
     import yaml as _yaml
     from rich.syntax import Syntax
+
+    from anvyc.core.backup import ADAPTERS
 
     config_path = anvyc_dir / "anvyc.yaml"
     if config_path.exists() and not force:
@@ -339,14 +340,14 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
 
     tools_cfg: dict[str, dict[str, Any]] = {}
     for tool in _WIZARD_TOOLS_ORDER:
-        default_enabled = tool != "dev_env"  # dev_env 은 default disabled (안전)
-        enabled = _confirm(f"Enable {tool}?", default=default_enabled)
+        meta = ADAPTERS[tool].meta
+        enabled = _confirm(f"Enable {tool}?", default=meta.default_enabled)
         entry: dict[str, Any] = {"enabled": enabled}
         if not enabled:
             tools_cfg[tool] = entry
             continue
-        if tool in _WIZARD_FILE_DEFAULTS:
-            default_files = _WIZARD_FILE_DEFAULTS[tool]
+        if meta.config_kind == "files":
+            default_files = list(meta.includes)
             answer = typer.prompt(
                 f"  files for {tool}",
                 default=", ".join(default_files),
@@ -385,18 +386,18 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
             # mode 는 'safe' 단일 (DESIGN §14.2). 추가 prompt 불요 — adapter default 가 채움.
             pass
         elif tool == "dev_env":
+            roots_default = _WIZARD_DEV_ENV_PROJECT_ROOTS
             roots_ans = typer.prompt(
                 "  project_roots",
-                default=", ".join(_WIZARD_DEV_ENV_DEFAULTS["project_roots"]),
+                default=", ".join(roots_default),
             )
-            entry["project_roots"] = _parse_csv(
-                roots_ans, _WIZARD_DEV_ENV_DEFAULTS["project_roots"]
-            )
+            entry["project_roots"] = _parse_csv(roots_ans, roots_default)
+            patterns_default = list(meta.includes)  # dev_env meta.includes == DEFAULT_PATTERNS
             patterns_ans = typer.prompt(
                 "  patterns",
-                default=", ".join(_WIZARD_DEV_ENV_DEFAULTS["patterns"]),
+                default=", ".join(patterns_default),
             )
-            entry["patterns"] = _parse_csv(patterns_ans, _WIZARD_DEV_ENV_DEFAULTS["patterns"])
+            entry["patterns"] = _parse_csv(patterns_ans, patterns_default)
         tools_cfg[tool] = entry
 
     yaml_dict = {
