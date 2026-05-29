@@ -77,7 +77,7 @@ def test_plan_add_sops_requires_file() -> None:
 
 def test_plan_add_unsupported_backend() -> None:
     with pytest.raises(SecretAddError):
-        plan_add("k", "keychain")
+        plan_add("k", "hashicorp-vault")
 
 
 # ---- _entry_to_dict / execute_add ----
@@ -169,6 +169,6 @@ def test_resolve_command_sops_inplace_key() -> None:
     assert '["pw"]' in cmd
 
 
-def test_resolve_command_unsupported_backend() -> None:
+def test_resolve_command_unknown_backend() -> None:
     with pytest.raises(SecretGetError):
-        resolve_command(SecretEntry("x", "keychain", service="s", account="a"))
+        resolve_command(SecretEntry("x", "hashicorp-vault"))
