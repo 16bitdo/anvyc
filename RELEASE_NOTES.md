@@ -1,6 +1,11 @@
 # anvyc 릴리즈 노트
 
-## Unreleased (post-v0.16.0)
+## v0.17.0 — 2026-05-30 (minor — 동반 도구 발견성 + Tools selection UX + CP-15 Secret Broker)
+
+[v0.16.0 → v0.17.0 통합 release] v0.16.0 cut 이후 unreleased 였던 3 axis 를 묶어 publish:
+동반 도구(companion tools) 발견성 (anvyc#127~#131), Tools selection UX (anvyc#120~#125),
+CP-15 Secret Broker (anvyc#111~#117). **breaking change 없음** — 모두 신규 명령/조회·문서·
+내부 SoT 정리이며 기존 동작과 호환된다.
 
 ### 동반 도구(companion tools) 발견성 — 외부 CLI·extra 인지/조회 (anvyc#127~#131)
 
