@@ -16,7 +16,7 @@
   (op TTY/biometric, sops `$EDITOR` 보호 버퍼, keychain/aws-vault 자체 프롬프트)을
   호출하고 anvyc 프로세스는 평문을 **메모리에도 보유하지 않는다**. → Phase 1·2 는
   `rule 26-secrets-1password` / `SECURITY.md` 위협모델을 **무수정**으로 만족한다.
-  passthrough(Phase 3)만 예외이며 거버넌스 PR 선행을 강제한다(§8).
+  (anvyc 자체 `getpass` 로 기존 값을 받는 방안 = 과거 Phase 3 후보 → §8 에서 **폐기**.)
 - **Reference Registry**: `anvyc.yaml` 에는 값이 아니라 **핸들(reference)** 만
   등록한다 → backup/git commit 안전(§30 의 `op://` 비-secret 속성을 모든 backend
   로 일반화). 레지스트리 유출은 secret 유출이 아니다.
@@ -86,7 +86,7 @@ class SecretBackend(Protocol):
         # anvyc 는 캡처/로깅하지 않는다 (sink 으로 직접 pipe).
     def verify(self, entry: SecretEntry) -> CheckResult: ...
         # doctor 용 — 핸들이 resolve 가능한지 (값 미노출).
-    def supports_passthrough(self) -> bool: ...   # Phase 3 게이팅
+    # (과거 supports_passthrough 게이팅 메서드는 Phase 3 폐기로 제거 — §8.)
 ```
 
 | backend | add (입력 위임) | reference | resolve_cmd | verify (재사용) |
@@ -101,11 +101,11 @@ class SecretBackend(Protocol):
 
 ### 3.1 Phase 2 add / get 위임 메커니즘 (확정 2026-05-29)
 
-**불변식 유지**: Phase 2 는 anvyc 가 secret 값을 메모리·argv·temp 어디에도 보유하지
-않는다. 값 입력은 backend 네이티브 경로에 위임하며, **기존 값의 직접 타이핑
-(hidden-input)은 Phase 2 범위 밖 — Phase 3(passthrough)** 이다. (op 의 assignment
-statement 는 argv 노출, JSON 템플릿 stdin 은 anvyc 가 값 구성 → 둘 다 불변식 위반이라
-Phase 2 에서 금지.)
+**불변식 유지**: anvyc 는 secret 값을 메모리·argv·temp 어디에도 보유하지 않는다. 값
+입력(신규·기존)은 모두 **backend 네이티브 경로**에 위임한다 — keychain/aws-vault 자체
+hidden 프롬프트, sops `$EDITOR`, op `--generate`/`op item create`. anvyc 자체 `getpass`
+로 값을 받는 방안(과거 Phase 3)은 **폐기**(§8). (op 의 assignment statement 는 argv 노출,
+JSON 템플릿 stdin 은 anvyc 가 값 구성 → 둘 다 불변식 위반이라 금지.)
 
 #### add — `anvyc secret add <name> --backend <b> [핸들옵션] [--wire <dotfile>] [--apply]`
 
@@ -139,7 +139,7 @@ Phase 2 에서 금지.)
 | `anvyc secret add <name> --backend <b> [--generate\|--ref\|--file] [--wire <dotfile>] [--apply]` | **Phase 2** | write (비-secret) | op: `--generate`/`--ref`, sops: `sops edit` 위임 → 핸들 등록. **값 미접촉**, dry-run 기본, local-backup 안전망. §3.1. |
 | `anvyc secret get <name> [--reveal]` | **Phase 2** | read (게이팅) | 기본 클립보드(tool→pbcopy 직접 파이프)+자동 만료, stdout 미출력, 비-TTY 거부. `--reveal` TTY opt-in. §3.1/§5. |
 | `anvyc secret inject-wire --target <.envrc> --name <name>` | Phase 2.5 | write (비-secret) | JIT 주입 구문 생성(dev_env 연계). reference 만 기록, 값 아님. keychain/aws-vault backend 동반. |
-| `anvyc secret add … --passthrough` | N/N | **destructive 경계** | getpass→stdin 무보관 스트림. **거버넌스 PR 선행** + opt-in 플래그 + 런타임 경고(§8). |
+| ~~`anvyc secret add … --passthrough`~~ | — | ❌ **폐기** | anvyc 자체 getpass 방안 — backend 네이티브 프롬프트로 충족되어 폐기(§8). |
 
 각 `add` 는 §2 schema 의 entry 한 건을 추가/갱신하며, 성공 직후 `secret-registry-valid`
 를 1회 자동 실행해 와이어링 오타를 즉시 검출한다.
@@ -185,17 +185,18 @@ Phase 2 에서 금지.)
 - **argv 금지**: 값을 명령 인자로 넘기는 backend 호출(`op item create k=v`,
   `sops --set '["k"]' '"v"'`, `security add-generic-password -w <pw>`)은 `ps`/`/proc`
   노출이므로 **금지** — stdin/네이티브 입력만 허용한다.
-- **Phase 3 passthrough(opt-in)**: getpass→subprocess stdin 무보관 스트림.
-  도입 전 **5원칙 강제**가 게이트다 —
-  1. getpass(TTY 확인) → subprocess stdin 직결, argv·env·temp 미경유.
-  2. 값은 단일 지역변수 + 사용 직후 `del`(가능하면 `bytearray` wipe).
-  3. sops 경로는 tmpfs(0600) + secure-unlink, 디스크 평문 금지.
-  4. 비대화형(CI) 차단 — op/sops/aws-vault 직접 사용 권장.
-  5. no-stdout / no-logging — 예외 traceback 에 값이 섞이지 않도록 마스킹.
-  + `rule 26` / `SECURITY.md` 위협모델을 **"no-at-rest-in-anvyc(입력 순간만 통과)"**
-  로 재정의하는 **거버넌스 PR 선행**. 기본 비활성.
+- **Phase 3 passthrough — 폐기 (Withdrawn, 2026-05-29)**: anvyc 자체 `getpass`→stdin 으로
+  기존 값을 직접 받는 방안은 **불필요**로 판정해 폐기 (ADR-lite). 사유:
+  - "기존 값 hidden 입력" UX 는 이미 **backend 네이티브 프롬프트로 충족** — keychain
+    (`security … -w`), aws-vault(`aws-vault add`), sops(`$EDITOR`)가 anvyc 단일 명령으로
+    hidden 입력을 받고, op 는 `op item create` + `--ref`. → anvyc 자체 getpass 의 고유 가치 없음.
+  - 유일한 gap(기존 값을 op 에 단일 명령)은 op 에 네이티브 프롬프트가 없어 anvyc 가 평문을
+    직접 다뤄야 하는 **최고 위험 케이스** — 편의 대비 비용 과다.
+  - 도입 시 "anvyc 평문 미접촉" 불변식 붕괴 + `rule 26`/`SECURITY` 재정의 거버넌스 PR +
+    누출 회귀 테스트 부담. 비대화형(CI)도 배제 설계라 자동화 가치도 없음.
+  → **secret 값 입력은 backend 위임으로 일원화.** (재고 시 본 결정부터 검토.)
 
-## 9. 실행 계획 (Phase)
+## 9. 실행 계획 (Phase) — CP-15 완료
 
 | Phase | 범위 | 거버넌스 | 비고 |
 |---|---|---|---|
@@ -203,10 +204,9 @@ Phase 2 에서 금지.)
 | **Phase 2** | Broker `secret add`(op/sops 네이티브 입력 위임) + `secret get` 게이팅 | 불요 | ✅ **구현됨** — `core/secrets.py`(plan_add/register_entry/resolve_command) + CLI add/get. 값 미접촉 |
 | **Phase 2.5a** | `keychain` / `aws-vault` backend (add/get) | 불요 | ✅ **구현됨** — keychain `security`(hidden 프롬프트/`-w` get), aws-vault `add`(get 은 exec 안내). 값 미접촉 |
 | **Phase 2.5b** | `inject-wire`(dev_env/.envrc JIT 주입) | 불요 | ✅ **구현됨** — `export VAR="$(resolve)"` 생성·추가(쓰기 전 .bak), aws-vault 는 exec 주석 가이드. at-rest 평문 0 |
-| **Phase 3** | `--passthrough` 모드 | **필요** | rule 26 / SECURITY 재정의 PR + 누출 회귀 테스트 통과 후에만 |
+| ~~Phase 3~~ | ~~`--passthrough` 모드~~ | — | ❌ **폐기** — backend 네이티브 프롬프트로 충족, 불변식 비용 부당(§8) |
 
-권장 진행 순서: **Phase 1 → 2 → 2.5**(불변식 무수정 구간에서 최대 UX 확보) 후,
-필요성이 입증되면 거버넌스 게이트를 거쳐 Phase 3.
+CP-15 의 committed scope(Phase 1·2·2.5)는 모두 구현 완료되었고, **Phase 3 폐기로 axis 의 잔여 작업은 없다.** secret 값 입력/조회는 전적으로 backend 위임으로 처리한다.
 
 ## 10. Out of scope (CP-15 axis 완결 기준)
 
@@ -228,3 +228,4 @@ Phase 2 에서 금지.)
 | feat 2026-05-29 | **Phase 2 구현** — `core/secrets.py`(plan_add/execute_add[stdio 상속]/register_entry[.bak]/resolve_command) + `anvyc secret add [--generate\|--ref\|--file --key] [--apply]` + `secret get [--reveal]`(pbcopy 직접 파이프 + 자동 클리어, 비-TTY reveal 거부) + unit tests(20건). 값 미캡처 — op item create/sops edit/resolve 모두 stdio 상속·파이프. |
 | feat 2026-05-29 | **Phase 2.5a 구현** — `keychain` backend(add: `security add-generic-password -U … -w` hidden 프롬프트 / get: `find-generic-password -w`) + `aws-vault` backend(add: `aws-vault add`, get 은 exec 모델이라 안내 에러). `secret add --service/--account/--profile`. add/get 4-backend 완성. tests(9건). inject-wire(2.5b)는 후속. |
 | feat 2026-05-29 | **Phase 2.5b 구현** — `anvyc secret inject-wire <name> --target <.envrc> [--env-var] [--apply]`: `plan_inject`(resolve 명령을 `export VAR="$(…)"` 로 감쌈, shlex.join 안전 quote) + `append_inject_line`(생성/추가, 중복 거부, 쓰기 전 .bak). aws-vault 는 exec 주석 가이드. 값은 .envrc 미저장 — direnv 로드 시 resolve. tests(10건). **Phase 2.5 완료.** |
+| decision 2026-05-29 | **Phase 3 (passthrough) 폐기** — anvyc 자체 getpass→stdin 으로 기존 값을 받는 방안 기각. 사유: "기존 값 hidden 입력"은 이미 backend 네이티브 프롬프트(keychain/aws-vault/sops $EDITOR)로 충족되어 anvyc 고유 가치가 없고, 유일 gap(op 단일 명령)은 최고 위험 케이스이며 불변식 붕괴·거버넌스 PR 비용이 부당. secret 값 입력은 backend 위임으로 일원화. **CP-15 잔여 작업 없음 — axis 완결.** (§8/§9) |
