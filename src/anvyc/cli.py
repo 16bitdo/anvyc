@@ -9,6 +9,7 @@ import contextlib
 import json as jsonlib
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,7 @@ from anvyc.core.sync import (
     resolve_conflict,
     scan_local_manifest,
 )
+from anvyc.core.tools_select import ToolChoice
 from anvyc.core.workctx import (
     DEFAULT_TTL_SEC as WORKCTX_DEFAULT_TTL_SEC,
 )
@@ -1396,44 +1398,19 @@ def _parse_toggle_indices(answer: str, count: int) -> list[int]:
     return out
 
 
-@tools_app.command("configure")
-def tools_configure(
-    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
-    no_tui: bool = typer.Option(
-        False,
-        "--no-tui",
-        help="번호 토글 메뉴 사용 (체크박스 TUI 는 후속 PR — 현재는 항상 이 경로).",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="변경 미리보기 후 확인 프롬프트 없이 저장."
-    ),
-) -> None:
-    """도구 enable/disable 를 선택해 anvyc.yaml 에 반영 (재실행 가능).
+def _textual_available() -> bool:
+    """`[tui]` extra(textual) 설치 여부 — import 없이 find_spec 로 확인."""
+    import importlib.util
 
-    번호로 토글 → 변경 미리보기 → 확인 후 저장한다. 저장 전 원본을 `.bak` 으로
-    백업하며, 각 도구의 다른 설정(files/include/exclude/extra)과 다른 섹션
-    (security/storage/secrets/cost)은 보존한다. (안전: secret 값 미접촉)
-    """
-    from anvyc.core.tools_select import (
-        apply_enabled,
-        apply_toggles,
-        collect_choices,
-        plan_changes,
-    )
+    return importlib.util.find_spec("textual") is not None
 
-    yaml_path = _resolve_anvyc_yaml(config)
-    if not yaml_path.is_file():
-        print_error(
-            f"anvyc.yaml 부재: {yaml_path}\n"
-            "  먼저 [cyan]anvyc init[/] (또는 [cyan]anvyc init --interactive[/]) 로 설정을 생성하세요."
-        )
-        raise typer.Exit(code=1)
 
-    choices = collect_choices(yaml_path)
+def _numbered_tool_select(choices: list[ToolChoice], *, fell_back: bool) -> dict[str, bool]:
+    """번호 토글 메뉴 (TUI 폴백/명시) — 표 출력 + 번호 입력 → name→enabled 맵."""
+    from anvyc.core.tools_select import apply_toggles
 
-    console.print(f"[bold]anvyc tools configure[/] — {yaml_path}")
-    if not no_tui:
-        console.print("[dim](체크박스 TUI 는 후속 PR — 현재는 번호 토글 메뉴)[/]")
+    if fell_back:
+        console.print("[dim]([tui] extra 미설치 또는 비-TTY — 번호 토글 메뉴 사용)[/]")
     table = Table(show_header=True, header_style="bold")
     table.add_column("#", justify="right")
     table.add_column("tool")
@@ -1451,12 +1428,55 @@ def tools_configure(
             c.summary,
         )
     console.print(table)
-
     answer = typer.prompt(
         "토글할 번호 (쉼표 구분, 빈 입력=변경 없음)", default="", show_default=False
     )
     indices = _parse_toggle_indices(answer, len(choices))
-    targets = apply_toggles(choices, indices)
+    return apply_toggles(choices, indices)
+
+
+@tools_app.command("configure")
+def tools_configure(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="체크박스 TUI 대신 번호 토글 메뉴 사용 (비-TTY / [tui] 미설치 시 자동).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="변경 미리보기 후 확인 프롬프트 없이 저장."
+    ),
+) -> None:
+    """도구 enable/disable 를 선택해 anvyc.yaml 에 반영 (재실행 가능).
+
+    `[tui]` extra(textual) 가 있고 TTY 면 체크박스 TUI, 아니면 번호 토글 메뉴를 쓴다.
+    선택 → 변경 미리보기 → 확인 후 저장한다. 저장 전 원본을 `.bak` 으로 백업하며,
+    각 도구의 다른 설정(files/include/exclude/extra)과 다른 섹션
+    (security/storage/secrets/cost)은 보존한다. (안전: secret 값 미접촉)
+    """
+    from anvyc.core.tools_select import apply_enabled, collect_choices, plan_changes
+
+    yaml_path = _resolve_anvyc_yaml(config)
+    if not yaml_path.is_file():
+        print_error(
+            f"anvyc.yaml 부재: {yaml_path}\n"
+            "  먼저 [cyan]anvyc init[/] (또는 [cyan]anvyc init --interactive[/]) 로 설정을 생성하세요."
+        )
+        raise typer.Exit(code=1)
+
+    choices: list[ToolChoice] = collect_choices(yaml_path)
+    console.print(f"[bold]anvyc tools configure[/] — {yaml_path}")
+
+    if (not no_tui) and sys.stdout.isatty() and _textual_available():
+        from anvyc.ui.tui import run_tui_selection
+
+        targets = run_tui_selection(choices)
+        if targets is None:
+            console.print("[yellow]aborted — nothing written[/]")
+            raise typer.Exit(code=0)
+    else:
+        targets = _numbered_tool_select(choices, fell_back=not no_tui)
+
     changes = plan_changes(choices, targets)
     if not changes:
         console.print("[yellow]변경 없음 — 종료[/]")

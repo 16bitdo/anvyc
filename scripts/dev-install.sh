@@ -4,7 +4,7 @@
 # Usage:
 #   bash scripts/dev-install.sh
 #   ANVYC_PYTHON=python3.12 bash scripts/dev-install.sh   # 인터프리터 지정
-#   ANVYC_EXTRAS="dev,encryption,mcp" bash scripts/dev-install.sh   # 기본값 "dev,mcp"
+#   ANVYC_EXTRAS="dev,encryption,mcp" bash scripts/dev-install.sh   # 기본값 "dev,mcp,tui"
 #
 # 멱등: 재실행 안전. venv 는 인터프리터 버전이 맞으면 재사용, 아니면 재생성.
 # wrapper 정본은 scripts/anvyc-wrapper.sh — 이 스크립트가 ~/.local/bin/anvyc 로 설치.
@@ -23,7 +23,7 @@ VENV="$REPO_ROOT/.venv"
 WRAPPER_SRC="$SCRIPT_DIR/anvyc-wrapper.sh"
 BIN_DIR="$HOME/.local/bin"
 WRAPPER_DST="$BIN_DIR/anvyc"
-EXTRAS="${ANVYC_EXTRAS:-dev,mcp}"
+EXTRAS="${ANVYC_EXTRAS:-dev,mcp,tui}"
 
 [[ -f "$REPO_ROOT/pyproject.toml" ]] || die "pyproject.toml 없음 — anvyc 저장소 루트에서 실행하세요 ($REPO_ROOT)"
 [[ -f "$WRAPPER_SRC" ]] || die "wrapper 정본 없음: $WRAPPER_SRC"
