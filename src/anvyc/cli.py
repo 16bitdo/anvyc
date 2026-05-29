@@ -2167,6 +2167,146 @@ def secret_list(
     console.print(table)
 
 
+@secret_app.command("add")
+def secret_add(
+    name: str = typer.Argument(..., help="레지스트리 논리 이름 (고유)."),
+    backend: str = typer.Option(..., "--backend", "-b", help="op | sops (keychain/aws-vault 는 Phase 2.5)."),
+    generate: bool = typer.Option(False, "--generate", help="op: 난수 password 생성 위임 (op item create --generate-password)."),
+    ref: str | None = typer.Option(None, "--ref", help="op: 기존 op://<vault>/<item>/<field> 등록."),
+    vault: str | None = typer.Option(None, "--vault", help="op --generate 시 대상 vault."),
+    title: str | None = typer.Option(None, "--title", help="op --generate 시 item title (기본 name)."),
+    file: Path | None = typer.Option(None, "--file", help="sops: SOPS 파일 경로."),
+    key: str | None = typer.Option(None, "--key", help="sops: inplace dotted key (binary 면 생략)."),
+    apply_changes: bool = typer.Option(False, "--apply", help="실제 수행 (기본 dry-run — 계획만)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="--apply 시 confirm prompt 자동 수락."),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """secret 핸들 등록 — 값 입력은 backend 에 위임 (값 미접촉, CP-15 Phase 2).
+
+    op:   `--generate --vault V` (op 난수 생성) 또는 `--ref op://…` (기존 등록).
+    sops: `--file F [--key K]` → `sops edit` ($EDITOR 보호 버퍼).
+    기본 dry-run; `--apply` 로 backend 명령 실행 후 anvyc.yaml 등록(쓰기 전 .bak).
+    """
+    from anvyc.core.secrets import (
+        SecretAddError,
+        execute_add,
+        plan_add,
+        reference_of,
+        register_entry,
+        verify_entry,
+    )
+
+    try:
+        plan = plan_add(
+            name, backend,
+            generate=generate, ref=ref, vault=vault, title=title,
+            file=str(file) if file else None, key=key,
+        )
+    except SecretAddError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+
+    console.print(f"[bold]secret add plan[/]  name={plan.name} backend={plan.backend}")
+    console.print(f"  reference:   {reference_of(plan.entry)}")
+    console.print(f"  description: {plan.description}")
+    if plan.command:
+        console.print(f"  command:     {' '.join(plan.command)}")
+    else:
+        console.print("  command:     [dim](없음 — 기존 reference 등록만)[/]")
+    for w in plan.warnings:
+        console.print(f"  [yellow]warning:[/] {w}")
+
+    if not apply_changes:
+        console.print("[dim]\n(dry-run — no changes. add --apply to register.)[/]")
+        return
+    if not yes and not _confirm("\n실제로 add 를 수행할까요?", default=False):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        rc = execute_add(plan.command)
+    except SecretAddError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+    if rc != 0:
+        print_error(f"backend 명령 실패 (rc={rc}) — 등록 중단.")
+        raise typer.Exit(code=rc or 1)
+
+    try:
+        target = register_entry(plan.entry, config_path=config)
+    except SecretAddError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+
+    status = verify_entry(plan.entry, probe=True)
+    console.print(f"[green]registered[/] '{plan.name}' → {_short_path(target)}")
+    console.print(f"  verify: {status.status} — {status.detail}")
+
+
+@secret_app.command("get")
+def secret_get(
+    name: str = typer.Argument(..., help="레지스트리 name."),
+    reveal: bool = typer.Option(
+        False, "--reveal", help="stdout 에 값 출력 (TTY 한정 + 경고). 기본은 클립보드."
+    ),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """secret 값 조회 — 기본 클립보드 + 자동 만료, 값은 anvyc 미캡처 (CP-15 Phase 2).
+
+    기본: backend resolve stdout → pbcopy 직접 파이프, N초(secrets.get.clipboard_clear_seconds)
+    후 자동 클리어. `--reveal`: TTY 한정 stdout 출력(비-TTY 거부).
+    """
+    import shutil as _shutil
+    import subprocess as _sp
+    import sys as _sys
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.secrets import SecretGetError, get_entry_by_name, resolve_command
+
+    cfg = load_anvyc_config(config)
+    entry = get_entry_by_name(cfg, name)
+    if entry is None:
+        print_error(f"등록되지 않은 secret: {name!r} — `anvyc secret list` 로 확인.")
+        raise typer.Exit(code=2)
+    try:
+        cmd = resolve_command(entry)
+    except SecretGetError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+
+    if reveal:
+        if not _sys.stdout.isatty():
+            print_error("--reveal 은 TTY 에서만 허용 (파이프/CI 노출 방지). 기본 클립보드 모드를 쓰세요.")
+            raise typer.Exit(code=2)
+        console.print(f"[yellow]⚠ revealing secret '{name}' to terminal[/]")
+        rc = _sp.run(cmd, check=False).returncode  # 값은 stdout→터미널 직접 (anvyc 미캡처)
+        if rc != 0:
+            print_error("resolve 실패 — reference / backend 인증 확인.")
+            raise typer.Exit(code=rc or 1)
+        return
+
+    if not _shutil.which("pbcopy"):
+        print_error("pbcopy 없음 (macOS 전용) — `--reveal`(TTY) 사용. Linux clipboard 는 polish 대기.")
+        raise typer.Exit(code=2)
+    clear_s = int(cfg.secrets.clipboard_clear_seconds)
+    # resolve stdout → pbcopy stdin 직접 파이프 (anvyc Python 미캡처)
+    p1 = _sp.Popen(cmd, stdout=_sp.PIPE)
+    p2 = _sp.Popen(["pbcopy"], stdin=p1.stdout)
+    if p1.stdout:
+        p1.stdout.close()
+    p2.communicate()
+    if p1.wait() != 0 or p2.returncode != 0:
+        print_error("resolve / clipboard 실패 — reference / backend 인증 확인.")
+        raise typer.Exit(code=1)
+    # 자동 클리어 — 분리된 백그라운드 프로세스 (anvyc 종료와 무관하게 N초 후 비움)
+    _sp.Popen(  # noqa: S603,S607
+        ["sh", "-c", f"sleep {clear_s}; printf '' | pbcopy"], start_new_session=True
+    )
+    console.print(
+        f"[green]copied to clipboard[/] '{name}' — {clear_s}s 후 자동 클리어 (stdout 값 미출력)"
+    )
+
+
 @sync_app.command("status")
 def sync_status(
     target: Path = typer.Option(
