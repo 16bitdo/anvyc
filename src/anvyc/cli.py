@@ -2313,6 +2313,62 @@ def secret_get(
     )
 
 
+@secret_app.command("inject-wire")
+def secret_inject_wire(
+    name: str = typer.Argument(..., help="레지스트리 name."),
+    target: Path = typer.Option(..., "--target", help="주입 대상 파일 (예: ~/project/.envrc)."),
+    env_var: str | None = typer.Option(None, "--env-var", help="export 환경변수 이름 (기본 name)."),
+    apply_changes: bool = typer.Option(False, "--apply", help="실제 추가 (기본 dry-run — 라인만 출력)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="--apply 시 confirm prompt 자동 수락."),
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+) -> None:
+    """JIT 주입 라인 생성 — 값 대신 reference 를 .envrc 에 export (값 미저장, CP-15 Phase 2.5b).
+
+    `export VAR="$(op read …)"` 형태로 shell 로드(direnv) 시 backend 가 resolve — 값은
+    파일에 저장되지 않는다. aws-vault 는 exec 주입 모델이라 주석 가이드만 추가.
+    기본 dry-run; `--apply` 로 target 에 추가(쓰기 전 .bak).
+    """
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.secrets import (
+        SecretInjectError,
+        append_inject_line,
+        get_entry_by_name,
+        plan_inject,
+    )
+
+    cfg = load_anvyc_config(config)
+    entry = get_entry_by_name(cfg, name)
+    if entry is None:
+        print_error(f"등록되지 않은 secret: {name!r} — `anvyc secret list` 로 확인.")
+        raise typer.Exit(code=2)
+    try:
+        plan = plan_inject(entry, target=str(target), env_var=env_var)
+    except SecretInjectError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+
+    console.print(f"[bold]inject-wire plan[/]  name={plan.name} backend={plan.backend}")
+    console.print(f"  target: {_short_path(Path(plan.target))}")
+    console.print(f"  line:   {plan.line}")
+    for w in plan.warnings:
+        console.print(f"  [yellow]warning:[/] {w}")
+
+    if not apply_changes:
+        console.print("[dim]\n(dry-run — no changes. add --apply to write.)[/]")
+        return
+    if not yes and not _confirm("\n실제로 target 에 추가할까요?", default=False):
+        console.print("[dim]aborted.[/]")
+        raise typer.Exit(code=0)
+    try:
+        written = append_inject_line(plan.target, plan.line)
+    except SecretInjectError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=2) from exc
+    console.print(f"[green]wired[/] '{plan.name}' → {_short_path(written)}")
+    if plan.env_var:
+        console.print("  [dim]direnv 사용 시 `direnv allow` 후 새 shell 에서 주입됨.[/]")
+
+
 @sync_app.command("status")
 def sync_status(
     target: Path = typer.Option(

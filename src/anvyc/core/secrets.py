@@ -27,6 +27,8 @@ Report schema v1 (`schema_version: 1`):
 from __future__ import annotations
 
 import platform
+import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
@@ -474,3 +476,85 @@ def resolve_command(entry: SecretEntry) -> list[str]:
             "`aws-vault exec <profile> -- <cmd>` 또는 inject-wire(Phase 2.5b) 사용."
         )
     raise SecretGetError(f"미지의 backend: {entry.backend!r}")
+
+
+# ===== Phase 2.5b: inject-wire (JIT 주입 — dev_env/.envrc) =====
+#
+# secret 값을 저장하지 않고 shell 로드 시점(direnv)에 reference 로부터 주입한다.
+# `export VAR="$(<resolve 명령>)"` 형태 — 값은 .envrc 에 들어가지 않고, direnv allow
+# 후 매 shell 세션에서 backend 가 resolve 한다 (at-rest 평문 0). aws-vault 는 env
+# export 가 아니라 exec 주입 모델이라 주석 가이드로 안내한다.
+
+_ENV_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class SecretInjectError(ValueError):
+    """secret inject-wire 입력/실행 오류."""
+
+
+@dataclass(frozen=True)
+class InjectPlan:
+    """`inject-wire` plan — target 파일에 추가될 라인."""
+
+    name: str
+    backend: str
+    env_var: str | None      # aws-vault 는 None (env export 아님 — 주석 가이드)
+    line: str
+    target: str
+    warnings: list[str]
+
+
+def plan_inject(entry: SecretEntry, *, target: str, env_var: str | None = None) -> InjectPlan:
+    """entry 의 JIT 주입 라인 산출. 값은 미포함 — resolve 명령을 `$( )` 로 감쌀 뿐.
+
+    Raises:
+      SecretInjectError: env var 이름 무효 / Phase 미지원 backend.
+    """
+    if entry.backend == BACKEND_AWS_VAULT:
+        line = (
+            f"# {entry.name}: aws-vault profile '{entry.profile}' — "
+            f"'aws-vault exec {entry.profile} -- <cmd>' 로 자격 주입 (env export 아님)"
+        )
+        return InjectPlan(
+            entry.name, entry.backend, None, line, target,
+            ["aws-vault 는 exec 주입 모델 — .envrc export 불가. 주석 가이드만 추가."],
+        )
+
+    var = env_var or entry.name
+    if not _ENV_VAR_RE.match(var):
+        raise SecretInjectError(
+            f"env var 이름 무효: {var!r} — `--env-var` 로 명시 (예: API_KEY). "
+            "(name 에 '/' 등이 있으면 자동 사용 불가)"
+        )
+    try:
+        cmd = resolve_command(entry)
+    except SecretGetError as exc:
+        raise SecretInjectError(str(exc)) from exc
+    line = f'export {var}="$({shlex.join(cmd)})"'
+    return InjectPlan(
+        entry.name, entry.backend, var, line, target,
+        [
+            "값은 .envrc 에 저장되지 않음 — shell 로드(direnv) 시 backend 가 resolve.",
+            "매 세션 resolve 비용/프롬프트 발생 가능 (op/keychain biometric 등).",
+        ],
+    )
+
+
+def append_inject_line(target: str, line: str, *, make_backup: bool = True) -> Path:
+    """target 파일에 line 추가 (없으면 생성). 중복 라인은 거부, 쓰기 전 .bak.
+
+    Raises:
+      SecretInjectError: 동일 라인이 이미 존재.
+    """
+    p = Path(target).expanduser()
+    existing = p.read_text(encoding="utf-8") if p.is_file() else ""
+    if line in existing:
+        raise SecretInjectError(f"이미 존재하는 주입 라인 — skip: {target}")
+    if make_backup and p.is_file():
+        ts = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+        shutil.copy2(p, p.with_name(f"{p.name}.bak-{ts}"))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    sep = "" if (not existing or existing.endswith("\n")) else "\n"
+    with p.open("a", encoding="utf-8") as f:
+        f.write(f"{sep}{line}\n")
+    return p
