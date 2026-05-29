@@ -493,6 +493,33 @@ class Adapter:
         """source 설정을 target에 적용한다."""
 ```
 
+### 11.1 AdapterMeta — 도구 메타데이터 단일 SoT
+
+각 adapter 는 `name`/메서드 외에 정적 메타데이터 `meta: AdapterMeta` 를 클래스 속성으로
+노출한다. 런타임 상태(enabled/detected/file count)와 무관한 "설명용" 정보만 담는다.
+
+```python
+@dataclass(frozen=True)
+class AdapterMeta:
+    name: str            # registry key·class.name 과 일치
+    label: str           # 'AWS CLI'
+    summary: str         # '~/.aws/config 백업 (credentials·SSO cache 제외)'
+    category: str        # shell|vcs|cloud|iac|ide|ai-agent|terminal|dev-env
+    includes: tuple[str, ...]   # 기본 포함 — file-based 는 DEFAULT_FILES 동일 참조
+    excludes: tuple[str, ...]   # 기본 제외(표시용; 경로형은 exclude() 의 부분집합)
+    default_enabled: bool = True   # dev_env=False
+    config_kind: str = "files"     # 'files' | 'structured'
+    since: str = ""
+```
+
+이 메타는 다음 **5개 표면의 단일 소스**다 (과거 분산/드리프트 제거):
+`anvyc tools list` · MCP `tools_list` · `anvyc tools configure`(선택 화면) ·
+`init --interactive` wizard(도구별 default) · README §4 표(`scripts/gen_supported_tools.py` 생성).
+정합성은 테스트로 강제한다 — `test_adapter_meta`(file-based `includes==DEFAULT_FILES`,
+표시 `excludes ⊆ exclude()`, category 허용값, default_enabled 정책),
+`test_wizard_sot`(순서가 ADAPTERS 전체 커버), `test_gen_supported_tools`(README↔SoT 동기).
+상세 설계/진행: `docs/archive/improvement-plan-tools-selection.md`.
+
 ---
 
 ## 12. Core Workflow

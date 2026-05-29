@@ -122,6 +122,26 @@ def collect_choices(config: Path | None = None) -> list[ToolChoice]:
     ]
 
 
+def render_supported_tools_markdown() -> str:
+    """README §4 '지원 도구' 표를 AdapterMeta SoT 에서 생성 (scripts/gen_supported_tools.py).
+
+    런타임 상태(detect/config)와 무관한 정적 메타만 사용 → 어느 환경에서 돌려도 동일.
+    표 순서는 ADAPTERS 레지스트리 순서.
+    """
+    from anvyc.core.backup import ADAPTERS
+
+    lines = [
+        "| 도구 | 분류 | 기본 포함 | 기본 제외 | 도입 |",
+        "|---|---|---|---|---|",
+    ]
+    for cls in ADAPTERS.values():
+        m = cls.meta
+        inc = ", ".join(f"`{x}`" for x in m.includes) or "—"
+        exc = ", ".join(f"`{x}`" for x in m.excludes) or "—"
+        lines.append(f"| {m.label} | {m.category} | {inc} | {exc} | {m.since} |")
+    return "\n".join(lines)
+
+
 def apply_toggles(choices: list[ToolChoice], indices: Iterable[int]) -> dict[str, bool]:
     """1-based 번호 집합을 토글한 뒤 전체 도구의 name→enabled 맵을 반환 (순수)."""
     idx = set(indices)

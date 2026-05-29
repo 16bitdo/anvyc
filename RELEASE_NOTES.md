@@ -2,6 +2,23 @@
 
 ## Unreleased (post-v0.16.0)
 
+### Tools selection UX — 지원 도구 목록 → 선택 → 구성 (anvyc#120~#125)
+
+도구 메타데이터를 adapter 의 `AdapterMeta` **단일 SoT** 로 통합하고, list / configure /
+wizard / MCP / README 가 이를 공유하도록 정리. "지원 도구를 보고 골라서 구성"하는 흐름 강화.
+설계/진행: `docs/archive/improvement-plan-tools-selection.md`.
+
+- **`anvyc tools list` 강화** — `label / category / 요약 / 기본 포함·제외 / enabled / detect`
+  표시. `--json` 은 포함/제외 등 전체 메타 (기존 키 유지 = 하위호환). MCP `tools_list` 도 합류.
+- **`anvyc tools configure` 신규** — 재실행형 enable/disable 선택. `[tui]` extra(textual) +
+  TTY 면 체크박스 TUI, 아니면 번호 토글 메뉴(비-TTY/헤드리스 자동 폴백). 저장 전 변경
+  미리보기 + 원본 `.bak` + atomic write, 무관 섹션·각 도구의 다른 키 보존, **secret 미접촉**.
+- **`AdapterMeta` SoT** — 10 adapter 가 label/summary/category/includes/excludes/
+  default_enabled/config_kind/since 노출. README §4 표는 `scripts/gen_supported_tools.py`
+  가 SoT 에서 생성(`--check` drift 가드). `init --interactive` wizard 도 SoT 소비
+  (`_WIZARD_FILE_DEFAULTS` / `_WIZARD_DEV_ENV_DEFAULTS` 중복 제거).
+- **doctor `tui-extra-importable`** (INFO — textual 미설치는 기능 강등이지 실패 아님) → 총 21 check.
+
 ### CP-15 Secret Broker — secret 입력/조회 broker (anvyc#111~#117)
 
 "anvyc 는 secret 평문을 보유하지 않는다" 불변식을 유지하며 secret 입력/조회 편의를

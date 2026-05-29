@@ -1,6 +1,6 @@
 # anvyc 지원 도구 목록 → 선택 → 구성 UX 개선 계획
 
-> 상태: **활성 (작업 중)** — 소진 시 `docs/archive/` 로 이동
+> 📦 **Archived 2026-05-29** — 6-PR 전부 소진 (anvyc#120~#125), 이력 보존용 (활성 계획 아님).
 > 작성일: 2026-05-29
 > 대상 버전: v0.16.x → **v0.17.0 후보** (control-plane axis 아님 — UX 기능)
 > 검토 범위: 지원 도구 목록의 정보성, 선택 기반 구성/설정 편의성, 메타데이터 SoT 단일화
@@ -93,7 +93,7 @@ class AdapterMeta:
 | **PR3** | 순수 선택모델 + 안전 yaml writer/merge + `tools configure`(폴백 경로, textual 無로 완전 동작) | `core/tools_select.py`(신규), `cli.py` | configure 사용 가능(번호 토글) | ✅ 구현 · PR open |
 | **PR4** | Textual TUI view + `[tui]` extra + `tui-extra-importable` check + 미설치 폴백 | `ui/tui.py`(신규), `pyproject.toml`, `checks/tui_extra.py`(신규) | TUI 경험 | ✅ 구현 · PR open |
 | **PR5** | `init --interactive` 리팩터 → AdapterMeta SoT 로 defaults 일원화 (`_WIZARD_FILE_DEFAULTS`/`_WIZARD_DEV_ENV_DEFAULTS`/default-enabled 규칙 제거), prompt 순서는 wizard 전용 유지+drift 가드 | `cli.py` | 동작 동일, 중복 제거 | ✅ 구현 · PR open |
-| **PR6** | 문서 — README §4 생성/§8 갱신 + DESIGN/RELEASE_NOTES/CONTEXT + 본 계획 archive | `scripts/gen_supported_tools.py`(신규), `README.md`, `DESIGN.md` 외 | 문서 정합 | 예정 |
+| **PR6** | 문서 — README §4 생성/§8 갱신 + DESIGN/RELEASE_NOTES/CONTEXT + 본 계획 archive | `scripts/gen_supported_tools.py`(신규), `README.md`, `DESIGN.md`, `RELEASE_NOTES.md` | 문서 정합 | ✅ 구현 · PR open |
 
 PR1–2 만으로도 "풍부한 목록" 선배포 가능. 각 PR 독립 머지·테스트 백업.
 
@@ -118,4 +118,4 @@ PR1–2 만으로도 "풍부한 목록" 선배포 가능. 각 PR 독립 머지·
 - [x] PR3 — 선택모델 + 안전 writer + configure 폴백 (PR open)
 - [x] PR4 — Textual TUI + [tui] extra + doctor check (PR open)
 - [x] PR5 — wizard 리팩터 (AdapterMeta SoT defaults, `_WIZARD_*` 중복 제거) (PR open)
-- [ ] PR6 — 문서 생성/정합 + 본 문서 archive
+- [x] PR6 — 문서 생성/정합(README §4 생성기 + DESIGN/RELEASE_NOTES) + 본 문서 archive (PR open)
