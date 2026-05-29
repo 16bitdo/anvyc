@@ -28,6 +28,10 @@ ADAPTER_CATEGORIES: frozenset[str] = frozenset(
     {"shell", "vcs", "cloud", "iac", "ide", "ai-agent", "terminal", "dev-env"}
 )
 
+# 아직 미지원 — 향후 adapter 후보. `tools list` footer 의 단일 SoT (과거 cli.py
+# 하드코딩 대체). 신규 adapter 후보는 여기만 갱신하면 footer 가 자동 반영된다.
+PLANNED_ADAPTERS: tuple[str, ...] = ("vscode", "helix", "neovim")
+
 
 @dataclass(frozen=True)
 class AdapterMeta:
