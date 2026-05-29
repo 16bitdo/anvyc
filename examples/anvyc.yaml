@@ -186,3 +186,31 @@ cost:
     # accounts:
     #   - "16bitdo"
     #   - "heisgone@whatap"
+
+# CP-15 Secret Broker (Phase 1, read-only) — reference 레지스트리.
+# anvyc 는 secret "값" 을 저장하지 않는다. 아래 entry 는 backend(op/sops/keychain/
+# aws-vault)에 저장된 secret 을 가리키는 "핸들" 만 보유한다 (backup/git commit 안전).
+# `anvyc secret list` 로 조회/검증, doctor `secret-registry-valid` 로 구조 점검.
+# add/get/inject-wire 는 Phase 2+ (docs/design-axes/cp-15-secret-broker.md §9).
+secrets:
+  schema_version: 1
+  get:
+    default_sink: clipboard          # clipboard | reveal — get 기본 동작 (Phase 2)
+    clipboard_clear_seconds: 20
+  entries: []
+    # 예 (backend 별 핸들 — 값 아님):
+    # - name: AWS_ACCESS_KEY_ID         # op: op://<vault>/<item>/<field>
+    #   backend: op
+    #   ref: "op://Personal/AWS/access_key_id"
+    #   wire: { target: "~/.zshrc", style: "op-read" }   # (선택) Phase 2.5 JIT 주입
+    # - name: pulumi/passphrase         # sops: 파일 + (inplace) dotted key
+    #   backend: sops
+    #   file: "~/.pulumi/creds.json"
+    #   key: "passphrase"
+    # - name: DB_PW                      # keychain (macOS): service + account
+    #   backend: keychain
+    #   service: "anvyc"
+    #   account: "db"
+    # - name: aws/prd                    # aws-vault: profile
+    #   backend: aws-vault
+    #   profile: "my-prd"

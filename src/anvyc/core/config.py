@@ -133,12 +133,74 @@ class CostConfig:
 
 
 @dataclass
+class SecretEntry:
+    """secrets.entries 의 단일 항목 — CP-15 Secret Broker 레지스트리.
+
+    값(secret 본문)은 담지 않는다. backend 별 "핸들" 만 보유 (op reference /
+    sops file+key / keychain service+account / aws-vault profile).
+    """
+
+    name: str
+    backend: str                          # op | sops | keychain | aws-vault
+    ref: str | None = None                # backend=op  : op://<vault>/<item>/<field>
+    file: str | None = None               # backend=sops: SOPS 파일 경로
+    key: str | None = None                # backend=sops: inplace 모드의 dotted key (binary 면 생략)
+    service: str | None = None            # backend=keychain
+    account: str | None = None            # backend=keychain
+    profile: str | None = None            # backend=aws-vault
+    wire: dict[str, Any] = field(default_factory=dict)  # (선택) JIT 주입 와이어링 (Phase 2.5)
+
+
+@dataclass
+class SecretsConfig:
+    """CP-15 `secrets:` 블록 — reference 레지스트리 + 조회 sink 기본값."""
+
+    schema_version: int = 1
+    default_sink: str = "clipboard"       # clipboard | reveal — get 기본 동작 (Phase 2)
+    clipboard_clear_seconds: int = 20
+    entries: list[SecretEntry] = field(default_factory=list)
+
+
+def _normalize_secret_entries(raw: object) -> list[SecretEntry]:
+    """yaml 의 secrets.entries (list of dict) 를 SecretEntry 리스트로.
+
+    name 또는 backend 가 없는 항목은 silently skip (graceful — CP-13 §2.1 패턴).
+    """
+    out: list[SecretEntry] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        backend = item.get("backend")
+        if not name or not backend:
+            continue
+        wire = item.get("wire")
+        out.append(
+            SecretEntry(
+                name=str(name),
+                backend=str(backend),
+                ref=str(item["ref"]) if item.get("ref") else None,
+                file=str(item["file"]) if item.get("file") else None,
+                key=str(item["key"]) if item.get("key") else None,
+                service=str(item["service"]) if item.get("service") else None,
+                account=str(item["account"]) if item.get("account") else None,
+                profile=str(item["profile"]) if item.get("profile") else None,
+                wire=dict(wire) if isinstance(wire, dict) else {},
+            )
+        )
+    return out
+
+
+@dataclass
 class AnvycConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     tools: dict[str, ToolConfig] = field(default_factory=dict)
     doctor: DoctorConfig = field(default_factory=DoctorConfig)
     cost: CostConfig = field(default_factory=CostConfig)
+    secrets: SecretsConfig = field(default_factory=SecretsConfig)
     project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
     source: Path | None = None  # 로드된 base yaml 경로 (debug 용)
     overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
@@ -280,12 +342,22 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         ),
     )
 
+    secrets_raw = raw.get("secrets") or {}
+    get_raw = secrets_raw.get("get") or {}
+    secrets = SecretsConfig(
+        schema_version=int(secrets_raw.get("schema_version") or 1),
+        default_sink=str(get_raw.get("default_sink") or "clipboard"),
+        clipboard_clear_seconds=int(get_raw.get("clipboard_clear_seconds") or 20),
+        entries=_normalize_secret_entries(secrets_raw.get("entries")),
+    )
+
     return AnvycConfig(
         storage=storage,
         security=security,
         tools=tools,
         doctor=doctor,
         cost=cost,
+        secrets=secrets,
         project_roots=list(raw.get("project_roots") or []),
         source=source,
         overlay_source=overlay_source,
