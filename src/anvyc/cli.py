@@ -15,6 +15,7 @@ from typing import Any
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from anvyc import __version__
@@ -36,7 +37,7 @@ from anvyc.core.creds import (
 )
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
-from anvyc.core.extras import install_hint, is_available
+from anvyc.core.extras import collect_extras_status, install_hint, is_available
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
 from anvyc.core.snapshot import (
@@ -513,6 +514,71 @@ def _print_verbose(report: DoctorReport) -> None:
             r.suggestion or "",
         )
     console.print(table)
+
+
+@app.command(rich_help_panel=PANEL_EXTERNAL)
+def extras(
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+    check: bool = typer.Option(
+        False, "--check", help="필수(required) 도구 누락 시 exit 1 (CI 게이트)."
+    ),
+    missing: bool = typer.Option(False, "--missing", help="미설치 항목만 표시."),
+) -> None:
+    """동반 도구(외부 CLI + Python extras)의 설치 상태·잠금 기능·설치법.
+
+    anvyc 코어는 이들 없이도 동작하며, 각 도구는 특정 기능을 잠금 해제한다
+    (sops/age→secret_files, boto3→AWS cost, mcp→MCP server 등). 미설치 항목은
+    '설치' 열의 ✗ 와 '설치 명령' 으로 필요한 것만 골라 추가하면 된다.
+    """
+    rows = collect_extras_status()
+    visible = [r for r in rows if r["relevant"]]
+    if missing:
+        visible = [r for r in visible if not r["installed"]]
+
+    if json_out:
+        typer.echo(jsonlib.dumps(rows, ensure_ascii=False, indent=2))
+    else:
+        table = Table(
+            title="동반 도구 (companion tools)", show_header=True, header_style="bold"
+        )
+        table.add_column("도구")
+        table.add_column("종류")
+        table.add_column("설치", justify="center")
+        table.add_column("잠금 해제 기능")
+        table.add_column("설치 명령", overflow="fold")
+        for r in visible:
+            if r["installed"]:
+                ver = f" {r['version']}" if r["version"] else ""
+                status = f"[green]✓[/]{ver}"
+            else:
+                status = "[red]✗[/]"
+            kind = "CLI" if r["kind"] == "binary" else "pip extra"
+            # install_cmd 등 동적 값은 'anvyc[mcp]' 처럼 대괄호를 포함 — rich 가 마크업
+            # 태그로 오해해 삼키지 않도록 escape (status 는 의도된 마크업이라 제외).
+            table.add_row(
+                escape(r["label"]),
+                kind,
+                status,
+                escape(r["purpose"]),
+                escape(r["install_cmd"]),
+            )
+        console.print(table)
+        absent = [r for r in rows if r["relevant"] and not r["installed"]]
+        if absent:
+            console.print(
+                f"\n[yellow]{len(absent)}개 미설치[/] — 위 '설치 명령' 으로 필요한 기능만 추가하세요."
+            )
+        else:
+            console.print("\n[green]모든 동반 도구 설치됨[/]")
+
+    if check:
+        missing_required = [
+            r for r in rows if r["required"] and r["relevant"] and not r["installed"]
+        ]
+        if missing_required:
+            names = ", ".join(r["name"] for r in missing_required)
+            print_error(f"필수 도구 미설치: {names}")
+            raise typer.Exit(code=1)
 
 
 def _severity_style(s: Severity) -> str:

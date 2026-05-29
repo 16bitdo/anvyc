@@ -546,8 +546,10 @@ class ExtraReq:
 `collect_extras_status()` 를 제공한다. 과거 `shutil.which`+`brew install …` 안내가
 `core/sops.py`·`core/secrets.py`·`checks/sops_keys.py`·`checks/op_references.py`·`cli.py`
 에 분산·불일치했던 것을 이 레지스트리 참조로 일원화했다 — 안내 문구 drift 제거.
-소비처: 위 call site(설치 여부·안내) + `anvyc extras` 명령 + doctor 발견성 힌트.
-정합성은 `test_extras_registry`(필수 필드·kind 허용값·핵심 도구 존재·헬퍼 계약)로 강제한다.
+소비처: 위 call site(설치 여부·안내) + `anvyc extras` 명령(설치 상태·잠금 기능·설치법
+표, `--json`/`--missing`/`--check`) + README 동반 도구 표(`scripts/gen_extras.py` 생성,
+`render_extras_markdown`). 정합성은 `test_extras_registry`(필수 필드·kind 허용값·핵심 도구
+존재·헬퍼 계약), `test_extras_command`(JSON/표/--check), `test_gen_extras`(README↔SoT 동기)로 강제한다.
 
 ---
 

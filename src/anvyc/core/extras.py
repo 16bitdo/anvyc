@@ -254,3 +254,22 @@ def collect_extras_status() -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+_KIND_LABEL = {"binary": "CLI", "pyextra": "pip extra"}
+
+
+def render_extras_markdown() -> str:
+    """README '동반 도구' 표를 EXTRAS_REGISTRY SoT 에서 생성 (scripts/gen_extras.py).
+
+    런타임 설치 상태와 무관한 정적 메타만 사용 → 어느 환경에서 돌려도 동일.
+    표 순서는 EXTRAS_REGISTRY 순서.
+    """
+    lines = [
+        "| 도구 | 종류 | 잠금 해제 기능 | 설치 |",
+        "|---|---|---|---|",
+    ]
+    for r in EXTRAS_REGISTRY:
+        kind = _KIND_LABEL.get(r.kind, r.kind)
+        lines.append(f"| {r.label} | {kind} | {r.purpose} | `{r.install_cmd}` |")
+    return "\n".join(lines)
