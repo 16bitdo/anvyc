@@ -18,7 +18,7 @@ from pathlib import Path
 
 from pathspec import PathSpec
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -42,6 +42,17 @@ _DEFAULT_MAX_DEPTH = 3
 
 class DevEnvAdapter:
     name = "dev_env"
+    meta = AdapterMeta(
+        name="dev_env",
+        label="dev_env",
+        summary="프로젝트 루트의 .envrc / .tool-versions / .nvmrc 추적 (기본 비활성)",
+        category="dev-env",
+        includes=DEFAULT_PATTERNS,
+        excludes=DEFAULT_EXCLUDE,
+        default_enabled=False,
+        config_kind="structured",
+        since="v0.7.0",
+    )
 
     def __init__(
         self,

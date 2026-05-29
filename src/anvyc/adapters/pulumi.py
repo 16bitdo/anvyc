@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -15,6 +15,15 @@ DEFAULT_FILES: tuple[str, ...] = (
 
 class PulumiAdapter:
     name = "pulumi"
+    meta = AdapterMeta(
+        name="pulumi",
+        label="Pulumi",
+        summary="~/.pulumi/config.json 백업 (credentials.json·access_tokens 제외)",
+        category="iac",
+        includes=DEFAULT_FILES,
+        excludes=("~/.pulumi/credentials.json", "~/.pulumi/access_tokens"),
+        since="v0.1.0",
+    )
 
     def __init__(self, files: tuple[str, ...] | None = None) -> None:
         self._files = files if files is not None else DEFAULT_FILES

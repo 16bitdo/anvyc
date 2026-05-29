@@ -17,7 +17,7 @@ from typing import Any
 
 from pathspec import PathSpec
 
-from anvyc.adapters.base import ApplyResult
+from anvyc.adapters.base import AdapterMeta, ApplyResult
 from anvyc.checks.base import CheckResult
 from anvyc.core.diff import DiffResult
 from anvyc.core.inventory import ManagedFile
@@ -119,6 +119,16 @@ DEFAULT_PROJECT_PATTERNS: tuple[str, ...] = (
 
 class CursorAdapter:
     name = "cursor"
+    meta = AdapterMeta(
+        name="cursor",
+        label="Cursor IDE",
+        summary="Cursor 설정 / 규칙 / 스킬 / MCP (3-layer) 백업 (workspaceStorage·캐시 제외)",
+        category="ide",
+        includes=("rules", "skills", "mcp.json", "plugins", "settings.json", "keybindings.json", "snippets"),
+        excludes=("workspaceStorage", "globalStorage", "History", "extensions", "projects", "chats"),
+        config_kind="structured",
+        since="v0.1.0",
+    )
 
     def __init__(
         self,
