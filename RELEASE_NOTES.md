@@ -2,6 +2,27 @@
 
 ## Unreleased (post-v0.16.0)
 
+### 동반 도구(companion tools) 발견성 — 외부 CLI·extra 인지/조회 (anvyc#127~#131)
+
+anvyc 의 일부 기능(secret_files / cost / MCP / TUI 등)은 외부 CLI(sops/age/op/…)·pip
+extra(boto3/httpx/textual/…)가 있어야 동작하지만, 그 존재·설치법이 코드 곳곳에 흩어져
+인지하기 어려웠다. 의존성을 단일 SoT 로 통합하고 **인지(install) → 진단(doctor) →
+조회·선택(extras)** 전 동선에 노출.
+
+- **`anvyc extras` 신규** — 동반 도구(외부 CLI + pip extra)의 설치 상태·잠금 기능·설치
+  명령을 한 표로. `--json` / `--missing`(미설치만) / `--check`(필수 누락 시 exit 1).
+  설치된 extra 는 버전, 미설치는 ✗ + 설치 명령. (anvyc#130)
+- **`ExtraReq` SoT** (`src/anvyc/core/extras.py` `EXTRAS_REGISTRY`) — 외부 CLI 8종 +
+  pip extra 5종의 메타·설치 안내 단일화 (AdapterMeta 패턴 미러). 흩어져 불일치하던
+  `shutil.which`+`brew install` 안내(`core/sops.py`·`core/secrets.py`·`checks/*`·`cli.py`)를
+  `is_available()`/`install_hint()` 참조로 통합. README §4.1 표는 `scripts/gen_extras.py`
+  가 SoT 에서 생성(`--check` drift 가드). DESIGN §11.2. (anvyc#127)
+- **`anvyc doctor` 발견성** — 요약 Top findings 를 severity 내림차순(critical→warning→info)
+  정렬해 심각 항목이 info 에 묻히지 않게 하고, blocking finding 은 remediation(설치법)을
+  기본 출력에서 `→ …` 한 줄로 노출 (기존엔 `--verbose` 표에서만). (anvyc#128)
+- **dev-install 동반 도구 요약** — `scripts/dev-install.sh` 말미에 설치 현황(설치 N/M +
+  미설치 목록) + `anvyc extras` 안내를 출력해 첫 설치 시점에 인지. (anvyc#131)
+
 ### Tools selection UX — 지원 도구 목록 → 선택 → 구성 (anvyc#120~#125)
 
 도구 메타데이터를 adapter 의 `AdapterMeta` **단일 SoT** 로 통합하고, list / configure /
