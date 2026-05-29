@@ -107,6 +107,20 @@ def test_install_auto_no_ide_detected(fake_home: Path) -> None:
     assert "no IDE detected" in result.stdout
 
 
+def test_install_apply_confirm_shows_enter_no_hint(fake_home: Path) -> None:
+    """`--apply` (no --yes) 의 confirm prompt 가 '(Enter=No)' 힌트로 default 를 명시한다.
+
+    회귀 가드: destructive confirm 의 default=False 가 [y/N] 만으로 전달되던 UX
+    문제를 _confirm() helper 로 일관 적용 (init wizard 와 동일 패턴).
+    """
+    result = CliRunner().invoke(
+        app, ["mcp", "install", "--ide", "cursor", "--apply"], input="n\n"
+    )
+    assert "(Enter=No)" in result.stdout, f"missing hint in:\n{result.stdout}"
+    # 취소 path — 파일 미작성
+    assert not (fake_home / ".cursor" / "mcp.json").is_file()
+
+
 def test_install_with_claude_config_dir_env(fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`CLAUDE_CONFIG_DIR` env var 가 set 일 때 그 경로에 작성."""
     custom = fake_home / ".claude-edward"
