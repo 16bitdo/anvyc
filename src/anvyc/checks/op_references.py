@@ -16,19 +16,19 @@ DESIGN.md §30 / §27 참고.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import is_available
 from anvyc.security.scanner import extract_op_references
 
 _OP_TIMEOUT_S = 6
 
 
 def _op_available() -> bool:
-    if not shutil.which("op"):
+    if not is_available("op"):
         return False
     try:
         result = subprocess.run(

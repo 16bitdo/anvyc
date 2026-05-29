@@ -36,6 +36,7 @@ from anvyc.core.creds import (
 )
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import DoctorReport, run_doctor
+from anvyc.core.extras import install_hint, is_available
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
 from anvyc.core.snapshot import (
@@ -233,7 +234,7 @@ def init(
                 text=True,
             )
         except FileNotFoundError:
-            console.print("[red]error[/] git binary 미설치")
+            console.print(f"[red]error[/] git binary 미설치 — {install_hint('git')}")
             raise typer.Exit(code=1) from None
         if proc.returncode != 0:
             print_error(f"git clone 실패\n{proc.stderr.strip()}")
@@ -2377,7 +2378,6 @@ def secret_get(
     기본: backend resolve stdout → pbcopy 직접 파이프, N초(secrets.get.clipboard_clear_seconds)
     후 자동 클리어. `--reveal`: TTY 한정 stdout 출력(비-TTY 거부).
     """
-    import shutil as _shutil
     import subprocess as _sp
     import sys as _sys
 
@@ -2406,7 +2406,7 @@ def secret_get(
             raise typer.Exit(code=rc or 1)
         return
 
-    if not _shutil.which("pbcopy"):
+    if not is_available("pbcopy"):
         print_error("pbcopy 없음 (macOS 전용) — `--reveal`(TTY) 사용. Linux clipboard 는 polish 대기.")
         raise typer.Exit(code=2)
     clear_s = int(cfg.secrets.clipboard_clear_seconds)

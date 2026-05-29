@@ -36,6 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from anvyc.core.config import AnvycConfig, SecretEntry, load_anvyc_config
+from anvyc.core.extras import install_hint, is_available
 
 SCHEMA_VERSION = 1
 _PROBE_TIMEOUT_S = 6
@@ -127,8 +128,8 @@ def _run_rc(cmd: list[str]) -> int | None:
 
 
 def _probe_op(entry: SecretEntry) -> tuple[str, str]:
-    if not shutil.which("op"):
-        return STATUS_UNKNOWN, "op CLI 미설치 — 검증 skip (brew install 1password-cli)"
+    if not is_available("op"):
+        return STATUS_UNKNOWN, f"op CLI 미설치 — 검증 skip ({install_hint('op')})"
     if _run_rc(["op", "whoami"]) != 0:
         return STATUS_UNKNOWN, "op 미인증 (op signin) — 검증 skip"
     # 값(stdout)은 _run_rc 가 폐기 — exit code 만으로 resolve 여부 판정
@@ -139,8 +140,8 @@ def _probe_op(entry: SecretEntry) -> tuple[str, str]:
 
 
 def _probe_sops(entry: SecretEntry) -> tuple[str, str]:
-    if not shutil.which("sops"):
-        return STATUS_UNKNOWN, "sops 미설치 — 검증 skip (brew install sops)"
+    if not is_available("sops"):
+        return STATUS_UNKNOWN, f"sops 미설치 — 검증 skip ({install_hint('sops')})"
     path = Path(entry.file or "").expanduser()
     if not path.is_file():
         return STATUS_UNRESOLVED, f"SOPS 파일 없음: {entry.file}"
@@ -153,7 +154,7 @@ def _probe_sops(entry: SecretEntry) -> tuple[str, str]:
 
 
 def _probe_keychain(entry: SecretEntry) -> tuple[str, str]:
-    if platform.system() != "Darwin" or not shutil.which("security"):
+    if platform.system() != "Darwin" or not is_available("security"):
         return STATUS_UNKNOWN, "keychain(macOS security) 미지원 환경 — 검증 skip"
     # -w (값 출력) 미사용 — 존재 여부만 (exit code). 값 비노출.
     rc = _run_rc(
@@ -165,7 +166,7 @@ def _probe_keychain(entry: SecretEntry) -> tuple[str, str]:
 
 
 def _probe_aws_vault(entry: SecretEntry) -> tuple[str, str]:
-    if not shutil.which("aws-vault"):
+    if not is_available("aws-vault"):
         return STATUS_UNKNOWN, "aws-vault 미설치 — 검증 skip"
     # profile 이름은 비-secret — list 출력에서 존재만 확인
     try:
