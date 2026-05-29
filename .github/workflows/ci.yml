@@ -51,7 +51,7 @@ jobs:
         run: pip install uv
 
       - name: Install anvyc + dev deps
-        run: uv pip install --system -e ".[dev,encryption,mcp]"
+        run: uv pip install --system -e ".[dev,encryption,mcp,tui]"
 
       - name: Ruff
         run: ruff check src/ tests/
@@ -80,7 +80,7 @@ jobs:
         run: pip install uv
 
       - name: Install anvyc + dev deps
-        run: uv pip install --system -e ".[dev,encryption,mcp]"
+        run: uv pip install --system -e ".[dev,encryption,mcp,tui]"
 
       # 2 step 분리 — unit 회귀가 발생하면 integration step 으로 넘어가지 않고
       # 빠르게 fail 보고 (CI 분 절약 + 피드백 단축). 자동 마킹은
@@ -111,7 +111,7 @@ jobs:
         run: pip install uv
 
       - name: Install anvyc + dev deps
-        run: uv pip install --system -e ".[dev,encryption,mcp]"
+        run: uv pip install --system -e ".[dev,encryption,mcp,tui]"
 
       - name: Pytest (unit, fast-fail gate)
         run: pytest -m "not integration"

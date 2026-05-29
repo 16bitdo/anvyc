@@ -26,6 +26,7 @@ from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
 from anvyc.checks.secret_registry import SecretRegistryValidCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
+from anvyc.checks.tui_extra import TuiExtraImportableCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.checks.work_cwd_track import WorkCwdTrackWiredCheck
@@ -56,6 +57,7 @@ _REGISTRY: dict[str, Check] = {
     "secret-registry-valid": SecretRegistryValidCheck(),
     "mcp-tokens-warn": McpTokensWarnCheck(),
     "mcp-extra-importable": McpExtraImportableCheck(),
+    "tui-extra-importable": TuiExtraImportableCheck(),
     "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),
     "project-gh-account-mapping": ProjectGhAccountMappingCheck(),
     "project-claude-account-mapping": ProjectClaudeAccountMappingCheck(),
