@@ -113,6 +113,14 @@ def test_dispatch_tools_list() -> None:
     names = {row["tool"] for row in result}
     assert "shell" in names
     assert "dev_env" in names
+    # PR2: AdapterMeta 메타 키가 MCP payload 에도 합류 (CLI 와 동일 _collect_tools_rows)
+    sample = next(row for row in result if row["tool"] == "aws")
+    for key in (
+        "label", "category", "summary", "includes", "excludes",
+        "default_enabled", "config_kind", "since",
+    ):
+        assert key in sample, f"missing meta key in MCP payload: {key}"
+    assert sample["label"] == "AWS CLI"
 
 
 def test_dispatch_unknown_tool_raises() -> None:

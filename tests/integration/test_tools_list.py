@@ -22,9 +22,12 @@ def test_tools_list_default_all_enabled(tmp_path: Path) -> None:
     # 8 도구 모두 존재
     for tool in ("shell", "git", "aws", "gh", "pulumi", "cursor", "claude", "iterm2"):
         assert tool in proc.stdout, f"missing tool row: {tool}"
-    # footer 안내
-    assert "v0.7+" in proc.stdout
+    # footer 안내 — PLANNED_ADAPTERS SoT + --json 힌트
     assert "vscode" in proc.stdout
+    assert "neovim" in proc.stdout
+    assert "--json" in proc.stdout
+    # category 컬럼(메타) 노출
+    assert "category" in proc.stdout
 
 
 def test_tools_list_partial_disabled(tmp_path: Path) -> None:

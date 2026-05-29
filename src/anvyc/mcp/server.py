@@ -9,7 +9,7 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
   project_list       root 아래 모든 project matrix
   project_doctor     cwd 의 정합성 8 check
   doctor             anvyc 환경 진단 (20 check)
-  tools_list         10 도구 enabled / detect
+  tools_list         10 도구 메타데이터 + 상태 (label/category/summary/...)
   activity_summary   Claude Code session 통합 통계 (CP-1)
   tool_call_stats    tool 별 사용 카운트 ranking (CP-1)
   cost_summary       period 별 source / account 합산 (CP-13)
@@ -122,7 +122,9 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="tools_list",
             description=(
-                "anvyc 가 관리하는 10 도구의 enabled / detect / file-count. "
+                "anvyc 가 관리하는 10 도구의 메타데이터 + 런타임 상태 "
+                "(tool / label / category / summary / enabled / detected / files / "
+                "secrets / includes / excludes / default_enabled / config_kind / since). "
                 "shell / git / aws / gh / cursor / claude / iterm2 / pulumi "
                 "/ dev_env / shell_prompt."
             ),

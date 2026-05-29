@@ -1320,13 +1320,20 @@ def config_show(
 
 
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
-    """tools list 의 row 데이터 수집 (renderer 와 분리)."""
+    """tools list / MCP tools_list 의 row 데이터 수집 (renderer 와 분리).
+
+    각 row 는 런타임 상태(enabled / detected / files / secrets)와 AdapterMeta 의 정적
+    메타데이터(label / category / summary / includes / excludes / default_enabled /
+    config_kind / since)를 함께 담는다. 기존 키(tool / enabled / detected / files /
+    secrets)는 하위호환을 위해 유지하고 메타 키만 추가한다(additive).
+    """
     from anvyc.core.backup import ADAPTERS
     from anvyc.core.config import load_anvyc_config
 
     cfg = load_anvyc_config(config) if config else load_anvyc_config()
     rows: list[dict[str, Any]] = []
     for name, cls in ADAPTERS.items():
+        meta = cls.meta
         tool_cfg = cfg.tools.get(name)
         enabled = tool_cfg.enabled if tool_cfg else True
         files_count = 0
@@ -1346,10 +1353,18 @@ def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
         rows.append(
             {
                 "tool": name,
+                "label": meta.label,
+                "category": meta.category,
+                "summary": meta.summary,
                 "enabled": enabled,
                 "detected": detected,
                 "files": files_count,
                 "secrets": secrets_count,
+                "includes": list(meta.includes),
+                "excludes": list(meta.excludes),
+                "default_enabled": meta.default_enabled,
+                "config_kind": meta.config_kind,
+                "since": meta.since,
             }
         )
     return rows
@@ -1360,7 +1375,13 @@ def tools_list(
     config: Path | None = typer.Option(None, "--config"),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
-    """anvyc 가 관리하는 도구들의 enabled / detect / file-count 표시."""
+    """anvyc 가 관리하는 도구들의 메타데이터 + 상태 표시.
+
+    컬럼: tool · category · enabled · detected · files · secrets · 설명(summary).
+    정확한 기본 포함/제외 목록 등 전체 메타는 `--json` 으로 확인한다.
+    """
+    from anvyc.adapters.base import PLANNED_ADAPTERS
+
     rows = _collect_tools_rows(config)
 
     if json_out:
@@ -1369,27 +1390,33 @@ def tools_list(
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("tool")
-    table.add_column("enabled")
-    table.add_column("detected")
+    table.add_column("category", style="cyan", no_wrap=True)
+    table.add_column("enabled", justify="center")
+    table.add_column("detected", justify="center")
     table.add_column("files", justify="right")
     table.add_column("secrets", justify="right")
-    table.add_column("notes", style="dim")
+    # summary 는 wrap 허용 — 넓은 터미널에선 도구당 1행, 좁으면 status 컬럼을
+    # 보존한 채 설명만 여러 줄로 접힌다(전체 텍스트는 --json 에도 존재).
+    table.add_column("설명", style="dim")
 
     for r in rows:
         table.add_row(
             r["tool"],
+            r["category"],
             "[green]✓[/]" if r["enabled"] else "[dim]✗[/]",
             "[green]✓[/]" if r["detected"] else "[yellow]✗[/]",
             str(r["files"]),
             str(r["secrets"]),
-            "",
+            r["summary"],
         )
 
     console.print(table)
-    console.print(
-        "[dim]미지원 (v0.7+ 계획): vscode, helix, neovim — "
-        "docs/archive/improvement-plan-ux-review.md 참조[/]"
-    )
+    if PLANNED_ADAPTERS:
+        console.print(
+            f"[dim]미지원 (향후 adapter 후보): {', '.join(PLANNED_ADAPTERS)} — "
+            "docs/improvement-plan-tools-selection.md 참조[/]"
+        )
+    console.print("[dim]정확한 기본 포함/제외 목록은 [cyan]--json[/] 출력 참조.[/]")
 
 
 # ============================================================================
