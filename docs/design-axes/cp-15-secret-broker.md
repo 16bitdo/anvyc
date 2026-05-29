@@ -200,7 +200,7 @@ Phase 2 에서 금지.)
 | Phase | 범위 | 거버넌스 | 비고 |
 |---|---|---|---|
 | **Phase 1** | Registry schema v1 + `secret list` + `secret-registry-valid` doctor | 불요 | ✅ **구현됨** — 읽기 전용 (`core/secrets.py` + `checks/secret_registry.py`) |
-| **Phase 2** | Broker `secret add`(op/sops 네이티브 입력 위임 + 자동 와이어링) + `secret get` 게이팅 | 불요 | 불변식 무수정. 핵심 UX 이득 |
+| **Phase 2** | Broker `secret add`(op/sops 네이티브 입력 위임) + `secret get` 게이팅 | 불요 | ✅ **구현됨** — `core/secrets.py`(plan_add/register_entry/resolve_command) + CLI add/get. 값 미접촉 |
 | **Phase 2.5** | `inject-wire`(dev_env 연계) + `keychain` / `aws-vault` backend | 불요 | JIT 주입 — at-rest 평문 0 |
 | **Phase 3** | `--passthrough` 모드 | **필요** | rule 26 / SECURITY 재정의 PR + 누출 회귀 테스트 통과 후에만 |
 
@@ -224,3 +224,4 @@ Phase 2 에서 금지.)
 | fix 2026-05-29 | axis 번호 CP-14 → **CP-15** 재배정. CP-14 는 rbr `metadata/control-plane-roadmap.yaml` / `docs/control-plane-v7-l4-execution-engine.md` §10 에서 "실행 엔진(L4 autopilot executor)" 축으로 선예약됨 — 충돌 회피. rbr ROADMAP §4 + manifest 정식 등록 동반. |
 | feat 2026-05-29 | **Phase 1 구현** — `secrets:` Registry schema v1(`core/config.py`) + `core/secrets.py`(SecretBackend verify, 값 미캡처) + `anvyc secret list [--json] [--no-probe]` + `secret-registry-valid` doctor check + `examples/anvyc.yaml` 샘플 + unit tests(16건). read-only, 불변식 무수정. (anvyc#113) |
 | design 2026-05-29 | **Phase 2 설계 확정** (§3.1) — add: op `--generate`/`--ref` + sops `sops edit`($EDITOR) 위임(값 미접촉, hidden-input 은 Phase 3) / get: 클립보드(tool→pbcopy 직접 파이프)+자동 만료, `--reveal` TTY-only, 비-TTY 거부. op CLI 2.34 / sops 3.13 실측 기반. |
+| feat 2026-05-29 | **Phase 2 구현** — `core/secrets.py`(plan_add/execute_add[stdio 상속]/register_entry[.bak]/resolve_command) + `anvyc secret add [--generate\|--ref\|--file --key] [--apply]` + `secret get [--reveal]`(pbcopy 직접 파이프 + 자동 클리어, 비-TTY reveal 거부) + unit tests(20건). 값 미캡처 — op item create/sops edit/resolve 모두 stdio 상속·파이프. |
