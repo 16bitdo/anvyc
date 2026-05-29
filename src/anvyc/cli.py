@@ -1320,54 +1320,15 @@ def config_show(
 
 
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
-    """tools list / MCP tools_list 의 row 데이터 수집 (renderer 와 분리).
+    """tools list / MCP tools_list 의 row 데이터 (core SoT 위임, PR3).
 
-    각 row 는 런타임 상태(enabled / detected / files / secrets)와 AdapterMeta 의 정적
-    메타데이터(label / category / summary / includes / excludes / default_enabled /
-    config_kind / since)를 함께 담는다. 기존 키(tool / enabled / detected / files /
-    secrets)는 하위호환을 위해 유지하고 메타 키만 추가한다(additive).
+    실제 빌드는 `core.tools_select.collect_tool_rows` 가 담당한다 (configure 와 단일
+    소스 공유). MCP server 의 `from anvyc.cli import _collect_tools_rows` 호환을 위해
+    이름/시그니처는 유지한다.
     """
-    from anvyc.core.backup import ADAPTERS
-    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.tools_select import collect_tool_rows
 
-    cfg = load_anvyc_config(config) if config else load_anvyc_config()
-    rows: list[dict[str, Any]] = []
-    for name, cls in ADAPTERS.items():
-        meta = cls.meta
-        tool_cfg = cfg.tools.get(name)
-        enabled = tool_cfg.enabled if tool_cfg else True
-        files_count = 0
-        secrets_count = 0
-        if tool_cfg is not None:
-            files_count = len(tool_cfg.files) + len(tool_cfg.include)
-            secrets_count = len(tool_cfg.secret_files)
-        try:
-            if name in {"shell", "git", "aws", "gh", "pulumi"}:
-                files_arg = tuple(tool_cfg.files) if tool_cfg and tool_cfg.files else ()
-                adapter = cls(files=files_arg)  # type: ignore[call-arg]
-            else:
-                adapter = cls()
-            detected = adapter.detect()
-        except Exception:
-            detected = False
-        rows.append(
-            {
-                "tool": name,
-                "label": meta.label,
-                "category": meta.category,
-                "summary": meta.summary,
-                "enabled": enabled,
-                "detected": detected,
-                "files": files_count,
-                "secrets": secrets_count,
-                "includes": list(meta.includes),
-                "excludes": list(meta.excludes),
-                "default_enabled": meta.default_enabled,
-                "config_kind": meta.config_kind,
-                "since": meta.since,
-            }
-        )
-    return rows
+    return collect_tool_rows(config)
 
 
 @tools_app.command("list")
@@ -1417,6 +1378,112 @@ def tools_list(
             "docs/improvement-plan-tools-selection.md 참조[/]"
         )
     console.print("[dim]정확한 기본 포함/제외 목록은 [cyan]--json[/] 출력 참조.[/]")
+    console.print("[dim]도구 enable/disable 변경: [cyan]anvyc tools configure[/][/]")
+
+
+def _parse_toggle_indices(answer: str, count: int) -> list[int]:
+    """'3,5,7' 같은 입력을 1..count 범위의 유효 1-based 번호 리스트로. 무효 토큰은 무시."""
+    out: list[int] = []
+    for tok in answer.replace(" ", "").split(","):
+        if not tok:
+            continue
+        try:
+            i = int(tok)
+        except ValueError:
+            continue
+        if 1 <= i <= count and i not in out:
+            out.append(i)
+    return out
+
+
+@tools_app.command("configure")
+def tools_configure(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="번호 토글 메뉴 사용 (체크박스 TUI 는 후속 PR — 현재는 항상 이 경로).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="변경 미리보기 후 확인 프롬프트 없이 저장."
+    ),
+) -> None:
+    """도구 enable/disable 를 선택해 anvyc.yaml 에 반영 (재실행 가능).
+
+    번호로 토글 → 변경 미리보기 → 확인 후 저장한다. 저장 전 원본을 `.bak` 으로
+    백업하며, 각 도구의 다른 설정(files/include/exclude/extra)과 다른 섹션
+    (security/storage/secrets/cost)은 보존한다. (안전: secret 값 미접촉)
+    """
+    from anvyc.core.tools_select import (
+        apply_enabled,
+        apply_toggles,
+        collect_choices,
+        plan_changes,
+    )
+
+    yaml_path = _resolve_anvyc_yaml(config)
+    if not yaml_path.is_file():
+        print_error(
+            f"anvyc.yaml 부재: {yaml_path}\n"
+            "  먼저 [cyan]anvyc init[/] (또는 [cyan]anvyc init --interactive[/]) 로 설정을 생성하세요."
+        )
+        raise typer.Exit(code=1)
+
+    choices = collect_choices(yaml_path)
+
+    console.print(f"[bold]anvyc tools configure[/] — {yaml_path}")
+    if not no_tui:
+        console.print("[dim](체크박스 TUI 는 후속 PR — 현재는 번호 토글 메뉴)[/]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("#", justify="right")
+    table.add_column("tool")
+    table.add_column("category", style="cyan", no_wrap=True)
+    table.add_column("state", justify="center")
+    table.add_column("detected", justify="center")
+    table.add_column("설명", style="dim")
+    for i, c in enumerate(choices, start=1):
+        table.add_row(
+            str(i),
+            c.name,
+            c.category,
+            "[green]✓ on[/]" if c.enabled else "[dim]✗ off[/]",
+            "[green]✓[/]" if c.detected else "[yellow]✗[/]",
+            c.summary,
+        )
+    console.print(table)
+
+    answer = typer.prompt(
+        "토글할 번호 (쉼표 구분, 빈 입력=변경 없음)", default="", show_default=False
+    )
+    indices = _parse_toggle_indices(answer, len(choices))
+    targets = apply_toggles(choices, indices)
+    changes = plan_changes(choices, targets)
+    if not changes:
+        console.print("[yellow]변경 없음 — 종료[/]")
+        raise typer.Exit(code=0)
+
+    console.print("\n[bold]변경 미리보기[/]")
+    for ch in changes:
+        before = "on" if ch.before else "off"
+        after = "[green]on[/]" if ch.after else "[red]off[/]"
+        console.print(f"  • {ch.name}: {before} → {after}")
+
+    if not yes and not _confirm(
+        f"\n{yaml_path} 에 저장할까요? (원본은 .bak 백업)", default=True
+    ):
+        console.print("[yellow]aborted — nothing written[/]")
+        raise typer.Exit(code=0)
+
+    try:
+        result = apply_enabled(yaml_path, targets)
+    except Exception as exc:  # CLI 경계 — 파싱/IO 오류를 사용자 친화 메시지로 변환
+        print_error(f"저장 실패: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[green]wrote[/] {result.config_path}")
+    if result.backup_path is not None:
+        console.print(f"[dim]backup[/] {result.backup_path}")
+    console.print("[dim]확인: [cyan]anvyc tools list[/] · [cyan]anvyc doctor[/][/]")
 
 
 # ============================================================================
