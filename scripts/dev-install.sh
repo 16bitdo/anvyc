@@ -131,3 +131,23 @@ else
   die "검증 실패 — wrapper 가 anvyc 를 실행하지 못함:
 $VER_OUT"
 fi
+
+# ----- 8) 동반 도구 안내 (companion tools — 선택, 코어엔 불필요) -----
+# anvyc 의 일부 기능(secret_files / cost / MCP 등)은 외부 CLI·pip extra 가 있어야
+# 동작한다. 강요하지 않고 현황만 요약한다 (상세·설치법: `anvyc extras`).
+# 실패가 install 을 깨지 않도록 `|| true` + python try/except 로 방어.
+info "동반 도구 (companion tools) — 기능별 선택 설치:"
+"$WRAPPER_DST" extras --json 2>/dev/null | "$VENV/bin/python" -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+rel = [r for r in rows if r.get("relevant")]
+miss = [r for r in rel if not r.get("installed")]
+if miss:
+    print(f"  설치됨 {len(rel) - len(miss)}/{len(rel)}  |  미설치: " + ", ".join(r["name"] for r in miss))
+    print("  필요한 기능만 골라 설치 — 설치법 표: anvyc extras")
+else:
+    print(f"  설치됨 {len(rel)}/{len(rel)} — 모두 설치됨 ✓")
+' || true
