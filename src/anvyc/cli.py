@@ -351,7 +351,7 @@ def _run_init_wizard(anvyc_dir: Path, *, force: bool) -> None:
                 default=False,
             )
             gsa_ans = typer.prompt(
-                "  Layer B: globalStorage allowlist csv (빈 입력 = 없음)",
+                "  Layer B: globalStorage allowlist csv (Enter=skip)",
                 default="",
             )
             gsa = _parse_csv(gsa_ans, [])

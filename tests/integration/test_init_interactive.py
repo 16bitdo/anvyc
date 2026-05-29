@@ -200,6 +200,9 @@ def test_wizard_prompts_show_enter_default_hint(tmp_path: Path) -> None:
     # dev_env 만 Enter=No 인 확인 (회귀 가드)
     assert "Enable dev_env? (Enter=No)" in out
     assert "Enable shell? (Enter=Yes)" in out
+    # Layer B text prompt — Korean hint 제거, (Enter=skip) 패턴 일관 적용
+    assert "Layer B: globalStorage allowlist csv (Enter=skip)" in out
+    assert "(빈 입력 = 없음)" not in out
 
 
 def test_wizard_existing_yaml_without_force_fails(tmp_path: Path) -> None:
