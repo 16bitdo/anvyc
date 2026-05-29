@@ -48,7 +48,7 @@ def test_extras_missing_filter_runs() -> None:
     assert result.exit_code == 0, result.output
 
 
-def _fake_rows(*, git_installed: bool) -> list[dict]:
+def _fake_rows(*, git_installed: bool) -> list[dict[str, object]]:
     return [
         {
             "name": "git",
