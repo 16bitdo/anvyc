@@ -168,7 +168,7 @@ class SecretBackend(Protocol):
 
 | Phase | 범위 | 거버넌스 | 비고 |
 |---|---|---|---|
-| **Phase 1** | Registry schema v1 + `secret list` + `secret-registry-valid` doctor | 불요 | 읽기 전용 — 즉시 가치, 위험 최소 |
+| **Phase 1** | Registry schema v1 + `secret list` + `secret-registry-valid` doctor | 불요 | ✅ **구현됨** — 읽기 전용 (`core/secrets.py` + `checks/secret_registry.py`) |
 | **Phase 2** | Broker `secret add`(op/sops 네이티브 입력 위임 + 자동 와이어링) + `secret get` 게이팅 | 불요 | 불변식 무수정. 핵심 UX 이득 |
 | **Phase 2.5** | `inject-wire`(dev_env 연계) + `keychain` / `aws-vault` backend | 불요 | JIT 주입 — at-rest 평문 0 |
 | **Phase 3** | `--passthrough` 모드 | **필요** | rule 26 / SECURITY 재정의 PR + 누출 회귀 테스트 통과 후에만 |
@@ -191,3 +191,4 @@ class SecretBackend(Protocol):
 |---|---|
 | draft 2026-05-29 | CP-15 axis 신설 — Broker 패턴 + Registry schema v1 + SecretBackend protocol(4 backend) + 명령 contract + phased 실행 계획. DESIGN §39 등재. |
 | fix 2026-05-29 | axis 번호 CP-14 → **CP-15** 재배정. CP-14 는 rbr `metadata/control-plane-roadmap.yaml` / `docs/control-plane-v7-l4-execution-engine.md` §10 에서 "실행 엔진(L4 autopilot executor)" 축으로 선예약됨 — 충돌 회피. rbr ROADMAP §4 + manifest 정식 등록 동반. |
+| feat 2026-05-29 | **Phase 1 구현** — `secrets:` Registry schema v1(`core/config.py`) + `core/secrets.py`(SecretBackend verify, 값 미캡처) + `anvyc secret list [--json] [--no-probe]` + `secret-registry-valid` doctor check + `examples/anvyc.yaml` 샘플 + unit tests(16건). read-only, 불변식 무수정. |

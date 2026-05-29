@@ -24,6 +24,7 @@ from anvyc.checks.project_aws_profile import ProjectAwsProfileMappingCheck
 from anvyc.checks.project_claude_account import ProjectClaudeAccountMappingCheck
 from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
+from anvyc.checks.secret_registry import SecretRegistryValidCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
@@ -52,6 +53,7 @@ _REGISTRY: dict[str, Check] = {
     "adapter-validate": AdapterValidationCheck(),
     "cursor-projects-suggest": CursorProjectsSuggestCheck(),
     "sops-keys-available": SopsKeysCheck(),
+    "secret-registry-valid": SecretRegistryValidCheck(),
     "mcp-tokens-warn": McpTokensWarnCheck(),
     "mcp-extra-importable": McpExtraImportableCheck(),
     "project-aws-profile-mapping": ProjectAwsProfileMappingCheck(),

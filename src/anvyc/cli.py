@@ -149,6 +149,12 @@ cost_app = typer.Typer(
 )
 app.add_typer(cost_app, name="cost", rich_help_panel=PANEL_CONTROL)
 
+secret_app = typer.Typer(
+    name="secret",
+    help="secret broker — reference 레지스트리 조회/검증 (값 미보유, CP-15 Phase 1).",
+)
+app.add_typer(secret_app, name="secret", rich_help_panel=PANEL_CONTROL)
+
 mcp_app = typer.Typer(
     name="mcp",
     help="MCP server 설정 자동 등록 — Claude Code / Cursor 의 mcp.json 편집을 대신 (v0.16.0+).",
@@ -2103,6 +2109,62 @@ def creds_rotate(
         console.print(f"  [dim]stderr (tail):[/]\n{result.stderr_tail}")
     if result.return_code != 0:
         raise typer.Exit(code=result.return_code or 1)
+
+
+@secret_app.command("list")
+def secret_list(
+    config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
+    no_probe: bool = typer.Option(
+        False, "--no-probe", help="backend CLI resolvability probe 비활성 (offline / CI)."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """secrets: 레지스트리 entry + backend verify 상태 (read-only, 값 미출력).
+
+    CP-15 Phase 1 — reference 레지스트리 조회 + 검증. anvyc 는 secret 평문을
+    보유/출력하지 않는다. add/get/inject-wire 는 Phase 2+ (DESIGN §39).
+    """
+    from anvyc.core.secrets import (
+        STATUS_INVALID,
+        STATUS_OK,
+        STATUS_UNKNOWN,
+        STATUS_UNRESOLVED,
+        collect_secrets,
+    )
+
+    report = collect_secrets(config_path=config, probe=not no_probe)
+
+    if json_out:
+        typer.echo(jsonlib.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    entries = report.entries
+    if not entries:
+        console.print("[dim]no secrets registered — anvyc.yaml 의 secrets.entries 참조[/]")
+        return
+
+    cnt = report.counts()
+    probe_note = "  [dim](probe off)[/]" if no_probe else ""
+    console.print(
+        f"[bold]{len(entries)} secret(s)[/] — "
+        f"ok={cnt.get(STATUS_OK, 0)} unresolved={cnt.get(STATUS_UNRESOLVED, 0)} "
+        f"invalid={cnt.get(STATUS_INVALID, 0)} unknown={cnt.get(STATUS_UNKNOWN, 0)}"
+        f"{probe_note}"
+    )
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("name", style="cyan")
+    table.add_column("backend")
+    table.add_column("reference", style="dim")
+    table.add_column("status")
+    status_color = {
+        STATUS_OK: "[green]ok[/]",
+        STATUS_UNRESOLVED: "[yellow]unresolved[/]",
+        STATUS_INVALID: "[bold red]invalid[/]",
+        STATUS_UNKNOWN: "[dim]unknown[/]",
+    }
+    for e in entries:
+        table.add_row(e.name, e.backend, e.reference, status_color.get(e.status, e.status))
+    console.print(table)
 
 
 @sync_app.command("status")
