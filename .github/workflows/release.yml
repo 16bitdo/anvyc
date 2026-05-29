@@ -52,6 +52,7 @@ jobs:
           shasum -a 256 anvyc-*.whl anvyc-*.tar.gz > SHA256SUMS
           cat SHA256SUMS
           echo "sdist_sha256=$(awk '/\.tar\.gz$/ {print $1}' SHA256SUMS)" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"   # v0.17.0 → 0.17.0 (wheel 파일명용)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -71,7 +72,7 @@ jobs:
 
             Install (uv tool):
             ```bash
-            uv tool install https://github.com/16bitdo/anvyc/releases/download/${{ github.ref_name }}/anvyc-${{ github.ref_name }}-py3-none-any.whl
+            uv tool install https://github.com/16bitdo/anvyc/releases/download/${{ github.ref_name }}/anvyc-${{ steps.sums.outputs.version }}-py3-none-any.whl
             ```
 
   update-homebrew-tap:
