@@ -20,8 +20,8 @@
 - **`anvyc secret inject-wire <name> --target <.envrc> [--env-var]`** — `export VAR="$(…)"`
   JIT 주입 라인 생성(값 미저장 — direnv 로드 시 backend resolve). aws-vault 는 exec 가이드.
 - **doctor `secret-registry-valid`** + `anvyc.yaml` `secrets:` 블록 schema v1.
-- Phase 3 (passthrough — anvyc 가 기존 값을 직접 hidden-input) 은 `rule 26-secrets-1password`
-  / `SECURITY.md` 위협모델 재정의 거버넌스 PR 선행으로 **추후**.
+- 기존 값의 hidden 입력은 backend 네이티브 프롬프트(keychain/aws-vault / sops `$EDITOR`)로
+  충족 — anvyc 자체 `getpass` 방안(과거 Phase 3 후보)은 **폐기**(불변식 비용 부당, 설계 §8).
 
 ## v0.16.0 — 2026-05-27 (minor — cost observability MVP + UX 친화도 개선)
 
