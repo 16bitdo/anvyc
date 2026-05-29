@@ -1921,7 +1921,7 @@ def snapshot_restore(
         console.print("[dim]\n(dry-run — no changes. add --force to actually restore.)[/]")
         return
 
-    if not yes and not typer.confirm("\n실제로 restore 를 수행할까요?"):
+    if not yes and not _confirm("\n실제로 restore 를 수행할까요?", default=False):
         console.print("[dim]aborted.[/]")
         raise typer.Exit(code=0)
 
@@ -2077,7 +2077,7 @@ def creds_rotate(
         console.print("\n[dim]claude_oauth — anvyc CLI 가 직접 실행할 수 없음. 위 안내 참조.[/]")
         return
 
-    if not yes and not typer.confirm("\n실제로 rotation 을 수행할까요?"):
+    if not yes and not _confirm("\n실제로 rotation 을 수행할까요?", default=False):
         console.print("[dim]aborted.[/]")
         raise typer.Exit(code=0)
 
@@ -2242,7 +2242,7 @@ def sync_push(
         console.print("[dim](nothing to do — already in sync)[/]")
         return
 
-    if not yes and not typer.confirm("\nproceed?"):
+    if not yes and not _confirm("\nproceed?", default=False):
         console.print("[dim]aborted.[/]")
         raise typer.Exit(code=0)
 
@@ -2328,7 +2328,7 @@ def sync_pull(
         console.print("[dim](nothing to pull)[/]")
         return
 
-    if not yes and not typer.confirm("\nproceed?"):
+    if not yes and not _confirm("\nproceed?", default=False):
         console.print("[dim]aborted.[/]")
         raise typer.Exit(code=0)
 
@@ -2439,7 +2439,7 @@ def sync_conflict_resolve(
     else:
         console.print("  → remote 본문이 local 을 overwrite (pull-one); local 측 manifest 없음")
 
-    if not yes and not typer.confirm("\nproceed?"):
+    if not yes and not _confirm("\nproceed?", default=False):
         console.print("[dim]aborted.[/]")
         raise typer.Exit(code=0)
 
@@ -2919,7 +2919,7 @@ def mcp_install(
         )
         return
 
-    if not yes and not typer.confirm("\n적용하시겠습니까?", default=False):
+    if not yes and not _confirm("\n적용하시겠습니까?", default=False):
         console.print("취소.")
         raise typer.Exit(code=1)
 
@@ -2988,7 +2988,7 @@ def mcp_uninstall(
         )
         return
 
-    if not yes and not typer.confirm("\n적용하시겠습니까?", default=False):
+    if not yes and not _confirm("\n적용하시겠습니까?", default=False):
         console.print("취소.")
         raise typer.Exit(code=1)
 
