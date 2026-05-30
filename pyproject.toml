@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anvyc"
-version = "0.17.0"
+version = "0.18.0"
 description = "여러 장치에서 개발 도구 설정 정보와 인증 정보를 안전하게 백업/비교/복원/동기화하는 macOS CLI. 도구별 safe adapter + backup/rollback 안전망 + SOPS + 1Password Secret Reference 통합."
 readme = "README.md"
 requires-python = ">=3.11"

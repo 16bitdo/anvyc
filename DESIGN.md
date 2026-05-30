@@ -35,6 +35,7 @@
 - **§37 CP-6 Sync** → [docs/design-axes/cp-06-sync.md](./docs/design-axes/cp-06-sync.md)
 - **§38 CP-13 Cost** → [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md)
 - **§39 CP-15 Secret Broker** → [docs/design-axes/cp-15-secret-broker.md](./docs/design-axes/cp-15-secret-broker.md)
+- **§40 CP-14 Run ledger** → [docs/design-axes/cp-14-run-ledger.md](./docs/design-axes/cp-14-run-ledger.md)
 
 ---
 

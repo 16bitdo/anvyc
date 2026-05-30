@@ -153,6 +153,12 @@ cost_app = typer.Typer(
 )
 app.add_typer(cost_app, name="cost", rich_help_panel=PANEL_CONTROL)
 
+runs_app = typer.Typer(
+    name="runs",
+    help="run ledger — anvyx (L4) 실행 엔진 run-record 집계/조회 (read-only, CP-14).",
+)
+app.add_typer(runs_app, name="runs", rich_help_panel=PANEL_CONTROL)
+
 secret_app = typer.Typer(
     name="secret",
     help="secret broker — reference 레지스트리 조회/검증 (값 미보유, CP-15 Phase 1).",
@@ -3078,6 +3084,84 @@ def cost_collect(
         console.print(
             summary_text(source=source, period_spec=period, refresh=True)
         )
+
+
+@runs_app.command("summary")
+def runs_summary(
+    agent: str | None = typer.Option(
+        None, "--agent", help="agent 필터 (claude_code 등). 미지정 시 전체."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """anvyx run-record (~/.config/anvyx/runs/) 통합 통계 (CP-14 원장 흡수)."""
+    from anvyc.core.runs import aggregate_runs, collect_runs
+
+    summary = aggregate_runs(collect_runs(agent=agent))
+    if json_out:
+        typer.echo(jsonlib.dumps(summary, ensure_ascii=False, indent=2))
+        return
+    if summary["total_runs"] == 0:
+        console.print("[dim]no anvyx run-record under ~/.config/anvyx/runs/[/]")
+        return
+
+    def _kv(mapping: dict[str, int]) -> str:
+        return ", ".join(f"{k}={v}" for k, v in mapping.items()) or "—"
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("metric")
+    table.add_column("value", justify="right")
+    table.add_row("total runs", str(summary["total_runs"]))
+    table.add_row("by status", _kv(summary["by_status"]))
+    table.add_row("by exit_reason", _kv(summary["by_exit_reason"]))
+    table.add_row("by agent", _kv(summary["by_agent"]))
+    table.add_row("total cost (USD)", f"{summary['total_cost_usd']:.4f}")
+    table.add_row("total tokens", str(summary["total_tokens"]))
+    table.add_row("total tool calls", str(summary["total_tool_calls"]))
+    table.add_row("oldest run", summary["oldest_run_started_at"] or "—")
+    table.add_row("newest run", summary["newest_run_started_at"] or "—")
+    console.print(table)
+
+
+@runs_app.command("list")
+def runs_list(
+    limit: int = typer.Option(20, "--limit", help="최근 N 건 (started_at 내림차순)."),
+    agent: str | None = typer.Option(None, "--agent", help="agent 필터."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """최근 anvyx run 목록."""
+    from anvyc.core.runs import collect_runs
+
+    runs = list(reversed(collect_runs(agent=agent)))[:limit]
+    if json_out:
+        typer.echo(
+            jsonlib.dumps([r.to_dict() for r in runs], ensure_ascii=False, indent=2)
+        )
+        return
+    if not runs:
+        console.print("[dim]no anvyx run-record under ~/.config/anvyx/runs/[/]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("run", style="cyan")
+    table.add_column("status")
+    table.add_column("agent", style="dim")
+    table.add_column("model", style="dim")
+    table.add_column("cost ($)", justify="right")
+    table.add_column("tokens", justify="right")
+    table.add_column("dur (s)", justify="right")
+    table.add_column("started")
+    for r in runs:
+        dur = f"{r.duration_s:.0f}" if r.duration_s is not None else "—"
+        table.add_row(
+            r.run_id[:8],
+            r.status,
+            r.agent or "—",
+            r.model or "—",
+            f"{r.cost_usd:.4f}",
+            str(r.tokens_total),
+            dur,
+            r.started_at or "—",
+        )
+    console.print(table)
 
 
 @cost_app.command("summary")
