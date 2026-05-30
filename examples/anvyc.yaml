@@ -170,6 +170,11 @@ doctor:
       - "~/.claude/settings.json"
       - "~/.claude/CLAUDE.md"
     severity_overrides: {}     # path glob → "info"|"warning"|"critical"
+  # CP-5 creds-expiry 체크의 per-kind "expiring" 경고 임계 (kind → 초).
+  # 미지정 kind 는 코드 기본값(aws_sso 900=15min / github·claude_oauth 604800=7d).
+  # org 의 SSO 세션 TTL 이나 회전 리드타임에 맞춰 조정. expired(CRITICAL)는 무관.
+  creds_expiry:
+    warn_thresholds: {}        # 예: { aws_sso: 1800, github: 1209600 }
 
 # CP-13 PR-13D + polish CP-13H — cost observability adapter 설정.
 # 부재 시 GitHub adapter 가 ~/.config/gh* glob walk 으로 자동 discover

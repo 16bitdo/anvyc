@@ -111,6 +111,9 @@ class DoctorConfig:
     known_user_aliases: dict[str, str] = field(default_factory=dict)
     scan_targets: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_TARGETS))
     severity_overrides: dict[str, str] = field(default_factory=dict)
+    # CP-5 — creds-expiry per-kind "expiring" 임계 override (kind → 초). 미지정 kind 는
+    # 코드 기본값. YAML `doctor.creds_expiry.warn_thresholds`.
+    creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -324,11 +327,18 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
 
     doctor_raw = raw.get("doctor") or {}
     cu = doctor_raw.get("cross_user") or {}
+    ce_raw = (doctor_raw.get("creds_expiry") or {}).get("warn_thresholds") or {}
+    creds_warn_thresholds = {
+        str(k): float(v)
+        for k, v in ce_raw.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
     doctor = DoctorConfig(
         enabled=bool(cu.get("enabled", True)),
         known_user_aliases=dict(cu.get("known_user_aliases") or {}),
         scan_targets=list(cu.get("scan_targets") or DEFAULT_SCAN_TARGETS),
         severity_overrides=dict(cu.get("severity_overrides") or {}),
+        creds_warn_thresholds=creds_warn_thresholds,
     )
 
     cost_raw = raw.get("cost") or {}
@@ -371,6 +381,7 @@ class DoctorOnlyConfig:
     known_user_aliases: dict[str, str] = field(default_factory=dict)
     scan_targets: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_TARGETS))
     severity_overrides: dict[str, str] = field(default_factory=dict)
+    creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
 
 
 def load_config(path: Path | None = None) -> DoctorOnlyConfig:
@@ -381,6 +392,7 @@ def load_config(path: Path | None = None) -> DoctorOnlyConfig:
         known_user_aliases=cfg.doctor.known_user_aliases,
         scan_targets=cfg.doctor.scan_targets,
         severity_overrides=cfg.doctor.severity_overrides,
+        creds_warn_thresholds=cfg.doctor.creds_warn_thresholds,
     )
 
 
@@ -390,4 +402,5 @@ def build_check_context(cfg: DoctorOnlyConfig | DoctorConfig) -> CheckContext:
         current_user=getpass.getuser(),
         known_user_aliases=cfg.known_user_aliases,
         scan_targets=[Path(p).expanduser() for p in cfg.scan_targets],
+        creds_warn_thresholds=dict(cfg.creds_warn_thresholds),
     )

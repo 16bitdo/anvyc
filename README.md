@@ -550,6 +550,7 @@ axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
 - **v0.18.0** ✓ — Control Plane CP-14 (L4 실행 엔진 `anvyx`) run 원장 흡수 (Phase 3, anvyc#139·#140) — anvyx 가 emit 하는 C5 run-record 를 anvyc 가 read-only 로 집계 (`anvyc runs {summary|list}` CLI + MCP `run_summary`, read-only 불변식 보존). CP-8 emit→aggregate→display 패턴 재사용. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.18.0 entry.
 - **v0.19.0** ✓ — CP-5 `creds-expiry` per-kind 임계 + 체크 리네임 (`creds-expiry-within-7d`→`creds-expiry`). aws_sso 임계 1h(세션 TTL 짧음 → 영구 warning 회피), github/claude_oauth 7d. CP-14 게이트 정책 옵션화(anvyx)와 병행 — SSO 환경 `doctor --strict` clean 가능. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.19.0 entry.
 - **v0.19.1** ✓ — `creds-expiry` aws_sso 임계 재튜닝 **1h→15min**(run-risk window). SSO access token TTL(~1h)이 짧은 org 에서 로그인 직후에도 뜨던 영구 warning 해소 — 잔여 ≤15min(곧 시작할 run 도중 만료 위험)일 때만 경고. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.19.1 entry.
+- **v0.20.0** ✓ — `creds-expiry` 임계 **anvyc.yaml config화** — `doctor.creds_expiry.warn_thresholds`(kind→초)로 org 별 SSO TTL·회전 리드타임에 맞춰 override. 미지정 kind 는 코드 기본값(aws_sso 15min/그 외 7d) 유지. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.20.0 entry.
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.

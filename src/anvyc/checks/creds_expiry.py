@@ -39,10 +39,16 @@ THRESHOLD_DAYS = 7
 class CredsExpiryCheck:
     name = CHECK_NAME
 
-    def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
+    def run(self, ctx: CheckContext) -> list[CheckResult]:
+        # anvyc.yaml `doctor.creds_expiry.warn_thresholds` (kind→초) override 를
+        # 일 단위로 변환해 코드 기본값(DEFAULT_KIND_WARN_DAYS) 위에 merge.
+        overrides = {
+            kind: secs / 86400 for kind, secs in ctx.creds_warn_thresholds.items()
+        }
+        thresholds = {**DEFAULT_KIND_WARN_DAYS, **overrides}
         report = collect_credentials(
             warn_threshold_days=THRESHOLD_DAYS,
-            kind_warn_days=DEFAULT_KIND_WARN_DAYS,
+            kind_warn_days=thresholds,
             probe_github_expiry=False,
         )
         out: list[CheckResult] = []

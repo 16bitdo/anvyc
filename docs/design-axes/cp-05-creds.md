@@ -52,7 +52,7 @@
 | 명령 | PR | 안전 등급 | 책임 |
 |---|---|---|---|
 | `anvyc creds status [--warn-days N] [--no-probe] [--json] [--home <path>]` | 1/3 (#37, merged) | read-only | 3 kind detection + classification. `--no-probe` 로 gh CLI 호출 비활성 (CI / offline). `--home` 으로 검사 root override. |
-| doctor `creds-expiry` check | 2/3 (#38, merged; per-kind 임계 v0.19.0, retune v0.19.1) | read-only | `core/doctor.py` 의 `_REGISTRY` 에 등록 — `collect_credentials(kind_warn_days=DEFAULT_KIND_WARN_DAYS, probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. **per-kind 임계**: aws_sso **15min**(run-risk window — access token 짧고 refresh-on-demand, fresh 토큰 영구 경고 회피) / github·claude_oauth 7d. CP-3 scheduler 가 doctor 호출 시 자동 포함. |
+| doctor `creds-expiry` check | 2/3 (#38, merged; per-kind 임계 v0.19.0, retune v0.19.1, config화 v0.20.0) | read-only | `core/doctor.py` 의 `_REGISTRY` 에 등록 — `collect_credentials(kind_warn_days=…, probe_github_expiry=False)` 호출. expired→CRITICAL / expiring→WARNING / valid·unknown silent. **per-kind 임계**: aws_sso **15min**(run-risk window — access token 짧고 refresh-on-demand, fresh 토큰 영구 경고 회피) / github·claude_oauth 7d. **anvyc.yaml `doctor.creds_expiry.warn_thresholds`(kind→초)로 org 별 override** (CheckContext 경유, 미지정 kind 는 코드 기본값). CP-3 scheduler 가 doctor 호출 시 자동 포함. |
 | `anvyc creds rotate <kind> [--force] [--yes] [--timeout N]` | 3/3 (#39, merged) | **destructive** | native re-auth 위임 (`aws sso login` / `gh auth refresh` / claude_oauth = 사용자 수동 안내). dry-run 기본 + `--force` + confirm prompt. token 본문 노출 회피 (stdout/stderr tail 2 KiB 만). `--from-op REF` (1Password 통합) 은 후속 polish. §8 참조. |
 
 ## 4. Source 별 detection 전략
