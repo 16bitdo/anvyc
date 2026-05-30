@@ -139,6 +139,20 @@ def test_check_calls_collect_with_no_github_probe() -> None:
     )
 
 
+def test_check_uses_ctx_creds_warn_thresholds_override() -> None:
+    """anvyc.yaml override(초)가 일 단위로 변환돼 코드 기본값 위에 merge 되어 전달."""
+    ctx = CheckContext(creds_warn_thresholds={"aws_sso": 1800})  # 30min override
+    check = CredsExpiryCheck()
+    with patch(
+        "anvyc.checks.creds_expiry.collect_credentials",
+        return_value=_make_report([]),
+    ) as mock_collect:
+        check.run(ctx)
+    kwargs = mock_collect.call_args.kwargs
+    assert kwargs["kind_warn_days"]["aws_sso"] == 1800 / 86400  # override 적용(15min 기본 대체)
+    assert kwargs["probe_github_expiry"] is False
+
+
 def test_check_registered_in_doctor() -> None:
     """doctor._REGISTRY 에 creds-expiry 등록 확인."""
     from anvyc.core.doctor import _REGISTRY

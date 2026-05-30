@@ -1,5 +1,24 @@
 # anvyc 릴리즈 노트
 
+## v0.20.0 — 2026-05-30 (minor — creds-expiry 임계 anvyc.yaml config화)
+
+per-kind creds-expiry 임계를 코드 기본값에서 **org 별 설정 가능**으로 확장. SSO 세션
+TTL 이나 회전 리드타임이 org 마다 달라 단일 고정값으론 한계가 있었다(이 머신 ~1h vs
+타 org 8~12h).
+
+- **`anvyc.yaml` `doctor.creds_expiry.warn_thresholds` (kind → 초)**: aws_sso /
+  github / claude_oauth 별 "expiring" 경고 임계를 override. 예:
+  ```yaml
+  doctor:
+    creds_expiry:
+      warn_thresholds: { aws_sso: 1800, github: 1209600 }   # 30min / 14d
+  ```
+- 미지정 kind 는 **코드 기본값 유지**(aws_sso 15min / 그 외 7d) — 하위호환.
+  expired(CRITICAL)는 임계와 무관.
+- 배선: config(초) → `DoctorConfig.creds_warn_thresholds` → `CheckContext` →
+  `creds-expiry` 체크가 일 단위 변환 후 `collect_credentials(kind_warn_days=…)` 에 merge.
+- `anvyc creds status --warn-days N` CLI 동작 불변 (per-kind 는 doctor 체크 한정).
+
 ## v0.19.1 — 2026-05-30 (patch — creds-expiry aws_sso 임계 재튜닝 1h→15min)
 
 v0.19.0 의 aws_sso per-kind 임계(1h)가 실측상 여전히 과민했다 — 일부 org 의 SSO

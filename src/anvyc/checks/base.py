@@ -57,6 +57,10 @@ class CheckContext:
     known_user_aliases: dict[str, str] = field(default_factory=dict)
     scan_targets: list[Path] = field(default_factory=list)
     severity_overrides: dict[str, Severity] = field(default_factory=dict)
+    # CP-5 — creds-expiry per-kind "expiring" 경고 임계 override (kind → 초).
+    # 미지정 kind 는 코드 기본값(aws_sso 15min / 그 외 7d). anvyc.yaml
+    # `doctor.creds_expiry.warn_thresholds` 에서 주입.
+    creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
 
 
 class Check(Protocol):
