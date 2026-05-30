@@ -11,9 +11,10 @@ Severity 매핑:
 - credential.status = "valid" / "unknown" → result 없음 (silent)
 
 Threshold (per-kind): long-lived 자격(github PAT / claude_oauth)은 7일 — 수동
-회전 리드타임 필요. **aws_sso 는 1h** — 세션 TTL 이 수 시간이고 `aws sso login`
-으로 즉시 갱신되므로 7일 "임박" 경고가 영구 노이즈가 된다. run 중 만료 위험만
-의미하도록 좁힘. expired(CRITICAL)는 임계 무관하게 그대로 잡음
+회전 리드타임 필요. **aws_sso 는 15분(run-risk window)** — access token 이 짧게
+만료(org 따라 ~1h)되고 refresh-on-demand(`aws sso login`)되므로 긴 임계는 영구
+노이즈가 된다. 곧 시작할 run 도중 죽을 정도로 임박할 때만 경고(fresh 토큰은 valid,
+마지막 15분에만 WARNING). expired(CRITICAL)는 임계 무관하게 그대로 잡음
 (`creds.DEFAULT_KIND_WARN_DAYS`). 체크명에서 "within-7d" 를 제거 — 임계가 더
 이상 단일 7일이 아님 (CP-14 게이트 정책 옵션화와 병행, 2026-05-30).
 
@@ -31,7 +32,7 @@ from anvyc.core.creds import (
 )
 
 CHECK_NAME = "creds-expiry"
-# long-lived 자격(github/claude_oauth) 기본 임계. aws_sso 는 per-kind override(1h).
+# long-lived 자격(github/claude_oauth) 기본 임계. aws_sso 는 per-kind override(15min).
 THRESHOLD_DAYS = 7
 
 

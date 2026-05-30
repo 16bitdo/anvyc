@@ -68,12 +68,26 @@ def test_detect_aws_sso_expiring(fake_home: Path, now_fixed: datetime) -> None:
 
 
 def test_detect_aws_sso_short_threshold_narrows_expiring(fake_home: Path, now_fixed: datetime) -> None:
-    """per-kind 임계(aws_sso 1h): 6h 뒤 만료는 7d 면 expiring, 1h 면 valid (SSO 영구 노이즈 회피)."""
+    """per-kind 임계(aws_sso 15min): 6h 뒤 만료는 7d 면 expiring, 15min 면 valid (SSO 영구 노이즈 회피)."""
     _write_sso(fake_home, "a", _iso(now_fixed + timedelta(hours=6)))
     assert detect_aws_sso(fake_home, warn_threshold_days=7, now=now_fixed)[0].status == STATUS_EXPIRING
     assert (
         detect_aws_sso(fake_home, warn_threshold_days=AWS_SSO_WARN_DAYS, now=now_fixed)[0].status
         == STATUS_VALID
+    )
+
+
+def test_detect_aws_sso_15min_window_boundary(fake_home: Path, now_fixed: datetime) -> None:
+    """retune: ~1h TTL 토큰도 15min 초과 잔여면 valid(로그인 직후 영구 경고 회피), 임박 시 expiring."""
+    _write_sso(fake_home, "a", _iso(now_fixed + timedelta(minutes=30)))
+    assert (
+        detect_aws_sso(fake_home, warn_threshold_days=AWS_SSO_WARN_DAYS, now=now_fixed)[0].status
+        == STATUS_VALID
+    )
+    _write_sso(fake_home, "a", _iso(now_fixed + timedelta(minutes=10)))
+    assert (
+        detect_aws_sso(fake_home, warn_threshold_days=AWS_SSO_WARN_DAYS, now=now_fixed)[0].status
+        == STATUS_EXPIRING
     )
 
 

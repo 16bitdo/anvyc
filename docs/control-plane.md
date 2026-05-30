@@ -11,7 +11,7 @@
 |---|---|---|---|
 | **CP-1** audit | `anvyc activity` + MCP `activity_summary` / `tool_call_stats` | session jsonl 의 read-only 집계 — autopilot 사후 추적 | DESIGN §34 |
 | **CP-4** snapshot | `anvyc snapshot {create\|list\|diff\|restore}` | autopilot 실수 회복. git stash + meta schema v1. 4-layer safety | [design-axes/cp-04-snapshot.md](./design-axes/cp-04-snapshot.md) |
-| **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry` check | AWS SSO / GitHub PAT / Claude OAuth 만료 사전 감지 (per-kind 임계: aws_sso 1h / 그 외 7d) + native re-auth 위임 | [design-axes/cp-05-creds.md](./design-axes/cp-05-creds.md) |
+| **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry` check | AWS SSO / GitHub PAT / Claude OAuth 만료 사전 감지 (per-kind 임계: aws_sso 15min(run-risk window) / 그 외 7d) + native re-auth 위임 | [design-axes/cp-05-creds.md](./design-axes/cp-05-creds.md) |
 | **CP-6** sync | `anvyc sync {status\|push\|pull}` + `conflict {list\|resolve}` | control-plane 자산 (snapshot meta / activity / creds) 머신 간 동기화 | [design-axes/cp-06-sync.md](./design-axes/cp-06-sync.md) |
 | **CP-12** work-cwd | `anvyc workctx {switch\|clear\|show}` + `work-cwd-track-wired` check | launch dir 에 고정된 statusline 의 한계 해소 — agent 의 실 작업 cwd 를 cache schema v1 로 누적 | DESIGN §27 |
 | **CP-13** cost | `anvyc cost {collect\|summary\|ledger\|gc}` + MCP `cost_summary` + 2 doctor check | Anthropic (i) / AWS Cost Explorer / GitHub Billing 통합 | [design-axes/cp-13-cost.md](./design-axes/cp-13-cost.md) |

@@ -55,10 +55,12 @@ KIND_GITHUB = "github"
 KIND_CLAUDE_OAUTH = "claude_oauth"
 
 # kind 별 "expiring" 경고 임계 override (일 단위, 분수 허용). 미지정 kind 는
-# warn_threshold_days 전역값. aws_sso 는 세션 TTL 이 짧고(수 시간) `aws sso login`
-# 으로 즉시 갱신되므로 7d "임박" 경고가 영구 노이즈가 된다 — run 중 만료 위험만
-# 의미하도록 1h 로 좁힌다. expired(CRITICAL)는 임계와 무관하게 그대로 잡힌다.
-AWS_SSO_WARN_DAYS = 3600 / 86400  # 1h
+# warn_threshold_days 전역값. aws_sso 는 access token 이 짧게 만료(org 따라 ~1h)되고
+# 등록 토큰으로 refresh-on-demand(`aws sso login`)되므로 긴 임계는 영구 노이즈가 된다.
+# **run-risk window** 만 의미 있다 — 곧 시작할 run 도중 죽을 정도로 임박할 때만 경고.
+# 따라서 15분으로 좁힌다(fresh 토큰은 valid, 마지막 15분에만 WARNING). org TTL 이
+# 더 길면 그만큼 더 오래 valid. expired(CRITICAL)는 임계와 무관하게 그대로 잡힌다.
+AWS_SSO_WARN_DAYS = 900 / 86400  # 15min (run-risk window)
 DEFAULT_KIND_WARN_DAYS: dict[str, float] = {KIND_AWS_SSO: AWS_SSO_WARN_DAYS}
 
 STATUS_VALID = "valid"
@@ -438,7 +440,7 @@ def collect_credentials(
       home: 검사 root (기본 `Path.home()`). 테스트 주입용.
       warn_threshold_days: expiring 분류 threshold 전역 기본 (기본 7).
       kind_warn_days: kind 별 임계 override (일, 분수 허용). 미지정 시 per-kind
-        없음(전역값) — CLI 호환. 지정 시 해당 kind 만 좁힘(doctor 체크가 aws_sso=1h
+        없음(전역값) — CLI 호환. 지정 시 해당 kind 만 좁힘(doctor 체크가 aws_sso=15min
         주입). 예: `{KIND_AWS_SSO: AWS_SSO_WARN_DAYS}`.
       probe_github_expiry: True 면 `gh api` 호출로 expiry 헤더 추출. CI /
         offline 환경에선 False 권장.

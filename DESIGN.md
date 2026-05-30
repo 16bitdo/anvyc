@@ -1233,7 +1233,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 
 | check_name | 영역 | 추가 |
 |---|---|---|
-| `creds-expiry` | AWS SSO / GitHub PAT / Claude OAuth 만료 사전 감지 (CP-5, per-kind 임계 — aws_sso 1h / 그 외 7d) | v0.14.0 |
+| `creds-expiry` | AWS SSO / GitHub PAT / Claude OAuth 만료 사전 감지 (CP-5, per-kind 임계 — aws_sso 15min(run-risk window) / 그 외 7d) | v0.14.0 |
 | `cost-aws-explorer-iam` | `SimulatePrincipalPolicy` 로 `ce:GetCostAndUsage` 권한 부재 감지 (CP-13) | CP-13 |
 | `cost-github-pat-scope` | fine-grained PAT 의 billing endpoint smoke 호출 (CP-13) | CP-13 |
 | `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
