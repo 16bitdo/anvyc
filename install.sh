@@ -3,7 +3,7 @@
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
-#   ANVYC_VERSION=v0.19.1 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+#   ANVYC_VERSION=v0.20.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 #   ANVYC_METHOD=pipx bash <(...)
 #
 # Environment:
