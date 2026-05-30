@@ -54,6 +54,13 @@ KIND_AWS_SSO = "aws_sso"
 KIND_GITHUB = "github"
 KIND_CLAUDE_OAUTH = "claude_oauth"
 
+# kind 별 "expiring" 경고 임계 override (일 단위, 분수 허용). 미지정 kind 는
+# warn_threshold_days 전역값. aws_sso 는 세션 TTL 이 짧고(수 시간) `aws sso login`
+# 으로 즉시 갱신되므로 7d "임박" 경고가 영구 노이즈가 된다 — run 중 만료 위험만
+# 의미하도록 1h 로 좁힌다. expired(CRITICAL)는 임계와 무관하게 그대로 잡힌다.
+AWS_SSO_WARN_DAYS = 3600 / 86400  # 1h
+DEFAULT_KIND_WARN_DAYS: dict[str, float] = {KIND_AWS_SSO: AWS_SSO_WARN_DAYS}
+
 STATUS_VALID = "valid"
 STATUS_EXPIRING = "expiring"
 STATUS_EXPIRED = "expired"
@@ -233,7 +240,7 @@ def rotate_credential(kind: str, *, timeout_seconds: int = 300) -> RotateResult:
     )
 
 
-def _classify(expires_at: str | None, *, warn_threshold_days: int, now: datetime) -> tuple[int | None, str]:
+def _classify(expires_at: str | None, *, warn_threshold_days: float, now: datetime) -> tuple[int | None, str]:
     """expires_at ISO8601 → (expires_in_seconds, status).
 
     expires_at=None → (None, "unknown"). 호출측이 detected_active 여부에
@@ -253,7 +260,7 @@ def _classify(expires_at: str | None, *, warn_threshold_days: int, now: datetime
     return seconds_remaining, STATUS_VALID
 
 
-def detect_aws_sso(home: Path, *, warn_threshold_days: int, now: datetime) -> list[CredentialStatus]:
+def detect_aws_sso(home: Path, *, warn_threshold_days: float, now: datetime) -> list[CredentialStatus]:
     """`<home>/.aws/sso/cache/*.json` 에서 `expiresAt` 추출."""
     out: list[CredentialStatus] = []
     cache_dir = home / ".aws" / "sso" / "cache"
@@ -354,7 +361,7 @@ def _detect_github_token_expiry(host: str, user: str | None) -> str | None:
     return None
 
 
-def detect_github(home: Path, *, warn_threshold_days: int, now: datetime, probe_expiry: bool = True) -> list[CredentialStatus]:
+def detect_github(home: Path, *, warn_threshold_days: float, now: datetime, probe_expiry: bool = True) -> list[CredentialStatus]:
     """`<home>/.config/gh/hosts.yml` 에서 host/user 발견."""
     out: list[CredentialStatus] = []
     hosts_yml = home / ".config" / "gh" / "hosts.yml"
@@ -385,7 +392,7 @@ def detect_github(home: Path, *, warn_threshold_days: int, now: datetime, probe_
     return out
 
 
-def detect_claude_oauth(home: Path, *, warn_threshold_days: int, now: datetime) -> list[CredentialStatus]:
+def detect_claude_oauth(home: Path, *, warn_threshold_days: float, now: datetime) -> list[CredentialStatus]:
     """`<home>/.claude*.json` 의 `oauthAccount` 발견."""
     out: list[CredentialStatus] = []
     for f in sorted(home.glob(".claude*.json")):
@@ -421,6 +428,7 @@ def collect_credentials(
     *,
     home: Path | None = None,
     warn_threshold_days: int = DEFAULT_WARN_THRESHOLD_DAYS,
+    kind_warn_days: dict[str, float] | None = None,
     probe_github_expiry: bool = True,
     now: datetime | None = None,
 ) -> CredentialsReport:
@@ -428,7 +436,10 @@ def collect_credentials(
 
     Args:
       home: 검사 root (기본 `Path.home()`). 테스트 주입용.
-      warn_threshold_days: expiring 분류 threshold (기본 7).
+      warn_threshold_days: expiring 분류 threshold 전역 기본 (기본 7).
+      kind_warn_days: kind 별 임계 override (일, 분수 허용). 미지정 시 per-kind
+        없음(전역값) — CLI 호환. 지정 시 해당 kind 만 좁힘(doctor 체크가 aws_sso=1h
+        주입). 예: `{KIND_AWS_SSO: AWS_SSO_WARN_DAYS}`.
       probe_github_expiry: True 면 `gh api` 호출로 expiry 헤더 추출. CI /
         offline 환경에선 False 권장.
       now: 만료 비교 기준 (기본 datetime.now(UTC)).
@@ -438,14 +449,19 @@ def collect_credentials(
     """
     h = home or Path.home()
     n = now or datetime.now(tz=UTC)
+    overrides = kind_warn_days or {}
+
+    def _t(kind: str) -> float:
+        return overrides.get(kind, warn_threshold_days)
+
     creds: list[CredentialStatus] = []
-    creds.extend(detect_aws_sso(h, warn_threshold_days=warn_threshold_days, now=n))
+    creds.extend(detect_aws_sso(h, warn_threshold_days=_t(KIND_AWS_SSO), now=n))
     creds.extend(
         detect_github(
-            h, warn_threshold_days=warn_threshold_days, now=n, probe_expiry=probe_github_expiry
+            h, warn_threshold_days=_t(KIND_GITHUB), now=n, probe_expiry=probe_github_expiry
         )
     )
-    creds.extend(detect_claude_oauth(h, warn_threshold_days=warn_threshold_days, now=n))
+    creds.extend(detect_claude_oauth(h, warn_threshold_days=_t(KIND_CLAUDE_OAUTH), now=n))
 
     return CredentialsReport(
         schema_version=SCHEMA_VERSION,

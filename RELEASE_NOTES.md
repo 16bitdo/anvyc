@@ -1,5 +1,23 @@
 # anvyc 릴리즈 노트
 
+## v0.19.0 — 2026-05-30 (minor — creds-expiry per-kind 임계 + 체크 리네임)
+
+CP-14 게이트 정책 옵션화(anvyx)와 병행한 CP-5 근본 원인 수정. AWS SSO 세션 TTL(수
+시간) < 기존 7일 임계라 갓 로그인해도 `aws_sso expires soon` 영구 warning → SSO
+환경에서 `doctor --strict` 가 영영 clean 이 안 됨(autopilot 게이트 구조적 차단).
+
+### creds-expiry per-kind 임계 (CP-5)
+- **doctor 체크 리네임**: `creds-expiry-within-7d` → **`creds-expiry`** (임계가 더 이상
+  단일 7일이 아님). doctor check 개수 20 불변. ⚠️ `anvyc doctor --only/--skip
+  creds-expiry-within-7d` 를 쓰던 스크립트는 `creds-expiry` 로 갱신 필요.
+- **per-kind 임계**: `core/creds.py` `collect_credentials(kind_warn_days=…)` 추가 —
+  aws_sso 는 **1h**(세션 TTL 짧고 `aws sso login` 즉시 갱신 → "임박" 경고는 노이즈,
+  run 중 만료 위험만 의미), github/claude_oauth 는 **7d**(수동 회전 리드타임). expired
+  (CRITICAL)는 임계 무관하게 그대로 잡힘. `DEFAULT_KIND_WARN_DAYS`.
+- `anvyc creds status --warn-days N` CLI 동작 불변 (per-kind 는 doctor 체크만 opt-in).
+- 효과: 로그인된 SSO 세션이 doctor/statusline/scheduler 전반에서 더 이상 spurious
+  warning 을 내지 않음 → C6 게이트(anvyx) 통과 가능.
+
 ## v0.18.0 — 2026-05-30 (minor — CP-14 L4 실행 엔진 run 원장 흡수)
 
 control plane CP-14 (L4 실행 엔진 `anvyx`) 의 **원장 흡수** (Phase 3). anvyx 가

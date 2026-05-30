@@ -176,7 +176,7 @@ CP-6 sync 의 atomic write 패턴 미러.
 | `cost-fx-stale` | FX cache 7d 초과 stale | WARNING |
 | `cost-pricing-stale` | `pricing/anthropic.yaml` 의 `effective_date` 90d 초과 | WARNING |
 
-CP-5 의 `creds-expiry-within-7d` 패턴 미러 — CP-3 scheduler 의 `doctor --strict
+CP-5 의 `creds-expiry` 패턴 미러 — CP-3 scheduler 의 `doctor --strict
 --json` 호출 시 health JSON payload 에 자동 합류 (별도 wire 불요).
 
 ## 7. Cross-axis 시너지
