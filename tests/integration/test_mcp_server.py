@@ -130,13 +130,14 @@ def test_dispatch_unknown_tool_raises() -> None:
         _dispatch("anvyc_invalid", {})
 
 
-def test_tool_defs_advertises_8_tools() -> None:
+def test_tool_defs_advertises_9_tools() -> None:
     # PR #33 (CP-1 3/3) 에서 activity_summary + tool_call_stats 가 추가되어 5 → 7.
     # PR-13B1 (CP-13) 에서 cost_summary 추가로 7 → 8.
+    # CP-14 Phase 3 에서 run_summary 추가로 8 → 9 (L4 실행 엔진 원장 흡수).
     from anvyc.mcp.server import _tool_defs
 
     defs = _tool_defs()
-    assert len(defs) == 8
+    assert len(defs) == 9
     names = {t.name for t in defs}
     assert names == {
         "project_show",
@@ -147,4 +148,5 @@ def test_tool_defs_advertises_8_tools() -> None:
         "activity_summary",
         "tool_call_stats",
         "cost_summary",
+        "run_summary",
     }

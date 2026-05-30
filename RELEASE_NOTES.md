@@ -1,5 +1,19 @@
 # anvyc 릴리즈 노트
 
+## v0.18.0 — 2026-05-30 (minor — CP-14 L4 실행 엔진 run 원장 흡수)
+
+control plane CP-14 (L4 실행 엔진 `anvyx`) 의 **원장 흡수** (Phase 3). anvyx 가
+`~/.config/anvyx/runs/<YYYY-MM-DD>.jsonl` 에 emit 하는 C5 run-record 를 anvyc 가
+read-only 로 읽어 집계한다 (CP-8 emit→aggregate→display 패턴 재사용).
+
+### CP-14 run ledger (anvyx#1 페어)
+- `anvyc/core/runs.py` — run-record reader (`discover_run_files` / `iter_runs` / `collect_runs`) + `aggregate_runs` (총 run 수 / status·exit_reason·agent 분포 / 총 비용·토큰·tool call). 손상 라인/파일 skip, agent 필터.
+- `anvyc runs summary [--agent] [--json]` — 통합 통계 (table / JSON).
+- `anvyc runs list [--limit] [--agent] [--json]` — 최근 run 목록 (started_at 내림차순).
+- MCP tool `run_summary` (read-only) — `aggregate_runs(collect_runs(agent=...))`. 읽기전용 불변식 보존.
+- C5 스키마 SoT: role-based-ruleset `metadata/run-record-schema.yaml` (schema_version:1).
+- DESIGN §40 → `docs/design-axes/cp-14-run-ledger.md`.
+
 ## v0.17.0 — 2026-05-30 (minor — 동반 도구 발견성 + Tools selection UX + CP-15 Secret Broker)
 
 [v0.16.0 → v0.17.0 통합 release] v0.16.0 cut 이후 unreleased 였던 3 axis 를 묶어 publish:

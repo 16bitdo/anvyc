@@ -215,6 +215,24 @@ def _tool_defs() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="run_summary",
+            description=(
+                "CP-14 L4 실행 엔진 원장 — anvyx (~/.config/anvyx/runs/*.jsonl) 의 "
+                "run-record 통합 통계 (총 run 수 / status·exit_reason·agent 별 분포 / "
+                "총 비용·토큰·tool call). read-only — anvyx 가 emit, anvyc 가 집계 "
+                "(CP-8 패턴). anvyx 미설치/run 부재 시 total_runs=0."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent": {
+                        "type": "string",
+                        "description": "agent 필터 (claude_code 등). 미지정 시 전체.",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -305,6 +323,12 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         return summary_payload(
             source=source, period_spec=period_spec, refresh=refresh
         )
+
+    if name == "run_summary":
+        from anvyc.core.runs import aggregate_runs, collect_runs
+
+        agent = args.get("agent") if isinstance(args.get("agent"), str) else None
+        return aggregate_runs(collect_runs(agent=agent))
 
     raise ValueError(f"unknown tool: {name}")
 
