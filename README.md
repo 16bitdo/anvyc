@@ -124,7 +124,7 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
 
 # 특정 버전:
-ANVYC_VERSION=v0.19.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_VERSION=v0.19.1 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
 # 설치 도구 강제 (uv | pipx | auto):
 ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
@@ -151,10 +151,10 @@ Tap repo: [16bitdo/homebrew-anvyc](https://github.com/16bitdo/homebrew-anvyc).
 
 ```bash
 # uv tool (권장)
-uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.19.0/anvyc-0.19.0-py3-none-any.whl
+uv tool install https://github.com/16bitdo/anvyc/releases/download/v0.19.1/anvyc-0.19.1-py3-none-any.whl
 
 # 또는 pipx
-pipx install https://github.com/16bitdo/anvyc/releases/download/v0.19.0/anvyc-0.19.0-py3-none-any.whl
+pipx install https://github.com/16bitdo/anvyc/releases/download/v0.19.1/anvyc-0.19.1-py3-none-any.whl
 
 anvyc --version
 ```
