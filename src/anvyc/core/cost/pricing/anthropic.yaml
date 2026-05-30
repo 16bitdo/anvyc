@@ -1,7 +1,9 @@
-# Anthropic 모델 단가 SoT — anvyc/core/cost/pricing/anthropic.yaml
+# Anthropic 모델 단가 — anvyc/core/cost/pricing/anthropic.yaml (rbr SoT 번들 복사본)
 #
-# CP-13 (Cost observability) 의 가격표 SoT. ADR v6-CP-13 §4.1 + DESIGN §38.2
-# 의 schema 정합. 변경 시 PR review 필수 — ADR §7 Sources 동기화 강제 (R9
+# SoT = role-based-ruleset/metadata/pricing/anthropic.yaml (CP-14 후속 — anvyc→rbr 이전).
+# anvyc 는 별도 패키지라 본 복사본을 bundle 해 cost 계산에 직접 사용. drift 는
+# tests/unit/test_cost_pricing_sync.py 가 rbr SoT 대조로 가드 (ANVYC_PRICING_SOT env).
+# SoT 갱신 시 본 복사본 + synced_from 동기화. ADR v6-CP-13 §4.1 schema 정합 (R9
 # mitigation: pricing_version 캡처로 historical cost drift 추적).
 #
 # 출처: https://platform.claude.com/docs/en/docs/about-claude/pricing
@@ -14,6 +16,7 @@
 version: 1
 effective_date: "2026-05-27"
 source_url: "https://platform.claude.com/docs/en/docs/about-claude/pricing"
+synced_from: "role-based-ruleset@7766f44"
 schema_version: 1
 
 # 현행 모델 — Opus 4.5+ / Sonnet 4.5+ / Haiku 4.5
