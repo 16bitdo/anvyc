@@ -507,7 +507,7 @@ Environment layer** 책임을 맡는다. 각 axis 는 `schema_version: 1` 단일
 |---|---|---|
 | **CP-1** audit | `anvyc activity` + MCP `activity_summary` / `tool_call_stats` | v0.14.0 |
 | **CP-4** snapshot | `anvyc snapshot {create\|list\|diff\|restore}` | v0.14.0 |
-| **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry-within-7d` check | v0.14.0 |
+| **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry` check (per-kind 임계) | v0.14.0 |
 | **CP-6** sync | `anvyc sync {status\|push\|pull}` + `conflict {list\|resolve}` | v0.14.0 |
 | **CP-12** work-cwd | `anvyc workctx {switch\|clear\|show}` + `work-cwd-track-wired` check | v0.15.0 |
 | **CP-13** cost | `anvyc cost {collect\|summary\|ledger\|gc}` + MCP `cost_summary` | v0.16.0 |
@@ -548,6 +548,7 @@ axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
 - **CP-15 Secret Broker** ✓ (Phase 1·2·2.5, anvyc#111~#117) — secret 입력/조회 broker. "anvyc 평문 미접촉" 불변식 유지: 값 custody 는 op/sops/keychain/aws-vault 에 두고 anvyc 는 reference 레지스트리 + 검증 + JIT 와이어링만 담당 (`anvyc secret {list|add|get|inject-wire}` + `secret-registry-valid` doctor check). 기존 값의 hidden 입력도 backend 네이티브 프롬프트(keychain/aws-vault/sops `$EDITOR`)로 충족 — anvyc 자체 passthrough(과거 Phase 3 후보)는 폐기 ([설계](./docs/design-axes/cp-15-secret-broker.md))
 - **v0.17.0** ✓ — 동반 도구(companion tools) 발견성 (anvyc#127~#131 — `anvyc extras` + `ExtraReq` SoT + `anvyc doctor` severity 정렬·remediation 노출 + dev-install 요약) + Tools selection UX (anvyc#120~#125 — `tools list/configure` + `AdapterMeta` SoT + README 생성기) + CP-15 Secret Broker (anvyc#111~#117) 통합. breaking change 없음. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.17.0 entry.
 - **v0.18.0** ✓ — Control Plane CP-14 (L4 실행 엔진 `anvyx`) run 원장 흡수 (Phase 3, anvyc#139·#140) — anvyx 가 emit 하는 C5 run-record 를 anvyc 가 read-only 로 집계 (`anvyc runs {summary|list}` CLI + MCP `run_summary`, read-only 불변식 보존). CP-8 emit→aggregate→display 패턴 재사용. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.18.0 entry.
+- **v0.19.0** ✓ — CP-5 `creds-expiry` per-kind 임계 + 체크 리네임 (`creds-expiry-within-7d`→`creds-expiry`). aws_sso 임계 1h(세션 TTL 짧음 → 영구 warning 회피), github/claude_oauth 7d. CP-14 게이트 정책 옵션화(anvyx)와 병행 — SSO 환경 `doctor --strict` clean 가능. 자세한 변경은 [RELEASE_NOTES.md](./RELEASE_NOTES.md) 의 v0.19.0 entry.
 - **v1.0** — API stable, PyPI 배포
 
 자세한 내용은 [RELEASE_NOTES.md](./RELEASE_NOTES.md), [docs/archive/improvement-plan-ux-review.md](./docs/archive/improvement-plan-ux-review.md) 참고.

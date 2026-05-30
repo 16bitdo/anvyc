@@ -1,8 +1,8 @@
-"""creds-expiry-within-7d check — CP-5 2/3.
+"""creds-expiry check — CP-5 2/3.
 
 `anvyc creds status` (CP-5 1/3) 의 detection 로직을 doctor 의 check 로
 합류. CP-3 scheduler 가 이미 `anvyc doctor --strict --json` 일1회 호출 중
-이므로, 본 check 만 등록되면 별도 wire 작업 없이 schduler health JSON 의
+이므로, 본 check 만 등록되면 별도 wire 작업 없이 scheduler health JSON 의
 doctor payload 에 자동 노출됨 (자연 cross-axis 시너지).
 
 Severity 매핑:
@@ -10,9 +10,12 @@ Severity 매핑:
 - credential.status = "expiring" → Severity.WARNING   (strict 모드 exit 1)
 - credential.status = "valid" / "unknown" → result 없음 (silent)
 
-Threshold: 본 check 이름에 명시된 7일. `--warn-days` 같은 동적 조정은
-`anvyc creds status` CLI 에서 가능 (doctor check 자체는 7일 고정 —
-이름에 박힌 contract).
+Threshold (per-kind): long-lived 자격(github PAT / claude_oauth)은 7일 — 수동
+회전 리드타임 필요. **aws_sso 는 1h** — 세션 TTL 이 수 시간이고 `aws sso login`
+으로 즉시 갱신되므로 7일 "임박" 경고가 영구 노이즈가 된다. run 중 만료 위험만
+의미하도록 좁힘. expired(CRITICAL)는 임계 무관하게 그대로 잡음
+(`creds.DEFAULT_KIND_WARN_DAYS`). 체크명에서 "within-7d" 를 제거 — 임계가 더
+이상 단일 7일이 아님 (CP-14 게이트 정책 옵션화와 병행, 2026-05-30).
 
 doctor 의 read-only 원칙 준수: `probe_github_expiry=False` 로 호출해
 gh CLI 의 외부 네트워크 접근 회피 (offline / CI 안전).
@@ -21,21 +24,24 @@ from __future__ import annotations
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.creds import (
+    DEFAULT_KIND_WARN_DAYS,
     STATUS_EXPIRED,
     STATUS_EXPIRING,
     collect_credentials,
 )
 
-CHECK_NAME = "creds-expiry-within-7d"
+CHECK_NAME = "creds-expiry"
+# long-lived 자격(github/claude_oauth) 기본 임계. aws_sso 는 per-kind override(1h).
 THRESHOLD_DAYS = 7
 
 
-class CredsExpiryWithin7dCheck:
+class CredsExpiryCheck:
     name = CHECK_NAME
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
         report = collect_credentials(
             warn_threshold_days=THRESHOLD_DAYS,
+            kind_warn_days=DEFAULT_KIND_WARN_DAYS,
             probe_github_expiry=False,
         )
         out: list[CheckResult] = []

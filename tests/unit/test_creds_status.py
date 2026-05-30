@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from anvyc.core.creds import (
+    AWS_SSO_WARN_DAYS,
+    DEFAULT_KIND_WARN_DAYS,
     DEFAULT_WARN_THRESHOLD_DAYS,
     KIND_AWS_SSO,
     KIND_CLAUDE_OAUTH,
@@ -63,6 +65,35 @@ def test_detect_aws_sso_expiring(fake_home: Path, now_fixed: datetime) -> None:
     _write_sso(fake_home, "a", _iso(now_fixed + timedelta(days=3)))
     out = detect_aws_sso(fake_home, warn_threshold_days=7, now=now_fixed)
     assert out[0].status == STATUS_EXPIRING
+
+
+def test_detect_aws_sso_short_threshold_narrows_expiring(fake_home: Path, now_fixed: datetime) -> None:
+    """per-kind 임계(aws_sso 1h): 6h 뒤 만료는 7d 면 expiring, 1h 면 valid (SSO 영구 노이즈 회피)."""
+    _write_sso(fake_home, "a", _iso(now_fixed + timedelta(hours=6)))
+    assert detect_aws_sso(fake_home, warn_threshold_days=7, now=now_fixed)[0].status == STATUS_EXPIRING
+    assert (
+        detect_aws_sso(fake_home, warn_threshold_days=AWS_SSO_WARN_DAYS, now=now_fixed)[0].status
+        == STATUS_VALID
+    )
+
+
+def test_collect_credentials_kind_warn_days_override(fake_home: Path, now_fixed: datetime) -> None:
+    """collect_credentials(kind_warn_days) 가 aws_sso 만 좁힌다 (전역 7d 유지)."""
+    _write_sso(fake_home, "a", _iso(now_fixed + timedelta(hours=6)))
+    base = collect_credentials(
+        home=fake_home, warn_threshold_days=7, probe_github_expiry=False, now=now_fixed
+    )
+    sso = [c for c in base.credentials if c.kind == KIND_AWS_SSO]
+    assert sso and sso[0].status == STATUS_EXPIRING
+    narrowed = collect_credentials(
+        home=fake_home,
+        warn_threshold_days=7,
+        kind_warn_days=DEFAULT_KIND_WARN_DAYS,
+        probe_github_expiry=False,
+        now=now_fixed,
+    )
+    sso2 = [c for c in narrowed.credentials if c.kind == KIND_AWS_SSO]
+    assert sso2 and sso2[0].status == STATUS_VALID
 
 
 def test_detect_aws_sso_expired(fake_home: Path, now_fixed: datetime) -> None:

@@ -7,9 +7,11 @@ from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.creds_expiry import (
     CHECK_NAME,
     THRESHOLD_DAYS,
-    CredsExpiryWithin7dCheck,
+    CredsExpiryCheck,
 )
 from anvyc.core.creds import (
+    DEFAULT_KIND_WARN_DAYS,
+    KIND_AWS_SSO,
     STATUS_EXPIRED,
     STATUS_EXPIRING,
     STATUS_UNKNOWN,
@@ -40,14 +42,16 @@ def _cred(*, kind: str = "aws_sso", identifier: str = "x", status: str, expires_
 
 
 def test_check_name_and_threshold() -> None:
-    assert CHECK_NAME == "creds-expiry-within-7d"
+    assert CHECK_NAME == "creds-expiry"
     assert THRESHOLD_DAYS == 7
-    assert CredsExpiryWithin7dCheck.name == CHECK_NAME
+    assert CredsExpiryCheck.name == CHECK_NAME
+    # aws_sso 는 per-kind override 로 1h (7일 영구 노이즈 회피).
+    assert DEFAULT_KIND_WARN_DAYS[KIND_AWS_SSO] == 3600 / 86400
 
 
 def test_check_empty_no_credentials() -> None:
     """no credentials → no results."""
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report([])):
         results = check.run(CheckContext())
     assert results == []
@@ -60,7 +64,7 @@ def test_check_silent_on_valid_and_unknown() -> None:
         _cred(kind="claude_oauth", status=STATUS_VALID, identifier="x@y.com"),
         _cred(kind="github", status=STATUS_UNKNOWN, identifier="github.com/u"),
     ]
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
         results = check.run(CheckContext())
     assert results == []
@@ -70,7 +74,7 @@ def test_check_critical_on_expired() -> None:
     creds = [
         _cred(status=STATUS_EXPIRED, identifier="aws-prod", expires_at="2026-05-10T15:13:20Z", sec=-86400 * 15),
     ]
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
         results = check.run(CheckContext())
     assert len(results) == 1
@@ -94,7 +98,7 @@ def test_check_warning_on_expiring() -> None:
             sec=3 * 86400,
         ),
     ]
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
         results = check.run(CheckContext())
     assert len(results) == 1
@@ -114,7 +118,7 @@ def test_check_mixed_status_returns_only_blocking() -> None:
         _cred(kind="claude_oauth", status=STATUS_UNKNOWN, identifier="x@y.com"),
         _cred(kind="github", status=STATUS_EXPIRED, identifier="github.com/u", sec=-3600),
     ]
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
         results = check.run(CheckContext())
     assert len(results) == 3
@@ -125,17 +129,18 @@ def test_check_mixed_status_returns_only_blocking() -> None:
 
 def test_check_calls_collect_with_no_github_probe() -> None:
     """doctor 의 read-only 원칙 — collect_credentials 호출 시 probe_github_expiry=False."""
-    check = CredsExpiryWithin7dCheck()
+    check = CredsExpiryCheck()
     with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report([])) as mock_collect:
         check.run(CheckContext())
     mock_collect.assert_called_once_with(
         warn_threshold_days=THRESHOLD_DAYS,
+        kind_warn_days=DEFAULT_KIND_WARN_DAYS,
         probe_github_expiry=False,
     )
 
 
 def test_check_registered_in_doctor() -> None:
-    """doctor._REGISTRY 에 creds-expiry-within-7d 등록 확인."""
+    """doctor._REGISTRY 에 creds-expiry 등록 확인."""
     from anvyc.core.doctor import _REGISTRY
     assert CHECK_NAME in _REGISTRY
     assert _REGISTRY[CHECK_NAME].name == CHECK_NAME
