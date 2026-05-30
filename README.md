@@ -35,7 +35,7 @@
 ```text
 여러 장치에서 개발 환경 설정을 안전하게 백업·비교·복원·동기화하는 macOS CLI.
 Shell / Git / AWS / GitHub / Cursor / Claude Code / iTerm2 / Pulumi + dev_env / shell_prompt — 10 종 도구의 safe adapter.
-AI agent 의 audit / snapshot / creds / sync / workctx / cost 6 종 control-plane axis 통합 (CP-1·4·5·6·12·13).
+AI agent 의 audit / snapshot / creds / sync / workctx / cost / run ledger 7 종 control-plane axis 통합 (CP-1·4·5·6·12·13·14).
 ```
 
 ---
@@ -174,9 +174,10 @@ anvyc apply --apply   # 실 적용
 
 ### 5.5 MCP server (AI agent integration, v0.9.0+)
 
-Claude Code / Cursor 등 MCP 호환 agent 에서 anvyc 의 read-only 8 tool 호출:
+Claude Code / Cursor 등 MCP 호환 agent 에서 anvyc 의 read-only 9 tool 호출:
 `project_show` / `project_list` / `project_doctor` / `doctor` / `tools_list` /
-`activity_summary` (CP-1) / `tool_call_stats` (CP-1·8·11) / `cost_summary` (CP-13).
+`activity_summary` (CP-1) / `tool_call_stats` (CP-1·8·11) / `cost_summary` (CP-13) /
+`run_summary` (CP-14 — anvyx run-record 집계).
 write 영역 (`backup` / `apply` / `restore` / `snapshot restore` / `creds rotate` /
 `sync push/pull`) 은 의도적 미포함 — agent 가 destructive 실행 불가.
 
@@ -325,7 +326,7 @@ anvyc project doctor [--path P] [--json] [--strict]
 anvyc prompt [--path P] [--json]
                                # cwd 계정 라우팅을 shell prompt 용 한 줄로 (v0.13.0+)
 
-# --- AI agent control-plane (CP-1·4·5·6·12·13) ---
+# --- AI agent control-plane (CP-1·4·5·6·12·13·14) ---
 anvyc activity [--limit N] [--agent <name>] [--json]
                                # AI agent session 별 통계 (CP-1, v0.14.0+)
 anvyc snapshot {create|list|diff|restore}
@@ -338,7 +339,8 @@ anvyc workctx {switch|clear|show}
                                # agent 의 work-cwd explicit override (CP-12, v0.15.0+)
 anvyc cost {collect|summary|ledger|cleanup}
                                # cost observability — Anthropic (i) / AWS Cost Explorer / GitHub Billing
-                               # 통합 합산 + KRW 표시 + EOM forecast + budget 평가 (CP-13, in-flight)
+                               # 통합 합산 + KRW 표시 + EOM forecast + budget 평가 (CP-13, v0.16.0+)
+anvyc runs {summary|list}      # anvyx(L4) run-record 원장 집계 — read-only (CP-14, v0.18.0+)
                                # (cleanup = cache GC; `gc` alias 도 지원)
 
 # --- MCP / Git / SOPS ---
@@ -508,7 +510,8 @@ Environment layer** 책임을 맡는다. 각 axis 는 `schema_version: 1` 단일
 | **CP-5** creds | `anvyc creds {status\|rotate}` + `creds-expiry-within-7d` check | v0.14.0 |
 | **CP-6** sync | `anvyc sync {status\|push\|pull}` + `conflict {list\|resolve}` | v0.14.0 |
 | **CP-12** work-cwd | `anvyc workctx {switch\|clear\|show}` + `work-cwd-track-wired` check | v0.15.0 |
-| **CP-13** cost | `anvyc cost {collect\|summary\|ledger\|gc}` + MCP `cost_summary` | in-flight |
+| **CP-13** cost | `anvyc cost {collect\|summary\|ledger\|gc}` + MCP `cost_summary` | v0.16.0 |
+| **CP-14** run ledger | `anvyc runs {summary\|list}` + MCP `run_summary` (anvyx run-record 집계, read-only) | v0.18.0 |
 
 axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
 **[docs/control-plane.md](./docs/control-plane.md)**.
