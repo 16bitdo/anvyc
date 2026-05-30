@@ -45,8 +45,8 @@ def test_check_name_and_threshold() -> None:
     assert CHECK_NAME == "creds-expiry"
     assert THRESHOLD_DAYS == 7
     assert CredsExpiryCheck.name == CHECK_NAME
-    # aws_sso 는 per-kind override 로 1h (7일 영구 노이즈 회피).
-    assert DEFAULT_KIND_WARN_DAYS[KIND_AWS_SSO] == 3600 / 86400
+    # aws_sso 는 per-kind override 로 15min (run-risk window — 영구 노이즈 회피).
+    assert DEFAULT_KIND_WARN_DAYS[KIND_AWS_SSO] == 900 / 86400
 
 
 def test_check_empty_no_credentials() -> None:

@@ -1,5 +1,19 @@
 # anvyc 릴리즈 노트
 
+## v0.19.1 — 2026-05-30 (patch — creds-expiry aws_sso 임계 재튜닝 1h→15min)
+
+v0.19.0 의 aws_sso per-kind 임계(1h)가 실측상 여전히 과민했다 — 일부 org 의 SSO
+access token TTL 이 ~1h 라 갓 `aws sso login` 한 직후에도 "expires soon" warning 이
+떴다(token 이 access token 만료 시점부터 거의 1h 내내 임계에 걸림).
+
+- **aws_sso 임계 1h → 15min (run-risk window)**: SSO access token 은 짧게 만료되고
+  등록 토큰으로 refresh-on-demand 되므로, "곧 시작할 run 도중 죽을 정도로 임박"할
+  때만(잔여 ≤ 15min) 경고한다. fresh 토큰(~1h 잔여)은 valid → 로그인 직후 영구 경고
+  해소. org TTL 이 더 길면 그만큼 더 오래 valid. expired(CRITICAL)는 임계 무관 그대로.
+- `DEFAULT_KIND_WARN_DAYS[aws_sso]` = `900/86400`. github/claude_oauth 7d 불변.
+- autopilot C6 게이트에서 SSO 자격이 거의 항상 spurious warning 으로 strict 차단되던
+  현상 완화 (CP-14 게이트 정책 옵션 `--gate-skip creds-expiry` 와 병행 사용 가능).
+
 ## v0.19.0 — 2026-05-30 (minor — creds-expiry per-kind 임계 + 체크 리네임)
 
 CP-14 게이트 정책 옵션화(anvyx)와 병행한 CP-5 근본 원인 수정. AWS SSO 세션 TTL(수
