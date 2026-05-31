@@ -98,6 +98,38 @@ def _parse_envrc(envrc: Path) -> dict[str, str]:
     return out
 
 
+def resolve_cwd_aws_profiles(start: Path | None = None) -> frozenset[str]:
+    """`start`(기본 cwd)에서 상위로 walk-up 해 "실행 중인 프로젝트"의 AWS profile 집합.
+
+    의미 (creds-expiry project-scope, 2026-05-31):
+    - 가장 가까운 프로젝트 경계(`.git` 또는 `.envrc`)를 프로젝트 루트로 본다.
+    - 그 루트의 `.envrc` 에 `AWS_PROFILE=X` 가 있으면 `frozenset({X})`.
+    - 경계는 찾았으나 AWS_PROFILE 미설정(도구 repo 등) → `frozenset()` (= 이 프로젝트는
+      AWS profile 미사용 → 호출부에서 aws_sso 검사 silent).
+    - 경계 자체를 home/root 까지 못 찾으면 `frozenset()`.
+
+    home 위(상위 공통 디렉터리)의 `.envrc` 를 무관한 프로젝트에 상속하지 않도록 home 에서
+    walk-up 을 멈춘다. 반환은 항상 frozenset (None 아님) — 호출부의 "scoping active" 표식은
+    CheckContext 필드의 None/frozenset 구분으로 별도 관리.
+    """
+    try:
+        cur = (start or Path.cwd()).resolve()
+    except OSError:
+        return frozenset()
+    home = Path.home().resolve()
+    for d in (cur, *cur.parents):
+        envrc = d / ".envrc"
+        is_boundary = envrc.is_file() or (d / ".git").exists()
+        if is_boundary:
+            if envrc.is_file():
+                prof = _parse_envrc(envrc).get("AWS_PROFILE")
+                return frozenset({prof}) if prof else frozenset()
+            return frozenset()  # .git 프로젝트, .envrc 없음 → AWS profile 미사용
+        if d == home or d == d.parent:
+            break
+    return frozenset()
+
+
 def _redact_dev_env(dev_env: dict[str, str]) -> dict[str, str]:
     """D11c — PATTERNS 매칭되는 값은 ***REDACTED*** 로 마스킹.
 

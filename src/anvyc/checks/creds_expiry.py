@@ -20,6 +20,13 @@ Threshold (per-kind): long-lived 자격(github PAT / claude_oauth)은 7일 — �
 
 doctor 의 read-only 원칙 준수: `probe_github_expiry=False` 로 호출해
 gh CLI 의 외부 네트워크 접근 회피 (offline / CI 안전).
+
+Project-scope (2026-05-31): aws_sso 자격은 **"실행 중인 프로젝트"가 쓰는 AWS
+profile** 로 한정한다 (`ctx.current_project_aws_profiles`, doctor 진입 cwd
+walk-up). 프로젝트가 AWS profile 미사용(도구 repo 등)이면 aws_sso 검사 silent.
+human/strict/json 모든 doctor 경로 공통(기본 동작). 단 `collect_credentials`
+자체는 전역 유지 — `anvyc creds status` / anvyx gate 의 전역 SoT 불변. github /
+claude_oauth(profiles 빈 자격)은 scope 무관 항상 보고.
 """
 from __future__ import annotations
 
@@ -83,8 +90,21 @@ class CredsExpiryCheck:
             kind_warn_days=thresholds,
             probe_github_expiry=False,
         )
+        # collect_credentials 는 전역 유지 (anvyc creds status / anvyx gate 의 SoT).
+        # 필터는 이 doctor check 레이어에서만 — aws_sso 자격을 "실행 중인 프로젝트"가
+        # 쓰는 profile 로 한정. scope=None 이면 비활성(전역, 기존 동작 / 비-doctor·테스트).
+        scope = ctx.current_project_aws_profiles
         out: list[CheckResult] = []
         for c in report.credentials:
+            # scope 활성(not None)이고 aws_sso 자격이면 "실행 중인 프로젝트" profile 로 한정:
+            # 교집합 없으면 skip. scope=frozenset()(프로젝트가 AWS profile 미사용)이면 모든
+            # aws_sso silent. github/claude_oauth(profiles 빈 자격)은 kind 가드 밖 — 항상 보고.
+            if (
+                c.kind == "aws_sso"
+                and scope is not None
+                and (not c.profiles or scope.isdisjoint(c.profiles))
+            ):
+                continue
             if c.status == STATUS_EXPIRED:
                 out.append(
                     CheckResult(

@@ -398,9 +398,15 @@ def load_config(path: Path | None = None) -> DoctorOnlyConfig:
 
 def build_check_context(cfg: DoctorOnlyConfig | DoctorConfig) -> CheckContext:
     """DoctorConfig → CheckContext 변환 (~ 확장 포함)."""
+    # creds-expiry project-scope: doctor 실행 cwd 의 "실행 중인 프로젝트" AWS profile.
+    # 항상 frozenset(빈 집합 포함) 주입 → doctor 경로(human/strict/json 공통)는 항상
+    # project-scope. 매핑 profile 없으면 frozenset() → creds-expiry 의 aws_sso silent.
+    from anvyc.core.project_info import resolve_cwd_aws_profiles  # noqa: PLC0415
+
     return CheckContext(
         current_user=getpass.getuser(),
         known_user_aliases=cfg.known_user_aliases,
         scan_targets=[Path(p).expanduser() for p in cfg.scan_targets],
         creds_warn_thresholds=dict(cfg.creds_warn_thresholds),
+        current_project_aws_profiles=resolve_cwd_aws_profiles(),
     )
