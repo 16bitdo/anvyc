@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from anvyc.checks.base import CheckContext, Severity
+from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.cost_aws_explorer_iam import (
     CHECK_NAME,
     REQUIRED_ACTION,
@@ -225,6 +225,96 @@ def test_sso_expired_yields_info(
     assert res[0].suggestion is not None
     assert "aws sso login" in res[0].suggestion
     assert "ws-dev" in res[0].suggestion
+
+
+# ── project-scope (2026-06-01): 검사 대상 profile 을 실행 중인 프로젝트로 한정 ──
+
+def _deny_session() -> MagicMock:
+    """어떤 profile 이든 implicitDeny → WARNING finding 1건 생성용."""
+    sts = MagicMock()
+    sts.get_caller_identity.return_value = {"Arn": "arn:aws:iam::123456789012:user/test"}
+    iam = MagicMock()
+    iam.simulate_principal_policy.return_value = {
+        "EvaluationResults": [{"EvalActionName": REQUIRED_ACTION, "EvalDecision": "implicitDeny"}]
+    }
+    s = MagicMock()
+    s.client.side_effect = lambda name, **_: sts if name == "sts" else iam
+    return s
+
+
+def _run_with_boto3(ctx: CheckContext, session_instance: MagicMock) -> list[CheckResult]:
+    fake_boto3 = MagicMock()
+    fake_boto3.Session.return_value = session_instance
+    fake_botocore = _fake_botocore_modules()
+    with patch.dict(
+        "sys.modules",
+        {
+            "boto3": fake_boto3,
+            "botocore": fake_botocore,
+            "botocore.exceptions": fake_botocore.exceptions,
+        },
+    ):
+        return CostAwsExplorerIamCheck().run(ctx)
+
+
+def test_scope_none_checks_all_profiles(
+    patched_aws_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scope=None(기본·비-doctor·테스트) → 전 profile 검사 (하위호환). 2 deny → 2 finding."""
+    monkeypatch.setattr("anvyc.checks.cost_aws_explorer_iam._boto3_available", lambda: True)
+    _write_aws_config(patched_aws_config, ["ws-dev", "ws-prod"])
+    res = _run_with_boto3(CheckContext(), _deny_session())
+    assert len(res) == 2
+
+
+def test_scope_filters_to_project_profile(
+    patched_aws_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scope={ws-dev} → 정의된 profile 중 ws-dev 만 검사 (ws-prod skip)."""
+    monkeypatch.setattr("anvyc.checks.cost_aws_explorer_iam._boto3_available", lambda: True)
+    _write_aws_config(patched_aws_config, ["ws-dev", "ws-prod"])
+    res = _run_with_boto3(
+        CheckContext(current_project_aws_profiles=frozenset({"ws-dev"})), _deny_session()
+    )
+    assert len(res) == 1
+    assert "ws-dev" in res[0].message
+    assert "ws-prod" not in res[0].message
+
+
+def test_scope_nonmatching_yields_silent(
+    patched_aws_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scope 에 정의된 profile 과 교집합 없음 → silent (profile 순회 전 차단)."""
+    monkeypatch.setattr("anvyc.checks.cost_aws_explorer_iam._boto3_available", lambda: True)
+    _write_aws_config(patched_aws_config, ["ws-dev"])
+    res = CostAwsExplorerIamCheck().run(
+        CheckContext(current_project_aws_profiles=frozenset({"unrelated"}))
+    )
+    assert res == []
+
+
+def test_scope_empty_silences_including_boto3_warning(
+    patched_aws_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scope=frozenset()(프로젝트 AWS 미사용, 도구 repo) → boto3 미설치 경고까지 silent."""
+    monkeypatch.setattr("anvyc.checks.cost_aws_explorer_iam._boto3_available", lambda: False)
+    _write_aws_config(patched_aws_config, ["ws-dev"])
+    res = CostAwsExplorerIamCheck().run(CheckContext(current_project_aws_profiles=frozenset()))
+    assert res == []
+
+
+def test_scope_active_with_profile_still_warns_boto3_missing(
+    patched_aws_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """scope={ws-dev}(프로젝트가 AWS 사용) + boto3 미설치 → boto3 WARNING 유지."""
+    monkeypatch.setattr("anvyc.checks.cost_aws_explorer_iam._boto3_available", lambda: False)
+    _write_aws_config(patched_aws_config, ["ws-dev"])
+    res = CostAwsExplorerIamCheck().run(
+        CheckContext(current_project_aws_profiles=frozenset({"ws-dev"}))
+    )
+    assert len(res) == 1
+    assert res[0].severity is Severity.WARNING
+    assert "boto3" in res[0].message
 
 
 def test_check_registered_in_doctor() -> None:
