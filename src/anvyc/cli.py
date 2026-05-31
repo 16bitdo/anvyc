@@ -501,15 +501,20 @@ def _print_summary(report: DoctorReport) -> None:
         for r in head:
             loc = _short_path(r.location)
             line = f":{r.line}" if r.line else ""
+            # escape(): message/suggestion 은 데이터(예: `pip install 'anvyc[cost-aws]'`)
+            # 이므로 Rich markup 으로 해석되면 안 된다 — `[cost-aws]` 가 태그로 먹혀
+            # `'anvyc'` 로 깨지면 사용자가 그대로 복붙해 실패한다. 의도된 style 태그
+            # (severity 색/[dim])는 escape 밖에 둔다.
             # soft_wrap=True: 비-TTY(파이프/캡처/리다이렉트)에서 Rich Console 이 폭을
             # 80 으로 fallback 해 message/suggestion 한 줄을 80열에 강제 개행하는 문제를
             # 차단한다. 개행은 실제 출력 소비자(터미널/pager)에 위임한다.
             console.print(
-                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] {loc}{line} — {r.message}",
+                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] "
+                f"{escape(loc)}{line} — {escape(r.message)}",
                 soft_wrap=True,
             )
             if r.severity.is_blocking and r.suggestion:
-                console.print(f"    [dim]→ {r.suggestion}[/]", soft_wrap=True)
+                console.print(f"    [dim]→ {escape(r.suggestion)}[/]", soft_wrap=True)
         if len(ordered) > 5:
             console.print(f"  ... and {len(ordered) - 5} more (use --verbose)")
 
@@ -518,7 +523,9 @@ def _print_verbose(report: DoctorReport) -> None:
     if not report.results:
         console.print("[green]doctor: clean — no cross-user findings[/]")
         return
-    table = Table(title="[cross-user audit] findings", show_header=True, header_style="bold")
+    # title/cell 의 `[...]` 도 markup 으로 먹히므로 escape (cell: message/suggestion 의
+    # `[cost-aws]` 등 데이터 보존, title: "[cross-user audit]" 리터럴 보존).
+    table = Table(title=escape("[cross-user audit] findings"), show_header=True, header_style="bold")
     table.add_column("severity", style="bold")
     table.add_column("location")
     table.add_column("line", justify="right")
@@ -528,10 +535,10 @@ def _print_verbose(report: DoctorReport) -> None:
         loc = _short_path(r.location)
         table.add_row(
             f"[{_severity_style(r.severity)}]{r.severity.value}[/]",
-            loc,
+            escape(loc),
             str(r.line) if r.line else "",
-            r.message,
-            r.suggestion or "",
+            escape(r.message),
+            escape(r.suggestion or ""),
         )
     console.print(table)
 

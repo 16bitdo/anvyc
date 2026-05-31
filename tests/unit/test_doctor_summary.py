@@ -109,3 +109,29 @@ def test_findings_not_hard_wrapped_on_narrow_width(monkeypatch: pytest.MonkeyPat
     out = _capture_summary_width(report, monkeypatch, width=40)
     assert long_msg in out  # 하드 개행이 삽입되면 통째 substring 매칭 실패
     assert long_sug in out
+
+
+def test_suggestion_brackets_survive_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `pip install 'anvyc[cost-aws]'` 의 [cost-aws] 가 Rich markup 으로 먹히면
+    # `'anvyc'` 로 깨져 사용자가 복붙해 실패한다(UnknownSourceError). escape 로
+    # message/suggestion 의 대괄호가 렌더 후에도 리터럴로 살아있어야 한다.
+    report = DoctorReport(
+        results=[
+            CheckResult(
+                "cost-aws",
+                Severity.WARNING,
+                "AWS Cost Explorer adapter 비활성 (cost-aws optional dep)",
+                suggestion="pip install 'anvyc[cost-aws]' (설치 후 anvyc cost collect --source aws)",
+            ),
+            CheckResult(
+                "mcp",
+                Severity.WARNING,
+                "`mcp` 미설치 — [mcp] extra 필요",
+                suggestion="pip install 'anvyc[mcp]'",
+            ),
+        ]
+    )
+    out = _capture_summary(report, monkeypatch)
+    assert "anvyc[cost-aws]" in out  # escape 누락 시 'anvyc' 로 깨짐
+    assert "anvyc[mcp]" in out
+    assert "[mcp] extra" in out  # message 의 대괄호도 보존
