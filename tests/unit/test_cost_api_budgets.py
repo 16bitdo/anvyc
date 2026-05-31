@@ -18,6 +18,19 @@ from anvyc.core.cost.ledger import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_live_cost_collect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """hermeticity 보증 — summary_payload 의 cache-miss fallback 이 live adapter
+    (boto3/httpx → AWS/GitHub network)를 절대 호출하지 않게 collect_and_persist 차단.
+
+    정상 경로(cache 채워짐)에선 호출되지 않지만, 어떤 이유로든 cache-miss 가 나도
+    network 대신 [] 반환 → 테스트가 환경(httpx 설치 여부/실 자격)에 의존하지 않는다.
+    """
+    monkeypatch.setattr(
+        "anvyc.core.cost.api.collect_and_persist", lambda *a, **k: []
+    )
+
+
 def _mk_report(
     source: str = "anthropic",
     account: str = "default",
@@ -26,7 +39,10 @@ def _mk_report(
     period_start: datetime | None = None,
     period_end: datetime | None = None,
 ) -> CostReport:
-    today = date.today()  # noqa: DTZ011
+    # resolve_period("mtd") 는 UTC now 기준이므로 report period 도 UTC 월로 맞춘다.
+    # date.today()(로컬) 를 쓰면 KST 가 UTC 보다 날짜가 앞설 때(저녁/밤) 월이 어긋나
+    # period 불일치 → cache-miss → live collect fallback(network) 로 떨어진다.
+    today = datetime.now(UTC)
     start = period_start or datetime(today.year, today.month, 1, tzinfo=UTC)
     if period_end is None:
         end = (
