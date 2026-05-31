@@ -73,7 +73,9 @@ class CostGithubPatScopeCheck:
                         "(cost-github optional dep)"
                     ),
                     suggestion=(
-                        "pip install --user 'anvyc[cost-github]' "
+                        # --user 미사용 (venv 안에서 실패) — pipx/uv/brew/venv 어디서든
+                        # 복붙 가능하도록 plain install. cost_aws_explorer_iam 와 동일.
+                        "pip install 'anvyc[cost-github]' "
                         "(설치 후 `anvyc cost collect --source github` 가능)"
                     ),
                 )
