@@ -3091,12 +3091,15 @@ def runs_summary(
     agent: str | None = typer.Option(
         None, "--agent", help="agent 필터 (claude_code 등). 미지정 시 전체."
     ),
+    repo: str | None = typer.Option(
+        None, "--repo", help="repo(owner/name) scope 필터. 미지정 시 전체. (CP-16)"
+    ),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """anvyx run-record (~/.config/anvyx/runs/) 통합 통계 (CP-14 원장 흡수)."""
     from anvyc.core.runs import aggregate_runs, collect_runs
 
-    summary = aggregate_runs(collect_runs(agent=agent))
+    summary = aggregate_runs(collect_runs(agent=agent, repo=repo))
     if json_out:
         typer.echo(jsonlib.dumps(summary, ensure_ascii=False, indent=2))
         return
@@ -3114,6 +3117,10 @@ def runs_summary(
     table.add_row("by status", _kv(summary["by_status"]))
     table.add_row("by exit_reason", _kv(summary["by_exit_reason"]))
     table.add_row("by agent", _kv(summary["by_agent"]))
+    table.add_row("by self_status", _kv(summary["by_self_status"]))
+    table.add_row("blocked count", str(summary["blocked_count"]))
+    table.add_row("p95 duration (s)", str(summary["p95_duration_s"] or "—"))
+    table.add_row("p95 cost (USD)", str(summary["p95_cost_usd"] or "—"))
     table.add_row("total cost (USD)", f"{summary['total_cost_usd']:.4f}")
     table.add_row("total tokens", str(summary["total_tokens"]))
     table.add_row("total tool calls", str(summary["total_tool_calls"]))
