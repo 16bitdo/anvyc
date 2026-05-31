@@ -31,8 +31,9 @@ class McpExtraImportableCheck:
                     "MCP 연결이 실패합니다."
                 ),
                 suggestion=(
-                    "PyPI 설치: pip install 'anvyc[mcp]' (또는 uv tool install 'anvyc[mcp]'). "
-                    "dev 환경: bash scripts/dev-install.sh (ANVYC_EXTRAS 기본값이 dev,mcp)."
+                    # 명령 우선 한 줄 — 복붙 동작이 첫 토큰. 대안(uv)·dev 경로는 괄호 주석.
+                    "pip install 'anvyc[mcp]' "
+                    "(uv: uv tool install 'anvyc[mcp]' · dev: bash scripts/dev-install.sh)"
                 ),
             )
         ]
