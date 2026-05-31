@@ -501,11 +501,15 @@ def _print_summary(report: DoctorReport) -> None:
         for r in head:
             loc = _short_path(r.location)
             line = f":{r.line}" if r.line else ""
+            # soft_wrap=True: 비-TTY(파이프/캡처/리다이렉트)에서 Rich Console 이 폭을
+            # 80 으로 fallback 해 message/suggestion 한 줄을 80열에 강제 개행하는 문제를
+            # 차단한다. 개행은 실제 출력 소비자(터미널/pager)에 위임한다.
             console.print(
-                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] {loc}{line} — {r.message}"
+                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] {loc}{line} — {r.message}",
+                soft_wrap=True,
             )
             if r.severity.is_blocking and r.suggestion:
-                console.print(f"    [dim]→ {r.suggestion}[/]")
+                console.print(f"    [dim]→ {r.suggestion}[/]", soft_wrap=True)
         if len(ordered) > 5:
             console.print(f"  ... and {len(ordered) - 5} more (use --verbose)")
 

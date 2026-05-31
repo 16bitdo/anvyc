@@ -82,3 +82,30 @@ def test_clean_report_short_circuits(monkeypatch: pytest.MonkeyPatch) -> None:
     out = _capture_summary(DoctorReport(results=[]), monkeypatch)
     assert "clean" in out
     assert "Top findings" not in out
+
+
+def _capture_summary_width(
+    report: DoctorReport, monkeypatch: pytest.MonkeyPatch, width: int
+) -> str:
+    """좁은 폭 Console 로 캡처 — 비-TTY 80열 fallback 회귀(soft_wrap) 검증용."""
+    buf = io.StringIO()
+    monkeypatch.setattr(
+        cli,
+        "console",
+        Console(file=buf, force_terminal=False, no_color=True, highlight=False, width=width),
+    )
+    cli._print_summary(report)
+    return _ANSI.sub("", buf.getvalue())
+
+
+def test_findings_not_hard_wrapped_on_narrow_width(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 폭(40)보다 훨씬 긴 message/suggestion 이 중간 개행 없이 한 줄로 유지돼야 한다.
+    # soft_wrap 누락 시 Rich 가 단어 경계에 \n 을 삽입해 아래 substring 비교가 깨진다.
+    long_msg = "this is a very long doctor finding message that exceeds forty columns wide"
+    long_sug = "rotate the very long credential by running the documented remediation command now"
+    report = DoctorReport(
+        results=[CheckResult("c1", Severity.CRITICAL, long_msg, suggestion=long_sug)]
+    )
+    out = _capture_summary_width(report, monkeypatch, width=40)
+    assert long_msg in out  # 하드 개행이 삽입되면 통째 substring 매칭 실패
+    assert long_sug in out
