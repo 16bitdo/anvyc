@@ -230,6 +230,10 @@ def _tool_defs() -> list[Tool]:
                         "type": "string",
                         "description": "agent 필터 (claude_code 등). 미지정 시 전체.",
                     },
+                    "repo": {
+                        "type": "string",
+                        "description": "repo(owner/name) scope 필터. 미지정 시 전체. (CP-16)",
+                    },
                 },
             },
         ),
@@ -328,7 +332,8 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         from anvyc.core.runs import aggregate_runs, collect_runs
 
         agent = args.get("agent") if isinstance(args.get("agent"), str) else None
-        return aggregate_runs(collect_runs(agent=agent))
+        repo = args.get("repo") if isinstance(args.get("repo"), str) else None
+        return aggregate_runs(collect_runs(agent=agent, repo=repo))
 
     raise ValueError(f"unknown tool: {name}")
 
