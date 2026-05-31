@@ -58,7 +58,10 @@ class CostAwsExplorerIamCheck:
                         "(cost-aws optional dep)"
                     ),
                     suggestion=(
-                        "pip install --user 'anvyc[cost-aws]' "
+                        # --user 미사용: venv 안에서 `User site-packages are not
+                        # visible in this virtualenv` 로 실패한다. pipx/uv/brew/venv
+                        # 어디서든 복붙 가능하도록 plain install 로 안내.
+                        "pip install 'anvyc[cost-aws]' "
                         "(설치 후 `anvyc cost collect --source aws` 가능)"
                     ),
                 )
