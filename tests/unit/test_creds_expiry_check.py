@@ -211,6 +211,38 @@ def test_scope_empty_silences_all_aws_sso() -> None:
     assert _run(creds, ctx) == []
 
 
+def test_integration_run_doctor_reports_when_project_profile_matches(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """긍정 경로 — build_check_context → CheckContext → 필터 전 seam 을 run_doctor 로 관통.
+
+    프로젝트 profile(dev)이 만료 aws_sso 의 profiles 와 교집합 → CRITICAL 보고.
+    resolve_cwd_aws_profiles 를 patch 해 cwd 의존성 제거(hermetic).
+    """
+    from anvyc.core import doctor as doctor_mod
+
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"), status=STATUS_EXPIRED)]
+    monkeypatch.setattr(
+        "anvyc.core.project_info.resolve_cwd_aws_profiles",
+        lambda *a, **k: frozenset({"dev"}),
+    )
+    with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
+        report = doctor_mod.run_doctor(only=["creds-expiry"])
+    assert any(r.severity == Severity.CRITICAL and "expired" in r.message for r in report.results)
+
+
+def test_integration_run_doctor_silent_when_project_has_no_profile(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """부정 경로 — 프로젝트가 AWS profile 미사용(frozenset()) → aws_sso silent."""
+    from anvyc.core import doctor as doctor_mod
+
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"), status=STATUS_EXPIRED)]
+    monkeypatch.setattr(
+        "anvyc.core.project_info.resolve_cwd_aws_profiles",
+        lambda *a, **k: frozenset(),
+    )
+    with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
+        report = doctor_mod.run_doctor(only=["creds-expiry"])
+    assert report.results == []
+
+
 def test_scope_does_not_touch_non_aws_sso() -> None:
     """github/claude_oauth(profiles 빈 자격)은 scope 무관 — 항상 보고 (token 만료 억제 금지)."""
     creds = [
