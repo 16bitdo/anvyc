@@ -47,6 +47,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from anvyc.utils.aws_config import load_aws_sso_index
+
 SCHEMA_VERSION = 1
 DEFAULT_WARN_THRESHOLD_DAYS = 7
 
@@ -79,6 +81,8 @@ class CredentialStatus:
     expires_at: str | None
     expires_in_seconds: int | None
     status: str
+    profiles: tuple[str, ...] = ()  # aws_sso: 이 startUrl 을 쓰는 ~/.aws/config profile (additive)
+    sso_session: str | None = None  # aws_sso: sso-session 이름 (additive). identifier(startUrl) 불변.
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -268,6 +272,8 @@ def detect_aws_sso(home: Path, *, warn_threshold_days: float, now: datetime) -> 
     cache_dir = home / ".aws" / "sso" / "cache"
     if not cache_dir.is_dir():
         return out
+    # startUrl → (sso_session, [profiles]) 역매핑 (어느 profile 인지 doctor 메시지에 표시).
+    sso_index = load_aws_sso_index(home / ".aws" / "config")
     for f in sorted(cache_dir.glob("*.json")):
         try:
             with f.open("r", encoding="utf-8") as fh:
@@ -279,6 +285,7 @@ def detect_aws_sso(home: Path, *, warn_threshold_days: float, now: datetime) -> 
         expires_at = data.get("expiresAt")
         start_url = data.get("startUrl") or "(no startUrl)"
         seconds, status = _classify(expires_at, warn_threshold_days=warn_threshold_days, now=now)
+        session, profiles = sso_index.get(start_url, (None, []))
         out.append(
             CredentialStatus(
                 kind=KIND_AWS_SSO,
@@ -287,6 +294,8 @@ def detect_aws_sso(home: Path, *, warn_threshold_days: float, now: datetime) -> 
                 expires_at=expires_at,
                 expires_in_seconds=seconds,
                 status=status,
+                profiles=tuple(profiles),
+                sso_session=session,
             )
         )
     return out

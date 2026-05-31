@@ -231,6 +231,8 @@ def test_collect_credentials_envelope_schema(fake_home: Path, now_fixed: datetim
         "expires_at",
         "expires_in_seconds",
         "status",
+        "profiles",
+        "sso_session",
     }
 
 
