@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from anvyc.checks.base import CheckContext, Severity
+from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.creds_expiry import (
     CHECK_NAME,
     THRESHOLD_DAYS,
@@ -158,3 +158,68 @@ def test_check_registered_in_doctor() -> None:
     from anvyc.core.doctor import _REGISTRY
     assert CHECK_NAME in _REGISTRY
     assert _REGISTRY[CHECK_NAME].name == CHECK_NAME
+
+
+# ── project-scope (2026-05-31): aws_sso 자격을 "실행 중인 프로젝트" profile 로 한정 ──
+
+def _aws_sso(*, profiles: tuple[str, ...], status: str = STATUS_EXPIRED, session: str = "aiforge") -> CredentialStatus:
+    return CredentialStatus(
+        kind="aws_sso",
+        identifier="https://example.awsapps.com/start",
+        source="/test",
+        expires_at="2026-05-10T15:13:20Z",
+        expires_in_seconds=-86400,
+        status=status,
+        profiles=profiles,
+        sso_session=session,
+    )
+
+
+def _run(creds: list[CredentialStatus], ctx: CheckContext) -> list[CheckResult]:
+    with patch("anvyc.checks.creds_expiry.collect_credentials", return_value=_make_report(creds)):
+        return CredsExpiryCheck().run(ctx)
+
+
+def test_scope_none_is_global() -> None:
+    """scope=None(기본·비-doctor·테스트) → 전역, 기존 동작 유지 — aws_sso 보고."""
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"))]
+    results = _run(creds, CheckContext())  # current_project_aws_profiles 기본 None
+    assert len(results) == 1
+    assert results[0].severity == Severity.CRITICAL
+
+
+def test_scope_matching_profile_reports() -> None:
+    """scope 에 자격 profile 과 교집합 → 보고 (해당 프로젝트가 그 SSO 를 씀)."""
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"))]
+    ctx = CheckContext(current_project_aws_profiles=frozenset({"dev"}))
+    results = _run(creds, ctx)
+    assert len(results) == 1
+    assert results[0].severity == Severity.CRITICAL
+
+
+def test_scope_nonmatching_profile_silent() -> None:
+    """scope 에 교집합 없음 → silent (프로젝트가 안 쓰는 SSO 만료는 안 보여줌)."""
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"))]
+    ctx = CheckContext(current_project_aws_profiles=frozenset({"other-sso-profile"}))
+    assert _run(creds, ctx) == []
+
+
+def test_scope_empty_silences_all_aws_sso() -> None:
+    """scope=frozenset()(프로젝트가 AWS profile 미사용, 예: 도구 repo) → 모든 aws_sso silent."""
+    creds = [_aws_sso(profiles=("audit", "dev", "prd"))]
+    ctx = CheckContext(current_project_aws_profiles=frozenset())
+    assert _run(creds, ctx) == []
+
+
+def test_scope_does_not_touch_non_aws_sso() -> None:
+    """github/claude_oauth(profiles 빈 자격)은 scope 무관 — 항상 보고 (token 만료 억제 금지)."""
+    creds = [
+        _aws_sso(profiles=("audit",)),  # scope 와 교집합 없음 → skip
+        _cred(kind="github", status=STATUS_EXPIRING, identifier="github.com/alice",
+              expires_at="2026-05-30T00:00:00Z", sec=3 * 86400),
+    ]
+    ctx = CheckContext(current_project_aws_profiles=frozenset({"unrelated"}))
+    results = _run(creds, ctx)
+    assert len(results) == 1
+    assert results[0].severity == Severity.WARNING
+    assert "github" in results[0].message
