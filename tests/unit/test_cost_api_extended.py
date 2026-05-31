@@ -23,6 +23,33 @@ from anvyc.core.cost.ledger import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_live_cost_collect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """hermeticity 보증 — summary_payload 의 cache-miss fallback 이 live adapter
+    (boto3/httpx → AWS/GitHub network)를 절대 호출하지 않게 collect_and_persist 차단.
+
+    gc/ledger 테스트는 collect 를 안 타므로 무영향. KRW 테스트는 cache 채워진 정상
+    경로라 호출되지 않지만, 환경 의존(httpx 설치/실 자격) 시 network 대신 [] 반환.
+    """
+    monkeypatch.setattr(
+        "anvyc.core.cost.api.collect_and_persist", lambda *a, **k: []
+    )
+
+
+def _utc_month_period() -> Period:
+    """현재 UTC 월 [1일 0시, 다음 월 1일). resolve_period("mtd")(UTC now 기준)와
+    교차 보장 — date.today()(로컬) 사용 시 KST 가 UTC 보다 앞선 시간대에 월이 어긋난다.
+    """
+    now = datetime.now(UTC)
+    start = datetime(now.year, now.month, 1, tzinfo=UTC)
+    end = (
+        datetime(now.year + 1, 1, 1, tzinfo=UTC)
+        if now.month == 12
+        else datetime(now.year, now.month + 1, 1, tzinfo=UTC)
+    )
+    return Period(start=start, end=end)
+
+
 def _mk_report(
     source: str = "anthropic",
     account: str = "default",
@@ -167,12 +194,7 @@ def test_summary_payload_includes_krw_when_fx_available(tmp_path: Path) -> None:
         CostReport(
             source="anthropic",
             account="default",
-            period=Period(
-                start=datetime(today.year, today.month, 1, tzinfo=UTC),
-                end=datetime(today.year, today.month + 1, 1, tzinfo=UTC)
-                if today.month < 12
-                else datetime(today.year + 1, 1, 1, tzinfo=UTC),
-            ),
+            period=_utc_month_period(),
             amount=100.0,
             breakdown=[],
             meta=CostReportMeta(pricing_version=1),
@@ -199,12 +221,7 @@ def test_summary_payload_krw_none_when_fx_unavailable(tmp_path: Path) -> None:
         CostReport(
             source="anthropic",
             account="default",
-            period=Period(
-                start=datetime(today.year, today.month, 1, tzinfo=UTC),
-                end=datetime(today.year, today.month + 1, 1, tzinfo=UTC)
-                if today.month < 12
-                else datetime(today.year + 1, 1, 1, tzinfo=UTC),
-            ),
+            period=_utc_month_period(),
             amount=50.0,
             breakdown=[],
         ),
@@ -230,12 +247,7 @@ def test_summary_payload_include_krw_false_skips_fx(tmp_path: Path) -> None:
         CostReport(
             source="anthropic",
             account="default",
-            period=Period(
-                start=datetime(today.year, today.month, 1, tzinfo=UTC),
-                end=datetime(today.year, today.month + 1, 1, tzinfo=UTC)
-                if today.month < 12
-                else datetime(today.year + 1, 1, 1, tzinfo=UTC),
-            ),
+            period=_utc_month_period(),
             amount=42.0,
             breakdown=[],
         ),
