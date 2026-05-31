@@ -1,9 +1,15 @@
 """cost-aws-explorer-iam check — CP-13 PR-13C.
 
-DESIGN §38.6 의 5종 cost check 중 하나. `~/.aws/config` 의 모든 profile 에
+DESIGN §38.6 의 5종 cost check 중 하나. `~/.aws/config` 의 profile 에
 대해 `ce:GetCostAndUsage` 권한 보유 여부를 IAM
 `SimulatePrincipalPolicy` 로 검증 (PR-13C 결정 Q2=a — simulate 는 호출 비용
 0).
+
+Project-scope (2026-06-01, creds-expiry 와 동일 정책): 검사 대상 profile 을
+"실행 중인 프로젝트"가 쓰는 AWS profile(`ctx.current_project_aws_profiles`,
+doctor 진입 cwd walk-up)로 한정한다. 프로젝트가 AWS profile 미사용(도구 repo
+등)이면 boto3 경고 포함 전부 silent. scope=None(비-doctor·테스트)이면 전역(전
+profile). human/strict/json/MCP 모든 doctor 경로 공통(기본 동작).
 
 severity:
   * boto3 미설치 → WARNING (graceful skip, suggestion 으로 `pip install
@@ -47,7 +53,21 @@ class CostAwsExplorerIamCheck:
 
     name = CHECK_NAME
 
-    def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
+    def run(self, ctx: CheckContext) -> list[CheckResult]:
+        # project-scope (2026-06-01, creds-expiry 와 동일 정책): 검사 대상 profile 을
+        # "실행 중인 프로젝트"가 쓰는 AWS profile 로 한정한다.
+        #   scope=None       → 비활성(전역, 기존 동작 / 비-doctor·테스트)
+        #   scope=frozenset()→ 프로젝트가 AWS profile 미사용(도구 repo 등)
+        #   scope={..}       → 그 중 ~/.aws/config 에 정의된 profile 만 검사
+        # scope 활성인데 대상 profile 이 0 개면 boto3 경고 포함 전부 silent —
+        # AWS 미사용 프로젝트에서 cost-aws 노이즈 0 (creds-expiry silent 과 대칭).
+        profiles = sorted(load_aws_profile_names())
+        scope = ctx.current_project_aws_profiles
+        if scope is not None:
+            profiles = [p for p in profiles if p in scope]
+            if not profiles:
+                return []
+
         if not _boto3_available():
             return [
                 CheckResult(
@@ -67,9 +87,8 @@ class CostAwsExplorerIamCheck:
                 )
             ]
 
-        profiles = sorted(load_aws_profile_names())
         if not profiles:
-            return []  # ~/.aws/config 자체 없음 → silent
+            return []  # scope=None + ~/.aws/config 자체 없음 → silent
 
         results: list[CheckResult] = []
         for profile in profiles:
