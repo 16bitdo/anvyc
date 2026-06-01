@@ -186,8 +186,8 @@ def _tool_defs() -> list[Tool]:
             name="cost_summary",
             description=(
                 "CP-13 cost observability — period 별 source / account 합산 "
-                "(현재 anthropic (i) session jsonl channel only; AWS/GitHub 는 "
-                "PR-13C/D, admin API (ii) channel 은 v0.2 deferred). 반환: "
+                "(anthropic: session jsonl channel — admin API channel 은 "
+                "v0.2 deferred; aws/github: cost-aws/cost-github extra). 반환: "
                 "{total_amount_usd, currency, by_source, by_account, by_model, "
                 "pricing_versions_seen, period, report_count}."
             ),
@@ -197,8 +197,8 @@ def _tool_defs() -> list[Tool]:
                     "source": {
                         "type": "string",
                         "description": (
-                            "source 필터 (현재 'anthropic' 만). 미지정 시 모든 "
-                            "등록 어댑터."
+                            "source 필터: anthropic | aws | github. 미지정 시 "
+                            "모든 등록 어댑터."
                         ),
                     },
                     "period": {
