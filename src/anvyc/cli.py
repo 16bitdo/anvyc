@@ -3072,7 +3072,8 @@ def cost_collect(
         None,
         "--source",
         "-s",
-        help="source 필터 (현재 'anthropic' 만, AWS/GitHub 는 PR-13C/D).",
+        help="source 필터: anthropic | aws | github (미지정 시 전체). "
+        "aws/github 는 cost-aws/cost-github extra 필요.",
     ),
     period: str = typer.Option(
         "mtd",
@@ -3185,7 +3186,11 @@ def runs_list(
 @cost_app.command("summary")
 def cost_summary(
     source: str | None = typer.Option(
-        None, "--source", "-s", help="source 필터."
+        None,
+        "--source",
+        "-s",
+        help="source 필터: anthropic | aws | github (미지정 시 전체). "
+        "aws/github 는 cost-aws/cost-github extra 필요.",
     ),
     period: str = typer.Option(
         "mtd", "--period", "-p", help="mtd | YYYY-MM."
@@ -3204,7 +3209,11 @@ def cost_summary(
 @cost_app.command("ledger")
 def cost_ledger(
     source: str | None = typer.Option(
-        None, "--source", "-s", help="source 필터."
+        None,
+        "--source",
+        "-s",
+        help="source 필터: anthropic | aws | github (미지정 시 전체). "
+        "aws/github 는 cost-aws/cost-github extra 필요.",
     ),
     account: str | None = typer.Option(
         None, "--account", "-a", help="account 필터."
