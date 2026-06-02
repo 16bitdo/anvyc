@@ -1191,7 +1191,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (20종, CP-13 머지 시점)
+#### 27.1.1 등록된 check 목록 (SoT = `doctor.py` `_REGISTRY`; 아래는 대표 카테고리별 묶음)
 
 SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 
@@ -1205,6 +1205,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | `adapter-validate` | adapter 자체 validate wrap | v0.1.0 |
 | `cursor-projects-suggest` | candidate root 의 `.cursor/` 발견 안내 | v0.1.0 |
 | `sops-keys-available` | sops/age binary + age identity | v0.2.0 |
+| `container-runtime-health` | colima(vz) docker 런타임 손상 관측 — 미설치/정상/clean-stopped silent, 손상(Running+docker dead / Stopped+stale lock)만 WARN | v0.18.x |
 
 **MCP**
 
@@ -1218,7 +1219,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | check_name | 영역 | 추가 |
 |---|---|---|
 | `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
-| `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ GitHub origin ssh alias | v0.11.0 |
+| `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ ssh alias 일치 + **owner↔alias 정합**(rule 25; `doctor.gh_owner_accounts` static + 불일치 시 dynamic gh write-권한 보강) | v0.11.0 |
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 | `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
 
@@ -1239,6 +1240,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | `cost-github-pat-scope` | fine-grained PAT 의 billing endpoint smoke 호출 (CP-13) | CP-13 |
 | `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
 | `work-cwd-track-wired` | work-cwd hook + `env.WORK_CWD_CACHE` 주입 검증 (CP-12) | v0.15.0 |
+| `project-branch-protection` | manifest 정책 ↔ 서버 repository ruleset ↔ 로컬 pre-push 가드 drift (PR 강제; admin 아닌 repo silent) | v0.18.x |
 
 ### 27.2 모듈 구조
 
