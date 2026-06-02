@@ -7,7 +7,7 @@ from pathlib import Path
 from anvyc.core.project_roots import resolve_project_roots
 
 
-def _git_repos_under(base: Path, max_depth: int = 2) -> list[Path]:
+def _git_repos_under(base: Path) -> list[Path]:
     if not base.is_dir():
         return []
     out: list[Path] = []
@@ -21,7 +21,8 @@ def resolve_guard_targets(
     project: list[Path] | None, root: Path | None
 ) -> list[Path]:
     if project:
-        return [p.expanduser().resolve() for p in project if (p / ".git").is_dir()]
+        expanded = [p.expanduser().resolve() for p in project]
+        return [p for p in expanded if (p / ".git").is_dir()]
     bases = [root.expanduser()] if root else [Path(r).expanduser() for r in resolve_project_roots()]
     seen: set[Path] = set()
     out: list[Path] = []
