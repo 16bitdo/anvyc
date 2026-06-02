@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,13 +54,13 @@ def resolve_policy(repo_dir: Path) -> BranchPolicy:
         return FALLBACK_POLICY
     try:
         proc = subprocess.run(
-            ["python3", str(script), "--cwd", str(repo_dir), "--format", "json"],
+            [sys.executable, str(script), "--cwd", str(repo_dir), "--format", "json"],
             capture_output=True,
             text=True,
             check=False,
             timeout=10,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError):  # TimeoutExpired ⊂ SubprocessError
         return FALLBACK_POLICY
     # exit 0=matched, 3=defaults(둘 다 json 출력); 그 외/빈출력 → fallback
     if proc.returncode not in (0, 3) or not proc.stdout.strip():
