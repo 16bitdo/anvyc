@@ -53,3 +53,23 @@ def test_resolve_policy_fallback_on_bad_json(tmp_path: Path) -> None:
          patch("anvyc.core.branch_policy.subprocess.run", return_value=_fake_proc("not json")):
         pol = resolve_policy(tmp_path)
     assert pol.source == "fallback"
+
+
+def test_resolve_policy_defaults_when_unregistered(tmp_path: Path) -> None:
+    """registered=False (exit 3) → source='defaults', 안전값 유지."""
+    payload = {
+        "registered": False,
+        "policy": {
+            "default_branch": "main",
+            "protected_branches": ["main"],
+            "push_to_main_allowed": False,
+            "pr_required": True,
+            "pr_reviewers_min": 0,
+            "merge_strategy": "squash",
+        },
+    }
+    with patch("anvyc.core.branch_policy.find_lookup_script", return_value=tmp_path / "s.py"), \
+         patch("anvyc.core.branch_policy.subprocess.run", return_value=_fake_proc(json.dumps(payload), rc=3)):
+        pol = resolve_policy(tmp_path)
+    assert pol.source == "defaults"
+    assert pol.push_to_main_allowed is False
