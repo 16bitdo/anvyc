@@ -89,6 +89,12 @@ def get_ruleset(owner: str, repo: str, name: str = RULESET_NAME) -> dict[str, An
     return _find_named(items, name)
 
 
+def repo_accessible(owner: str, repo: str) -> bool:
+    """현재 gh 계정으로 repo 메타데이터 접근 가능 여부(404/권한없음/gh 미설치 → False)."""
+    rc, _, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".full_name"])
+    return rc == 0
+
+
 @dataclass
 class ProtectResult:
     owner: str
