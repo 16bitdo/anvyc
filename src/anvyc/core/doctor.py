@@ -21,6 +21,7 @@ from anvyc.checks.mcp_tokens import McpTokensWarnCheck
 from anvyc.checks.multi_account_detected import MultiAccountDetectedCheck
 from anvyc.checks.op_references import OpReferencesCheck
 from anvyc.checks.project_aws_profile import ProjectAwsProfileMappingCheck
+from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.checks.project_claude_account import ProjectClaudeAccountMappingCheck
 from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
@@ -70,6 +71,7 @@ _REGISTRY: dict[str, Check] = {
     "cost-github-pat-scope": CostGithubPatScopeCheck(),
     "hook-integrity-risk-gate": HookIntegrityRiskGateCheck(),
     "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
+    "project-branch-protection": ProjectBranchProtectionCheck(),
 }
 
 
