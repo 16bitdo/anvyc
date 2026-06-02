@@ -1,9 +1,14 @@
 # src/anvyc/checks/project_branch_protection.py
 """project-branch-protection check (spec L3).
 
-등록 프로젝트 중 정책상 보호 대상(push_to_main_allowed=false)인 repo 에 대해
-① 서버 ruleset 존재 ② 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
-접근 불가(whatap 등)·정책상 허용 repo·origin 없음 → silent(결과 0건).
+등록 프로젝트 중 정책상 보호 대상(push_to_main_allowed=false, 매니페스트 기반)인
+repo 에 대해 ① 서버 ruleset 존재 ② 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
+정책 출처가 fallback(=role-based-ruleset 미발견)·정책상 main push 허용·origin 없음·
+접근 불가(whatap 등) → silent(결과 0건).
+
+네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 필요 시 repo_accessible)
++ resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
+`anvyc doctor --skip project-branch-protection`.
 """
 from __future__ import annotations
 
@@ -12,14 +17,9 @@ from pathlib import Path
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.branch_policy import resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
-from anvyc.core.git_protect import _gh_api, get_ruleset
+from anvyc.core.git_protect import get_ruleset, repo_accessible
 from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
-
-
-def _has_repo_access(owner: str, repo: str) -> bool:
-    rc, _, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".full_name"])
-    return rc == 0
 
 
 def _hook_installed(repo_dir: Path) -> bool:
@@ -35,16 +35,19 @@ class ProjectBranchProtectionCheck:
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
         results: list[CheckResult] = []
+        aligned: list[str] = []
         for repo in resolve_guard_targets(None, None):
             policy = resolve_policy(repo)
             if policy.push_to_main_allowed:
                 continue  # 보호 대상 아님
+            if policy.source == "fallback":
+                continue  # role-based-ruleset 미발견 → 판단 근거 없음 (이식성)
             owner_repo = origin_owner_repo(repo)
             if owner_repo is None:
                 continue
             owner, name = owner_repo
             ruleset = get_ruleset(owner, name)
-            if ruleset is None and not _has_repo_access(owner, name):
+            if ruleset is None and not repo_accessible(owner, name):
                 continue  # 접근 불가 → silent (whatap 등)
 
             problems: list[str] = []
@@ -64,12 +67,17 @@ class ProjectBranchProtectionCheck:
                     )
                 )
             else:
-                results.append(
-                    CheckResult(
-                        check_name=self.name,
-                        severity=Severity.INFO,
-                        message=f"{owner}/{name}: ruleset + pre-push 가드 정합",
-                        location=repo,
-                    )
+                aligned.append(f"{owner}/{name}")
+
+        if aligned:
+            results.append(
+                CheckResult(
+                    check_name=self.name,
+                    severity=Severity.INFO,
+                    message=(
+                        f"branch-protection 정합 repo {len(aligned)}개 "
+                        f"— ruleset + pre-push 가드 일치"
+                    ),
                 )
+            )
         return results
