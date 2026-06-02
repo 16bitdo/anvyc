@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import configparser
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -97,3 +98,23 @@ def to_dict(info: GitRemoteInfo) -> dict[str, Any]:
         "ssh_alias": info.ssh_alias,
         "protocol": info.protocol,
     }
+
+
+_OWNER_REPO_RE = re.compile(
+    r"(?:git@[^:]+:|https?://[^/]+/)([^/]+)/([^/]+?)(?:\.git)?/?$"
+)
+
+
+def origin_owner_repo(repo_dir: Path) -> tuple[str, str] | None:
+    """origin remote URL 에서 (owner, repo) 추출. 실패 시 None."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_dir), "remote", "get-url", "origin"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    m = _OWNER_REPO_RE.search(proc.stdout.strip())
+    return (m.group(1), m.group(2)) if m else None

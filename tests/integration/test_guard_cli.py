@@ -36,3 +36,13 @@ def test_guard_install_no_target_dir_exit0(tmp_path: Path) -> None:
     proc = run_anvyc("guard", "install", "--project", str(tmp_path / "nope"), cwd=tmp_path)
     assert proc.returncode == 0, proc.stderr
     assert "대상 repo 없음" in proc.stdout
+
+
+def test_guard_protect_dry_run_default(tmp_path: Path) -> None:
+    repo = _git_repo_with_origin(tmp_path / "proj", "git@github.com:16bitdo/proj.git")
+    # gh 미인증/네트워크와 무관하게 dry-run 은 안전 종료해야 함(0 또는 안내).
+    proc = run_anvyc("guard", "protect", "--project", str(repo), cwd=tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert "proj" in proc.stdout
+    # 기본 dry-run: 실제 적용 단어("created") 미출력
+    assert "created" not in proc.stdout
