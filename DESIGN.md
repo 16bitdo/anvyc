@@ -1905,6 +1905,15 @@ discovery 규칙:
 `results` 는 doctor `--json` 의 result entry 와 동일 6 field (check_name, severity,
 message, location, line, suggestion). `path` 는 입력 path 의 resolve 된 절대 경로.
 
+사람용 출력(`--json` 없이)은 top-level `anvyc doctor` 와 **동일 스타일**(상태 글리프 +
+check 단위 그룹핑 + 한 줄 verdict)로 렌더한다(§27.3.5). 공용 렌더러
+`_render_project_doctor` → `_print_doctor_header`/`_print_findings`(cli.py)를 재사용:
+project doctor 는 `runs` 추적이 없어 '통과 check 롤업'(`✓ N/M checks clean`)은 생략하고
+finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '정보' 섹션에 확인 표시된다
+(적용 가능한 check 0건 → 짧은 안내 한 줄). message/suggestion 은 `escape()` — 구 Table
+렌더가 suggestion 의 `[profile x]` 를 Rich markup 으로 삼키던 버그를 해소(회귀 lock:
+`tests/unit/test_project_doctor_render.py`).
+
 ### 33.3 project doctor check 명세 (8 check)
 
 | check_name | trigger | severity (issue 시) |
