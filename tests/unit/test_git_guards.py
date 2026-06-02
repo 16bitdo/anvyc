@@ -77,3 +77,33 @@ def test_install_skips_tracked_hookspath(tmp_path: Path) -> None:
     subprocess.run(["git", "-C", str(repo), "config", "core.hooksPath", "scripts/hooks"], check=True)
     res = install_pre_push_guard(repo, _POLICY)
     assert res.status == "skipped-tracked-hooks"
+
+
+def test_install_allowed_policy_still_installs_noop_guard(tmp_path: Path) -> None:
+    """push_to_main_allowed=True 정책도 설치는 됨(런타임 no-op). 블록에 allowed=true."""
+    from anvyc.core.branch_policy import BranchPolicy
+    allowed = BranchPolicy(
+        default_branch="main", protected_branches=("main",), push_to_main_allowed=True,
+        pr_required=False, pr_reviewers_min=0, merge_strategy="squash", source="manifest",
+    )
+    repo = _init_repo(tmp_path / "r")
+    res = install_pre_push_guard(repo, allowed)
+    assert res.status == "installed"
+    hook = repo / ".git" / "hooks" / "pre-push"
+    assert '__anvyc_allowed="true"' in hook.read_text()
+
+
+def test_install_in_linked_worktree_uses_common_hooks(tmp_path: Path) -> None:
+    """linked worktree(.git 이 파일)에서 크래시 없이 공용 hooks 에 설치된다."""
+    main = _init_repo(tmp_path / "main")
+    subprocess.run(
+        ["git", "-C", str(main), "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "--allow-empty", "-q", "-m", "init"], check=True,
+    )
+    wt = tmp_path / "wt"
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "-b", "feat", str(wt)], check=True)
+    assert (wt / ".git").is_file()  # linked worktree marker
+    res = install_pre_push_guard(wt, _POLICY)
+    assert res.status == "installed"
+    # 공용 hooks dir(main/.git/hooks)에 설치
+    assert (main / ".git" / "hooks" / "pre-push").is_file()
