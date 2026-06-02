@@ -4,7 +4,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from anvyc.utils.git_remote import parse_git_config, to_dict
+from anvyc.utils.git_remote import origin_owner_repo, parse_git_config, to_dict
 
 
 def _write_git_config(git_dir: Path, body: str) -> None:
@@ -127,3 +127,25 @@ def test_to_dict_schema(tmp_path: Path) -> None:
     out = parse_git_config(g)
     d = to_dict(out[0])
     assert set(d.keys()) == {"name", "url", "host", "owner", "repo", "ssh_alias", "protocol"}
+
+
+# ---------------------------------------------------------------------------
+# origin_owner_repo tests
+# ---------------------------------------------------------------------------
+
+def test_origin_owner_repo_ssh_alias(tmp_path: Path) -> None:
+    """ssh alias origin git@github.com-16bitdo:owner/repo.git → ('owner', 'repo')."""
+    _write_git_config(
+        tmp_path / ".git",
+        """\
+        [remote "origin"]
+            url = git@github.com-16bitdo:owner/repo.git
+        """,
+    )
+    assert origin_owner_repo(tmp_path) == ("owner", "repo")
+
+
+def test_origin_owner_repo_no_origin(tmp_path: Path) -> None:
+    """origin remote 없음(또는 .git 없음) → None."""
+    # No .git directory at all — parse_git_config returns []
+    assert origin_owner_repo(tmp_path) is None
