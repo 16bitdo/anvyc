@@ -31,23 +31,67 @@ def test_get_ruleset_matches_by_name() -> None:
     assert rs is not None and rs["id"] == 7
 
 
+def test_get_ruleset_none_on_list_failure() -> None:
+    with patch("anvyc.core.git_protect._gh_api", return_value=(1, "", "500 err")):
+        assert get_ruleset("16bitdo", "anvyc") is None
+
+
 def test_apply_dry_run_would_create_when_absent() -> None:
-    # 1) rulesets 목록 비어있음, 2) repo probe 성공
-    with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, "[]", ""), (0, "16bitdo/anvyc", "")]):
+    with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, "[]", "")]):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=True)
     assert res.action == "would-create"
 
 
-def test_apply_no_access_when_repo_probe_404() -> None:
-    with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, "[]", ""), (1, "", "404 Not Found")]):
+def test_apply_no_access_when_list_and_probe_404() -> None:
+    # LIST 404 + repo probe 404 → no-access
+    with patch(
+        "anvyc.core.git_protect._gh_api",
+        side_effect=[(1, "", "404 Not Found"), (1, "", "404 Not Found")],
+    ):
         res = apply_ruleset("whatap", "argus", dry_run=True)
     assert res.action == "no-access"
+
+
+def test_apply_error_when_list_fails_but_repo_accessible() -> None:
+    # LIST 실패(일시오류) + repo probe 성공 → error (POST 안 함, 중복 방지)
+    with patch(
+        "anvyc.core.git_protect._gh_api",
+        side_effect=[(1, "", "500"), (0, "16bitdo/anvyc", "")],
+    ):
+        res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
+    assert res.action == "error"
 
 
 def test_apply_creates_when_not_dry_run() -> None:
     with patch(
         "anvyc.core.git_protect._gh_api",
-        side_effect=[(0, "[]", ""), (0, "16bitdo/anvyc", ""), (0, '{"id":9}', "")],
+        side_effect=[(0, "[]", ""), (0, '{"id":9}', "")],
     ):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
     assert res.action == "created"
+
+
+def test_apply_post_error() -> None:
+    with patch(
+        "anvyc.core.git_protect._gh_api",
+        side_effect=[(0, "[]", ""), (1, "", "422 boom")],
+    ):
+        res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
+    assert res.action == "error"
+
+
+def test_apply_exists_when_present_dry_run() -> None:
+    listing = json.dumps([{"id": 7, "name": RULESET_NAME}])
+    with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, listing, "")]):
+        res = apply_ruleset("16bitdo", "anvyc", dry_run=True)
+    assert res.action == "exists"
+
+
+def test_apply_updates_existing_non_dry() -> None:
+    listing = json.dumps([{"id": 7, "name": RULESET_NAME}])
+    with patch(
+        "anvyc.core.git_protect._gh_api",
+        side_effect=[(0, listing, ""), (0, "", "")],
+    ):
+        res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
+    assert res.action == "updated"
