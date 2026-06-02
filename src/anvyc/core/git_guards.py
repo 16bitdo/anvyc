@@ -10,8 +10,11 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from anvyc.core.branch_policy import BranchPolicy
+
+GuardStatus = Literal["installed", "updated", "skipped-foreign", "skipped-tracked-hooks"]
 
 GUARD_BEGIN = "# >>> anvyc-pr-guard >>>"
 GUARD_END = "# <<< anvyc-pr-guard <<<"
@@ -44,30 +47,47 @@ def render_guard_block(policy: BranchPolicy) -> str:
 
 
 def effective_hooks_dir(repo_dir: Path) -> tuple[Path, bool]:
-    """(hooks_dir, tracked_in_worktree) 반환. core.hooksPath 존중."""
+    """(hooks_dir, tracked_in_worktree) 반환.
+
+    core.hooksPath 가 설정돼 있으면 그 경로를, 아니면 git common dir(`--git-common-dir`,
+    linked worktree 도 안전)의 hooks 를 쓴다. tracked = worktree 내부이면서 .git 영역 밖
+    (예: core.hooksPath=scripts/hooks) → anvyc 가 clobber 하지 않고 skip 하기 위함.
+    """
     try:
-        proc = subprocess.run(
+        cfg = subprocess.run(
             ["git", "-C", str(repo_dir), "config", "--get", "core.hooksPath"],
             capture_output=True, text=True, check=False, timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
         return repo_dir / ".git" / "hooks", False
-    hp = proc.stdout.strip()
-    if not hp:
-        return repo_dir / ".git" / "hooks", False
-    hooks = Path(hp) if Path(hp).is_absolute() else (repo_dir / hp)
+    hp = cfg.stdout.strip() if cfg.returncode == 0 else ""
+    if hp:
+        hooks = Path(hp) if Path(hp).is_absolute() else (repo_dir / hp)
+        try:
+            rel = hooks.resolve().relative_to(repo_dir.resolve())
+            tracked = rel.parts[:1] != (".git",)
+        except (ValueError, OSError):
+            tracked = False
+        return hooks, tracked
+    # custom hooksPath 없음 → common git dir 의 hooks (worktree 안전)
     try:
-        rel = hooks.resolve().relative_to(repo_dir.resolve())
-        tracked = rel.parts[:1] != (".git",)
-    except (ValueError, OSError):
-        tracked = False
-    return hooks, tracked
+        cd = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        common = cd.stdout.strip() if cd.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        common = ""
+    if not common:
+        return repo_dir / ".git" / "hooks", False
+    common_path = Path(common) if Path(common).is_absolute() else (repo_dir / common)
+    return common_path / "hooks", False
 
 
 @dataclass
 class GuardInstallResult:
     repo: Path
-    status: str  # installed | updated | skipped-foreign | skipped-tracked-hooks
+    status: GuardStatus
     detail: str = ""
 
 
