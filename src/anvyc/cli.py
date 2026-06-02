@@ -3665,5 +3665,38 @@ def guard_install(
         console.print(f"[{color}]{res.status}[/] {_short_path(repo)} {res.detail}")
 
 
+@guard_app.command("protect")
+def guard_protect(
+    project: list[Path] | None = typer.Option(None, "--project", help="대상 repo 경로 (반복 가능)."),
+    root: Path | None = typer.Option(None, "--root", help="스캔 상위 디렉터리."),
+    apply: bool = typer.Option(False, "--apply", help="실제 적용 (기본: dry-run)."),
+) -> None:
+    """대상 repo 에 GitHub repository ruleset(PR 필수)을 적용한다. 기본 dry-run."""
+    from anvyc.core.branch_policy import resolve_policy
+    from anvyc.core.git_protect import apply_ruleset
+    from anvyc.core.guard_targets import resolve_guard_targets
+    from anvyc.utils.git_remote import origin_owner_repo
+
+    targets = resolve_guard_targets(project, root)
+    if not targets:
+        console.print("[yellow]대상 repo 없음[/]")
+        raise typer.Exit(code=0)
+
+    for repo in targets:
+        owner_repo = origin_owner_repo(repo)
+        if owner_repo is None:
+            console.print(f"[yellow]skip[/] {_short_path(repo)} (origin 없음)")
+            continue
+        owner, name = owner_repo
+        policy = resolve_policy(repo)
+        if policy.push_to_main_allowed:
+            console.print(f"[dim]skip[/] {owner}/{name} (정책상 main push 허용)")
+            continue
+        res = apply_ruleset(owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply)
+        color = {"created": "green", "updated": "green", "exists": "dim",
+                 "no-access": "dim"}.get(res.action, "yellow")
+        console.print(f"[{color}]{res.action}[/] {owner}/{name} {res.detail}")
+
+
 if __name__ == "__main__":
     app()
