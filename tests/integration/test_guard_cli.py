@@ -46,3 +46,12 @@ def test_guard_protect_dry_run_default(tmp_path: Path) -> None:
     assert "proj" in proc.stdout
     # 기본 dry-run: 실제 적용 단어("created") 미출력
     assert "created" not in proc.stdout
+
+
+def test_doctor_only_branch_protection_runs(tmp_path: Path) -> None:
+    proc = run_anvyc("doctor", "--json", "--only", "project-branch-protection", cwd=tmp_path)
+    assert proc.returncode in (0, 1), proc.stderr
+    import json
+    data = json.loads(proc.stdout)
+    names = {r["check_name"] for r in data["results"]}
+    assert names <= {"project-branch-protection"}  # 다른 check 미혼입 (0건도 허용)
