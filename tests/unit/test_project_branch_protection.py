@@ -54,7 +54,7 @@ def test_missing_ruleset_yields_warning(one_repo: Path) -> None:
     (one_repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
     with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
          patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
-         patch("anvyc.checks.project_branch_protection.repo_accessible", return_value=True):
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True):
         res = ProjectBranchProtectionCheck().run(CheckContext())
     assert any(r.severity is Severity.WARNING and "ruleset" in r.message for r in res)
 
@@ -79,12 +79,13 @@ def test_fallback_source_skipped(one_repo: Path) -> None:
     assert res == []
 
 
-def test_no_access_silent(one_repo: Path) -> None:
+def test_not_admin_silent(one_repo: Path) -> None:
+    """admin 아님(private 404 또는 public read-only) → enforce 불가 → silent."""
     with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
          patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
-         patch("anvyc.checks.project_branch_protection.repo_accessible", return_value=False):
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=False):
         res = ProjectBranchProtectionCheck().run(CheckContext())
-    assert res == []  # whatap 등 접근 불가 → silent
+    assert res == []
 
 
 def test_origin_less_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

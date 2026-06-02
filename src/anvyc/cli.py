@@ -3673,7 +3673,7 @@ def guard_protect(
 ) -> None:
     """대상 repo 에 GitHub repository ruleset(PR 필수)을 적용한다. 기본 dry-run."""
     from anvyc.core.branch_policy import resolve_policy
-    from anvyc.core.git_protect import apply_ruleset
+    from anvyc.core.git_protect import apply_ruleset, repo_admin
     from anvyc.core.guard_targets import resolve_guard_targets
     from anvyc.utils.git_remote import origin_owner_repo
 
@@ -3691,6 +3691,9 @@ def guard_protect(
         policy = resolve_policy(repo)
         if policy.push_to_main_allowed:
             console.print(f"[dim]skip[/] {owner}/{name} (정책상 main push 허용)")
+            continue
+        if not repo_admin(owner, name):
+            console.print(f"[dim]skip[/] {owner}/{name} (admin 권한 없음 — enforce 불가)")
             continue
         res = apply_ruleset(owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply)
         color = {"created": "green", "updated": "green", "exists": "dim",
