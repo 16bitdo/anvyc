@@ -114,6 +114,8 @@ class DoctorConfig:
     # CP-5 — creds-expiry per-kind "expiring" 임계 override (kind → 초). 미지정 kind 는
     # 코드 기본값. YAML `doctor.creds_expiry.warn_thresholds`.
     creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
+    # owner→gh account 매핑(rule 25 미러). YAML `doctor.gh_owner_accounts`. 빈 dict=검증 skip.
+    gh_owner_accounts: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -333,12 +335,16 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         for k, v in ce_raw.items()
         if isinstance(v, (int, float)) and not isinstance(v, bool)
     }
+    gh_owner_accounts = {
+        str(k): str(v) for k, v in (doctor_raw.get("gh_owner_accounts") or {}).items()
+    }
     doctor = DoctorConfig(
         enabled=bool(cu.get("enabled", True)),
         known_user_aliases=dict(cu.get("known_user_aliases") or {}),
         scan_targets=list(cu.get("scan_targets") or DEFAULT_SCAN_TARGETS),
         severity_overrides=dict(cu.get("severity_overrides") or {}),
         creds_warn_thresholds=creds_warn_thresholds,
+        gh_owner_accounts=gh_owner_accounts,
     )
 
     cost_raw = raw.get("cost") or {}
@@ -382,6 +388,7 @@ class DoctorOnlyConfig:
     scan_targets: list[str] = field(default_factory=lambda: list(DEFAULT_SCAN_TARGETS))
     severity_overrides: dict[str, str] = field(default_factory=dict)
     creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
+    gh_owner_accounts: dict[str, str] = field(default_factory=dict)
 
 
 def load_config(path: Path | None = None) -> DoctorOnlyConfig:
@@ -393,6 +400,7 @@ def load_config(path: Path | None = None) -> DoctorOnlyConfig:
         scan_targets=cfg.doctor.scan_targets,
         severity_overrides=cfg.doctor.severity_overrides,
         creds_warn_thresholds=cfg.doctor.creds_warn_thresholds,
+        gh_owner_accounts=cfg.doctor.gh_owner_accounts,
     )
 
 
@@ -409,4 +417,5 @@ def build_check_context(cfg: DoctorOnlyConfig | DoctorConfig) -> CheckContext:
         scan_targets=[Path(p).expanduser() for p in cfg.scan_targets],
         creds_warn_thresholds=dict(cfg.creds_warn_thresholds),
         current_project_aws_profiles=resolve_cwd_aws_profiles(),
+        gh_owner_accounts=dict(cfg.gh_owner_accounts),
     )
