@@ -187,3 +187,89 @@ def test_envrc_without_gh_config_dir_yields_warning(docs: Path) -> None:
     assert len(res) == 1
     assert res[0].severity is Severity.WARNING
     assert "GH_CONFIG_DIR" in res[0].message
+
+
+# ── owner↔alias 라우팅 검증 (gh_owner_accounts, static+dynamic) ──
+def test_owner_alias_match_no_owner_warn(docs: Path) -> None:
+    """owner 매핑 일치(16bitdo→16bitdo) → owner-routing finding 없음."""
+    proj = docs / "p"
+    _write_origin(proj, "git@github.com-16bitdo:16bitdo/p.git")
+    _write_envrc_gh(proj, "16bitdo")
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+    assert not any("misroute" in r.message for r in res)
+    assert all(r.severity is Severity.INFO for r in res)  # alias↔envrc summary 만
+
+
+def test_owner_alias_mismatch_no_write_warns(
+    docs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """whatap repo 가 16bitdo alias 로 박혔고 그 계정 write 없음 → WARNING(misroute)."""
+    proj = docs / "p"
+    _write_origin(proj, "git@github.com-16bitdo:whatap/p.git")
+    _write_envrc_gh(proj, "16bitdo")  # alias↔envrc 는 self-consistent(둘 다 16bitdo)
+    monkeypatch.setattr(
+        "anvyc.checks.project_gh_account._repo_write_access", lambda o, r, a: False
+    )
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"whatap": "heisgone"})
+    )
+    assert any(r.severity is Severity.WARNING and "misroute" in r.message for r in res)
+
+
+def test_owner_alias_mismatch_with_write_info(
+    docs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """불일치이나 routed 계정 write 가능 → INFO(이탈/확인 권고), WARNING 아님."""
+    proj = docs / "p"
+    _write_origin(proj, "git@github.com-16bitdo:whatap/p.git")
+    _write_envrc_gh(proj, "16bitdo")
+    monkeypatch.setattr(
+        "anvyc.checks.project_gh_account._repo_write_access", lambda o, r, a: True
+    )
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"whatap": "heisgone"})
+    )
+    assert any(r.severity is Severity.INFO and "불일치" in r.message for r in res)
+    assert not any(r.severity is Severity.WARNING and "misroute" in r.message for r in res)
+
+
+def test_owner_not_in_mapping_skips_dynamic(
+    docs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """매핑에 없는 owner(pyroscopy) → owner-routing skip, dynamic 미호출."""
+    proj = docs / "p"
+    _write_origin(proj, "git@github.com-16bitdo:pyroscopy/p.git")
+    _write_envrc_gh(proj, "16bitdo")
+    calls = {"n": 0}
+
+    def _spy(o: str, r: str, a: str) -> bool | None:
+        calls["n"] += 1
+        return False
+
+    monkeypatch.setattr("anvyc.checks.project_gh_account._repo_write_access", _spy)
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"whatap": "heisgone"})
+    )
+    assert calls["n"] == 0
+    assert not any("misroute" in r.message for r in res)
+
+
+def test_owner_routing_disabled_when_mapping_empty(
+    docs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gh_owner_accounts 미설정 → owner-routing 완전 skip(기존 동작 불변), dynamic 미호출."""
+    proj = docs / "p"
+    _write_origin(proj, "git@github.com-16bitdo:whatap/p.git")
+    _write_envrc_gh(proj, "16bitdo")
+    calls = {"n": 0}
+
+    def _spy(o: str, r: str, a: str) -> bool | None:
+        calls["n"] += 1
+        return False
+
+    monkeypatch.setattr("anvyc.checks.project_gh_account._repo_write_access", _spy)
+    res = ProjectGhAccountMappingCheck().run(CheckContext())  # 빈 매핑
+    assert calls["n"] == 0
+    assert not any("misroute" in r.message for r in res)

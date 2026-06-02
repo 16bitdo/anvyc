@@ -68,6 +68,9 @@ class CheckContext:
     # doctor 진입(build_check_context)에서 cwd walk-up 으로 주입. github/claude_oauth
     # (profiles 빈 자격)은 scoping 무관 — 항상 보고.
     current_project_aws_profiles: frozenset[str] | None = None
+    # owner→gh account(=ssh alias suffix) 매핑. 빈 dict = owner↔alias 라우팅 검증 skip
+    # (무오탐 — 기존 동작 불변). anvyc.yaml `doctor.gh_owner_accounts` 에서 주입(rule 25 미러).
+    gh_owner_accounts: dict[str, str] = field(default_factory=dict)
 
 
 class Check(Protocol):

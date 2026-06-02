@@ -55,18 +55,46 @@ def _iter_git_dirs(root: Path, max_depth: int = _MAX_DEPTH) -> list[Path]:
     return sorted(out)
 
 
-def _origin_ssh_alias(git_dir: Path) -> str | None:
-    """`.git/config` 의 `origin` remote 가 github ssh alias 면 그 alias 반환.
+def _origin_routing(git_dir: Path) -> tuple[str, str, str] | None:
+    """origin 이 github ssh-alias remote 면 `(ssh_alias, owner, repo)` 반환.
 
-    origin 부재 / GitHub 아님 / ssh alias 없음 → None.
+    origin 부재 / GitHub 아님 / ssh alias 없음(plain github.com·https) → None.
     """
     for remote in parse_git_config(git_dir):
         if remote.name != "origin":
             continue
-        if not remote.host.startswith("github.com"):
+        if not remote.host.startswith("github.com") or not remote.ssh_alias:
             return None
-        return remote.ssh_alias
+        return (remote.ssh_alias, remote.owner, remote.repo)
     return None
+
+
+def _repo_write_access(owner: str, repo: str, account: str) -> bool | None:
+    """routed account(`gh-<account>`)로 `owner/repo` write(push|admin) 권한 보유 여부.
+
+    조회 실패 / 권한 키 부재 → None(불확정). owner↔alias static 불일치 시에만 호출(network).
+    """
+    import json  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    env = {**os.environ, "GH_CONFIG_DIR": os.path.expanduser(f"~/.config/gh-{account}")}
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}", "--jq", ".permissions"],
+            capture_output=True, text=True, check=False, timeout=15, env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        perm = json.loads(proc.stdout)
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(perm, dict):
+        return None
+    return bool(perm.get("push") or perm.get("admin"))
 
 
 def _read_envrc_gh_account(envrc: Path) -> str | None:
@@ -92,7 +120,7 @@ def _read_envrc_gh_account(envrc: Path) -> str | None:
 class ProjectGhAccountMappingCheck:
     name = "project-gh-account-mapping"
 
-    def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
+    def run(self, ctx: CheckContext) -> list[CheckResult]:
         git_dirs: list[Path] = []
         seen: set[Path] = set()
         for root_str in resolve_project_roots():
@@ -110,12 +138,15 @@ class ProjectGhAccountMappingCheck:
             return []
 
         # ssh alias 를 쓰는 GitHub origin 보유 project 만 검증 대상.
-        # (project_dir, ssh_alias) tuple 수집.
-        targets: list[tuple[Path, str]] = []
+        targets: list[tuple[Path, str]] = []  # (project_dir, ssh_alias) — alias↔envrc 검증
+        routing_targets: list[tuple[Path, str, str, str]] = []  # (dir, alias, owner, repo)
         for git_dir in git_dirs:
-            alias = _origin_ssh_alias(git_dir)
-            if alias:
+            info = _origin_routing(git_dir)
+            if info:
+                alias, owner, repo = info
                 targets.append((git_dir.parent, alias))
+                if owner and repo:
+                    routing_targets.append((git_dir.parent, alias, owner, repo))
 
         if not targets:
             return []
@@ -176,4 +207,39 @@ class ProjectGhAccountMappingCheck:
                     ),
                 )
             )
+        # owner↔alias 라우팅 검증 (rule 25; ctx.gh_owner_accounts 설정 시에만 — 무오탐).
+        # static(alias==기대) 우선, 불일치 시에만 dynamic(routed 계정 write 권한) 보강.
+        for project_dir, alias, owner, repo in routing_targets:
+            exp_alias = ctx.gh_owner_accounts.get(owner)
+            if not exp_alias or alias == exp_alias:
+                continue
+            write = _repo_write_access(owner, repo, alias)
+            if write is False:
+                results.append(
+                    CheckResult(
+                        check_name=self.name,
+                        severity=Severity.WARNING,
+                        message=(
+                            f"{owner}/{repo}: owner '{owner}' 는 alias '{exp_alias}' 라우팅이어야 "
+                            f"하나 '{alias}' 사용 — 그 계정 write 권한 없음 (misroute)"
+                        ),
+                        location=project_dir,
+                        suggestion=(
+                            f"remote 를 github.com-{exp_alias} 로, .envrc GH_CONFIG_DIR 를 "
+                            f"gh-{exp_alias} 로 (rule 25)"
+                        ),
+                    )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        check_name=self.name,
+                        severity=Severity.INFO,
+                        message=(
+                            f"{owner}/{repo}: alias '{alias}'(기대 '{exp_alias}') 불일치 — "
+                            f"write 가능(collaborator?) 또는 권한 확인 불가; 의도 확인 권고"
+                        ),
+                        location=project_dir,
+                    )
+                )
         return results
