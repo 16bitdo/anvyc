@@ -8,7 +8,7 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
   project_show       cwd 의 단일 project connection
   project_list       root 아래 모든 project matrix
   project_doctor     cwd 의 정합성 8 check
-  doctor             anvyc 환경 진단 (20 check)
+  doctor             anvyc 환경 진단 (24 check)
   tools_list         10 도구 메타데이터 + 상태 (label/category/summary/...)
   activity_summary   Claude Code session 통합 통계 (CP-1)
   tool_call_stats    tool 별 사용 카운트 ranking (CP-1)
@@ -104,7 +104,7 @@ def _tool_defs() -> list[Tool]:
         Tool(
             name="doctor",
             description=(
-                "anvyc 환경 진단 (global, 20 check). "
+                "anvyc 환경 진단 (global, 24 check). "
                 "cross-user / venv-hidden / op-references / sops / mcp-tokens / "
                 "project-aws-profile-mapping / aws-profile-status / "
                 "multi-account-detected / unused-aws-profiles / creds-expiry / "

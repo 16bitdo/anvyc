@@ -1307,22 +1307,43 @@ doctor:
 
 선언된 alias는 Warning-foreign → Info-aliased로 강등된다.
 
-#### 27.3.5 출력 예 (실측 환경 기반)
+#### 27.3.5 출력 형식 (claude doctor 스타일)
+
+`_print_summary`/`_print_verbose`(`cli.py`) 가 결과를 **상태 글리프 + check 단위 그룹핑 + 한 줄 verdict** 로 렌더한다. 설계 원칙:
+
+- **글리프**: `✗`(critical, red) · `⚠`(warning, yellow) · `ℹ`(info, cyan) · `✓`(통과, green).
+- **verdict 한 줄**: 3-bucket 카운트(critical/warning/info — 변종 severity 합산) + `runs` 기반 통과 롤업(`✓ N/M checks clean`).
+- **그룹핑**: finding 을 `check_name` 으로 묶어 **조치 필요(blocking) → 정보(info)** 두 섹션으로, severity 내림차순·건수 내림차순 정렬. 그룹 헤더에 전체 건수 `(N)` 표기.
+- **noise 접기**: 요약은 그룹당 `_SUMMARY_GROUP_CAP`(=3) 건만 + `… +N more`. `--verbose` 는 cap 없이 전체 + `검사 항목` 체크리스트(통과 check 까지 ✓ 로 노출).
+- **박스 없음**: Panel/테두리는 비-TTY(파이프/캡처) 80열 fallback 에서 깨지므로 사용하지 않는다. 색은 Rich 가 비-TTY 에서 자동 strip.
+- **load-bearing**: message/suggestion/location 은 `escape()`(예: `'anvyc[cost-aws]'` 의 `[…]` 가 markup 으로 먹히면 복붙 실패), 모든 데이터 줄은 `soft_wrap=True`(80열 강제 개행 차단).
+
+요약(`anvyc doctor`) 실측 예:
 
 ```
-[cross-user audit]
-  Aliased users:
-    aliasuser → edward (declared)
-  Findings:
-    cursor/projects        13 entries reference /Users/aliasuser/...
-                           → Info (aliased, regenerable cache, 백업 대상 아님)
-    ssh/config.d/30-teleport.conf:3-5
-                           → Info-aliased, NOT portable
-                           → suggest: $HOME 또는 ~/ 형식으로 정규화
-    cursor/rules.bak-20260206-092948 → /Users/aliasuser/.../role-based-ruleset
-                           → Info (Layer A `rules.bak-*` 제외 정책에 의해 백업 대상 아님)
-  Summary: 0 critical, 0 warning, 20 info
+anvyc doctor
+  ✓ 0 critical    ⚠ 7 warning    ℹ 20 info     ·  ✓ 16/24 checks clean
+
+조치 필요
+  ⚠ project-branch-protection (6)
+      · ~/dev/anvyc — 16bitdo/anvyc: 로컬 pre-push hook 미설치
+        → anvyc guard protect --apply / anvyc guard install
+      … +3 more
+  ⚠ project-gh-account-mapping (2)
+      · ~/dev/ctxport — GitHub origin 이 ssh alias '16bitdo' 를 쓰지만 .envrc 에 … 없음
+        → echo 'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"' >> …/.envrc
+
+정보
+  ℹ cursor-projects-suggest (11)
+      · ~/dev/aiforge — cursor project 발견 (미등록): /Users/edward/dev/aiforge
+      … +8 more
+
+전체 finding: anvyc doctor --verbose   · 기계 출력: anvyc doctor --json
 ```
+
+`--verbose` 는 위 verdict 아래에 `검사 항목` 체크리스트(`✓ cross-user` … `⚠ project-gh-account-mapping  2 findings`)를 더하고, finding 섹션을 cap 없이 전부 노출한다. clean 환경은 `✓ doctor: clean — 검사 24건, finding 없음` 한 줄로 단락한다.
+
+회귀 안전망: `tests/unit/test_doctor_summary.py` 가 severity 정렬·remediation 게이팅·그룹 truncation·soft_wrap·escape·체크리스트를 검증한다.
 
 ### 27.4 CLI 옵션
 

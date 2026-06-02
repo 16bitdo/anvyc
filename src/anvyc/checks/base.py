@@ -28,6 +28,11 @@ class Severity(StrEnum):
             Severity.CRITICAL,
         )
 
+    @property
+    def rank(self) -> int:
+        """정렬용 순위 — 클수록 심각 (정의 순서: info … critical)."""
+        return list(Severity).index(self)
+
 
 @dataclass
 class CheckResult:
