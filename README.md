@@ -302,7 +302,7 @@ anvyc/
 anvyc init                     # 프로젝트/설정 초기화
 anvyc init --interactive       # 대화형 wizard (v0.7.1+)
 anvyc init --from-git <url>    # git remote 에서 .anvyc/ clone (v0.6.2+)
-anvyc doctor                   # 환경 진단 (21 check, CP-13 까지)
+anvyc doctor                   # 환경 진단 (24 check, claude doctor 스타일 출력)
 anvyc backup                   # 현재 환경 백업
 anvyc status                   # target vs backup 차이 요약
 anvyc diff                     # unified diff 출력

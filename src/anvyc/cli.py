@@ -19,7 +19,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from anvyc import __version__
-from anvyc.checks.base import Severity
+from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.activity import collect_sessions
 from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
 from anvyc.core.backup import BackupBlockedError, run_backup
@@ -278,7 +278,7 @@ def init(
 def _print_init_next_steps() -> None:
     """init 끝에서 통일된 next-step 안내 (v0.16.0+)."""
     console.print("\n[bold]next[/]")
-    console.print("  1. [cyan]anvyc doctor[/]          # 환경 정합성 점검 (20 check)")
+    console.print("  1. [cyan]anvyc doctor[/]          # 환경 정합성 점검 (24 check)")
     console.print("  2. [cyan]anvyc backup[/]          # 첫 백업 생성")
     console.print(
         "  3. [cyan]anvyc apply[/]           "
@@ -479,74 +479,161 @@ def _severity_rank(s: Severity) -> int:
     return list(Severity).index(s)
 
 
-def _print_summary(report: DoctorReport) -> None:
-    buckets = report.by_severity()
-    total = sum(len(v) for v in buckets.values())
-    if total == 0:
-        console.print("[green]doctor: clean — no cross-user findings[/]")
+# ── doctor 출력 (claude doctor 스타일) ──────────────────────────────────────
+# 설계 원칙(DESIGN.md §27.3.5): 상태 글리프 + check 단위 그룹핑 + 한 줄 verdict.
+# 박스/Panel 은 쓰지 않는다 — 비-TTY(파이프/캡처)에서 Rich 가 폭 80 fallback 으로
+# 테두리를 그려 내용이 깨지기 때문. 색은 Rich 가 비-TTY 에서 자동 strip 한다.
+_OK_GLYPH = "✓"
+# 그룹당 기본 출력 finding 수 (요약). 초과분은 "+N more" 로 접어 noise 를 줄인다.
+_SUMMARY_GROUP_CAP = 3
+
+
+def _severity_glyph(s: Severity) -> str:
+    """severity → 상태 글리프 (색은 _severity_style 과 짝)."""
+    return {
+        Severity.INFO: "ℹ",
+        Severity.INFO_ALIASED: "ℹ",
+        Severity.WARNING: "⚠",
+        Severity.WARNING_FOREIGN: "⚠",
+        Severity.WARNING_DANGLING: "⚠",
+        Severity.CRITICAL: "✗",
+    }[s]
+
+
+def _doctor_buckets(report: DoctorReport) -> tuple[int, int, int]:
+    """(critical, warning, info) 3-bucket 카운트. warning/info 변종을 합산한다."""
+    b = report.by_severity()
+    crit = len(b[Severity.CRITICAL])
+    warn = (
+        len(b[Severity.WARNING])
+        + len(b[Severity.WARNING_FOREIGN])
+        + len(b[Severity.WARNING_DANGLING])
+    )
+    info = len(b[Severity.INFO]) + len(b[Severity.INFO_ALIASED])
+    return crit, warn, info
+
+
+def _print_doctor_header(report: DoctorReport) -> None:
+    """제목 + 한 줄 verdict (severity 글리프 카운트 + 통과 check 롤업)."""
+    crit, warn, info = _doctor_buckets(report)
+    segs = [
+        f"[red bold]✗ {crit} critical[/]" if crit else "[green]✓[/] [dim]0 critical[/]",
+        f"[yellow]⚠ {warn} warning[/]" if warn else "[green]✓[/] [dim]0 warning[/]",
+        f"[cyan]ℹ {info} info[/]" if info else "[dim]ℹ 0 info[/]",
+    ]
+    tail = ""
+    if report.runs:
+        passed = sum(1 for r in report.runs if r.passed)
+        tail = f"     [dim]·[/]  [green]✓ {passed}[/][dim]/{len(report.runs)} checks clean[/]"
+    console.print("[bold]anvyc doctor[/]")
+    console.print("  " + "    ".join(segs) + tail, soft_wrap=True)
+
+
+def _group_findings(
+    results: list[CheckResult],
+) -> list[tuple[str, list[CheckResult], Severity]]:
+    """finding 을 check_name 으로 그룹핑 → (name, results, max_severity) 목록.
+
+    정렬: max_severity 내림차순 → 건수 내림차순 → 이름. 심각/대량 그룹이 위로.
+    """
+    groups: dict[str, list[CheckResult]] = {}
+    for r in results:
+        groups.setdefault(r.check_name, []).append(r)
+    out: list[tuple[str, list[CheckResult], Severity]] = []
+    for name, rs in groups.items():
+        max_sev = max((r.severity for r in rs), key=lambda s: s.rank)
+        out.append((name, rs, max_sev))
+    out.sort(key=lambda g: (-g[2].rank, -len(g[1]), g[0]))
+    return out
+
+
+def _render_finding_group(
+    name: str, rs: list[CheckResult], max_sev: Severity, *, cap: int | None
+) -> None:
+    """단일 check 그룹 출력 — 헤더(글리프+이름+건수) + finding 줄 + remediation.
+
+    escape(): message/suggestion/location 은 데이터(예: `pip install 'anvyc[cost-aws]'`)
+    이므로 Rich markup 으로 먹히면 안 된다 — `[cost-aws]` 가 태그로 해석돼 깨지면 사용자가
+    복붙해 실패한다. 의도된 style 태그(severity 색/[dim])만 escape 밖에 둔다.
+    soft_wrap=True: 비-TTY 80열 fallback 의 강제 개행을 차단(개행은 터미널/pager 에 위임).
+    """
+    console.print(
+        f"  [{_severity_style(max_sev)}]{_severity_glyph(max_sev)}[/] "
+        f"[bold]{escape(name)}[/] [dim]({len(rs)})[/]"
+    )
+    shown = rs if cap is None else rs[:cap]
+    for r in shown:
+        loc = _short_path(r.location)
+        line = f":{r.line}" if r.line else ""
+        prefix = f"{escape(loc)}{line} — " if loc else ""
+        console.print(
+            f"      [{_severity_style(r.severity)}]·[/] {prefix}{escape(r.message)}",
+            soft_wrap=True,
+        )
+        # blocking(warning↑) 만 remediation 을 노출 — info noise 에 조치법이 묻히지 않게.
+        if r.severity.is_blocking and r.suggestion:
+            console.print(f"        [dim]→ {escape(r.suggestion)}[/]", soft_wrap=True)
+    if cap is not None and len(rs) > cap:
+        console.print(f"      [dim]… +{len(rs) - cap} more[/]", soft_wrap=True)
+
+
+def _print_findings(report: DoctorReport, *, cap: int | None) -> None:
+    """finding 을 '조치 필요'(blocking) / '정보'(info) 두 섹션으로 그룹 출력."""
+    groups = _group_findings(report.results)
+    attention = [g for g in groups if g[2].is_blocking]
+    info_groups = [g for g in groups if not g[2].is_blocking]
+    if attention:
+        console.print("\n[bold]조치 필요[/]")
+        for name, rs, sev in attention:
+            _render_finding_group(name, rs, sev, cap=cap)
+    if info_groups:
+        console.print("\n[bold]정보[/]")
+        for name, rs, sev in info_groups:
+            _render_finding_group(name, rs, sev, cap=cap)
+
+
+def _print_check_list(report: DoctorReport) -> None:
+    """실행된 check 전체를 ✓/글리프 체크리스트로 출력 (--verbose, runs 필요)."""
+    if not report.runs:
         return
-
-    table = Table(title="[cross-user audit] 요약", show_header=True, header_style="bold")
-    table.add_column("severity", style="bold")
-    table.add_column("count", justify="right")
-    for s in Severity:
-        cnt = len(buckets[s])
-        if cnt == 0:
+    console.print("\n[bold]검사 항목[/]")
+    width = max((len(r.name) for r in report.runs), default=0)
+    for run in report.runs:
+        sev = run.max_severity
+        if run.passed or sev is None:
+            console.print(f"  [green]{_OK_GLYPH}[/] [dim]{escape(run.name)}[/]")
             continue
-        style = _severity_style(s)
-        table.add_row(f"[{style}]{s.value}[/]", str(cnt))
-    console.print(table)
+        noun = "finding" if run.count == 1 else "findings"
+        console.print(
+            f"  [{_severity_style(sev)}]{_severity_glyph(sev)}[/] "
+            f"{escape(run.name).ljust(width)}  [dim]{run.count} {noun}[/]",
+            soft_wrap=True,
+        )
 
-    # 상위 5건 노출 — severity 내림차순(critical→warning→info) 정렬해 심각 항목이
-    # info noise 에 묻히지 않게 한다. blocking(warning↑) finding 은 remediation
-    # (suggestion)을 한 줄로 함께 표시해 기본 출력만으로 조치법을 알 수 있게 한다.
-    ordered = sorted(report.results, key=lambda r: _severity_rank(r.severity), reverse=True)
-    head = ordered[:5]
-    if head:
-        console.print("\n[bold]Top findings:[/]")
-        for r in head:
-            loc = _short_path(r.location)
-            line = f":{r.line}" if r.line else ""
-            # escape(): message/suggestion 은 데이터(예: `pip install 'anvyc[cost-aws]'`)
-            # 이므로 Rich markup 으로 해석되면 안 된다 — `[cost-aws]` 가 태그로 먹혀
-            # `'anvyc'` 로 깨지면 사용자가 그대로 복붙해 실패한다. 의도된 style 태그
-            # (severity 색/[dim])는 escape 밖에 둔다.
-            # soft_wrap=True: 비-TTY(파이프/캡처/리다이렉트)에서 Rich Console 이 폭을
-            # 80 으로 fallback 해 message/suggestion 한 줄을 80열에 강제 개행하는 문제를
-            # 차단한다. 개행은 실제 출력 소비자(터미널/pager)에 위임한다.
-            console.print(
-                f"  [{_severity_style(r.severity)}]{r.severity.value}[/] "
-                f"{escape(loc)}{line} — {escape(r.message)}",
-                soft_wrap=True,
-            )
-            if r.severity.is_blocking and r.suggestion:
-                console.print(f"    [dim]→ {escape(r.suggestion)}[/]", soft_wrap=True)
-        if len(ordered) > 5:
-            console.print(f"  ... and {len(ordered) - 5} more (use --verbose)")
+
+def _print_summary(report: DoctorReport) -> None:
+    if not report.results:
+        n = len(report.runs)
+        suffix = f" — 검사 {n}건, finding 없음" if n else " — finding 없음"
+        console.print(f"[green]{_OK_GLYPH} doctor: clean{suffix}[/]")
+        return
+    _print_doctor_header(report)
+    _print_findings(report, cap=_SUMMARY_GROUP_CAP)
+    console.print(
+        "\n[dim]전체 finding: [/][cyan]anvyc doctor --verbose[/]"
+        "   [dim]· 기계 출력: [/][cyan]anvyc doctor --json[/]",
+        soft_wrap=True,
+    )
 
 
 def _print_verbose(report: DoctorReport) -> None:
-    if not report.results:
-        console.print("[green]doctor: clean — no cross-user findings[/]")
+    if not report.results and not report.runs:
+        console.print(f"[green]{_OK_GLYPH} doctor: clean — finding 없음[/]")
         return
-    # title/cell 의 `[...]` 도 markup 으로 먹히므로 escape (cell: message/suggestion 의
-    # `[cost-aws]` 등 데이터 보존, title: "[cross-user audit]" 리터럴 보존).
-    table = Table(title=escape("[cross-user audit] findings"), show_header=True, header_style="bold")
-    table.add_column("severity", style="bold")
-    table.add_column("location")
-    table.add_column("line", justify="right")
-    table.add_column("message")
-    table.add_column("suggestion", overflow="fold")
-    for r in report.results:
-        loc = _short_path(r.location)
-        table.add_row(
-            f"[{_severity_style(r.severity)}]{r.severity.value}[/]",
-            escape(loc),
-            str(r.line) if r.line else "",
-            escape(r.message),
-            escape(r.suggestion or ""),
-        )
-    console.print(table)
+    _print_doctor_header(report)
+    _print_check_list(report)
+    if report.results:
+        _print_findings(report, cap=None)
 
 
 @app.command(

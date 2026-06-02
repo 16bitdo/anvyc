@@ -36,8 +36,40 @@ from anvyc.core.config import build_check_context, load_config
 
 
 @dataclass
+class CheckRun:
+    """단일 registry check 의 실행 결과 묶음.
+
+    `name` 은 `_REGISTRY` 의 key (canonical check 이름; `--only/--skip` 인자와 동일).
+    `result.check_name` 으로 묶지 않는다 — adapter-validate 같은 wrapper check 는
+    하위 adapter 이름으로 result 를 발행하므로 registry key 와 어긋난다(오귀속).
+    """
+
+    name: str
+    results: list[CheckResult] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.results)
+
+    @property
+    def passed(self) -> bool:
+        """finding 0건 = 통과(✓)."""
+        return not self.results
+
+    @property
+    def max_severity(self) -> Severity | None:
+        """가장 심각한 finding 의 severity (없으면 None)."""
+        if not self.results:
+            return None
+        return max((r.severity for r in self.results), key=lambda s: s.rank)
+
+
+@dataclass
 class DoctorReport:
     results: list[CheckResult] = field(default_factory=list)
+    # 실행된 check 별 묶음 (registry 순서 보존). run_doctor 가 채운다.
+    # 직접 생성(테스트)·구버전 호출은 비어 있을 수 있다 → 렌더러는 graceful fallback.
+    runs: list[CheckRun] = field(default_factory=list)
 
     def by_severity(self) -> dict[Severity, list[CheckResult]]:
         out: dict[Severity, list[CheckResult]] = {s: [] for s in Severity}
@@ -98,5 +130,7 @@ def run_doctor(
             continue
         if name in skip_set:
             continue
-        report.results.extend(check.run(ctx))
+        results = check.run(ctx)
+        report.runs.append(CheckRun(name=name, results=results))
+        report.results.extend(results)
     return report
