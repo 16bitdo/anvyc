@@ -171,6 +171,12 @@ mcp_app = typer.Typer(
 )
 app.add_typer(mcp_app, name="mcp", rich_help_panel=PANEL_MCP)
 
+guard_app = typer.Typer(
+    name="guard",
+    help="~/dev 프로젝트 branch 정책 강제 — 로컬 pre-push hook 설치 / 서버 ruleset 적용.",
+)
+app.add_typer(guard_app, name="guard", rich_help_panel=PANEL_CONTROL)
+
 console = Console()
 
 
@@ -3624,6 +3630,39 @@ def mcp_status(
         table.add_row(r.ide, r.scope, _short_home(r.path), anvyc_cell, command_cell, others)
 
     console.print(table)
+
+
+@guard_app.command("install")
+def guard_install(
+    project: list[Path] | None = typer.Option(
+        None, "--project", help="대상 repo 경로 (반복 가능). 생략 시 등록된 roots 전체."
+    ),
+    root: Path | None = typer.Option(None, "--root", help="스캔할 상위 디렉터리 (기본: 등록 roots)."),
+    force: bool = typer.Option(False, "--force", help="기존 비-anvyc pre-push 를 백업하고 덮어쓴다."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="설치하지 않고 대상/정책만 출력."),
+) -> None:
+    """대상 repo 에 pre-push 가드(보호 브랜치 직접 push 차단)를 설치한다."""
+    from anvyc.core.branch_policy import resolve_policy
+    from anvyc.core.git_guards import install_pre_push_guard
+    from anvyc.core.guard_targets import resolve_guard_targets
+
+    targets = resolve_guard_targets(project, root)
+    if not targets:
+        console.print("[yellow]대상 repo 없음[/] (등록 roots/--project 확인)")
+        raise typer.Exit(code=0)
+
+    for repo in targets:
+        policy = resolve_policy(repo)
+        if dry_run:
+            console.print(
+                f"[dim]would install[/] {_short_path(repo)} "
+                f"(protected={list(policy.protected_branches)}, "
+                f"allow_main={policy.push_to_main_allowed}, src={policy.source})"
+            )
+            continue
+        res = install_pre_push_guard(repo, policy, force=force)
+        color = {"installed": "green", "updated": "green"}.get(res.status, "yellow")
+        console.print(f"[{color}]{res.status}[/] {_short_path(repo)} {res.detail}")
 
 
 if __name__ == "__main__":
