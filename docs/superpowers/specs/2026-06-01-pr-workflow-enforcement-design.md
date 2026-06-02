@@ -1,7 +1,7 @@
 # PR-기반 워크플로 강제 — 설계 문서
 
 - **작성일**: 2026-06-01
-- **상태**: 승인됨 (구현 플랜 대기)
+- **상태**: 코드 구현 완료 (2026-06-02, 브랜치 `feat/pr-workflow-enforcement`) — Phase 1(manifest 전환)·운영 롤아웃(Phase 5.2~5.3) 대기
 - **대상 repo**: `~/dev` 하위 16bitdo 소유 16개 (whatap 6개는 범위 외)
 - **호스트**: role-based-ruleset(정책 SoT) + anvyc(실행/관측)
 

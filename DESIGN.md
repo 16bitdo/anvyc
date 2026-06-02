@@ -36,6 +36,7 @@
 - **§38 CP-13 Cost** → [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md)
 - **§39 CP-15 Secret Broker** → [docs/design-axes/cp-15-secret-broker.md](./docs/design-axes/cp-15-secret-broker.md)
 - **§40 CP-14 Run ledger** → [docs/design-axes/cp-14-run-ledger.md](./docs/design-axes/cp-14-run-ledger.md)
+- **§41 Branch policy enforcement** (CP 번호 미배정 — role-based-ruleset roadmap 확정 대기) → [spec](./docs/superpowers/specs/2026-06-01-pr-workflow-enforcement-design.md) · [plan](./docs/superpowers/plans/2026-06-02-pr-workflow-enforcement.md). 16bitdo 16개 repo main 직접 push 차단(PR 강제): manifest(SoT) + `anvyc guard install`(로컬 pre-push) + `anvyc guard protect`(서버 repository ruleset) + `project-branch-protection` doctor check(drift 관측). 모듈: `core/branch_policy·git_guards·git_protect·guard_targets`.
 
 ---
 
