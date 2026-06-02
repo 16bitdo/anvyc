@@ -89,10 +89,14 @@ def get_ruleset(owner: str, repo: str, name: str = RULESET_NAME) -> dict[str, An
     return _find_named(items, name)
 
 
-def repo_accessible(owner: str, repo: str) -> bool:
-    """현재 gh 계정으로 repo 메타데이터 접근 가능 여부(404/권한없음/gh 미설치 → False)."""
-    rc, _, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".full_name"])
-    return rc == 0
+def repo_admin(owner: str, repo: str) -> bool:
+    """현재 gh 계정이 repo 에 admin 권한이 있는지(=ruleset 설정 가능 여부).
+
+    404(접근불가)·admin 아님·gh 미설치 → False. ruleset 강제가 가능한 repo 만
+    True 이므로, 강제 불가 repo(예: 읽기만 되는 public whatap repo)를 걸러낸다.
+    """
+    rc, out, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".permissions.admin"])
+    return rc == 0 and out.strip() == "true"
 
 
 @dataclass

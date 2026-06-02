@@ -4,9 +4,9 @@
 등록 프로젝트 중 정책상 보호 대상(push_to_main_allowed=false, 매니페스트 기반)인
 repo 에 대해 ① 서버 ruleset 존재 ② 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
 정책 출처가 fallback(=role-based-ruleset 미발견)·정책상 main push 허용·origin 없음·
-접근 불가(whatap 등) → silent(결과 0건).
+**enforce 불가(admin 아님 — private 404 또는 public read-only whatap 등)** → silent(결과 0건).
 
-네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 필요 시 repo_accessible)
+네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 필요 시 repo_admin)
 + resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
 `anvyc doctor --skip project-branch-protection`.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.branch_policy import resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
-from anvyc.core.git_protect import get_ruleset, repo_accessible
+from anvyc.core.git_protect import get_ruleset, repo_admin
 from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
 
@@ -47,8 +47,8 @@ class ProjectBranchProtectionCheck:
                 continue
             owner, name = owner_repo
             ruleset = get_ruleset(owner, name)
-            if ruleset is None and not repo_accessible(owner, name):
-                continue  # 접근 불가 → silent (whatap 등)
+            if ruleset is None and not repo_admin(owner, name):
+                continue  # enforce 불가(admin 아님 — private 404 또는 public read-only) → silent
 
             problems: list[str] = []
             if ruleset is None:
