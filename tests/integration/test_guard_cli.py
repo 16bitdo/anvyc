@@ -29,3 +29,10 @@ def test_guard_install_writes_hook(tmp_path: Path) -> None:
     hook = repo / ".git" / "hooks" / "pre-push"
     assert hook.is_file()
     assert "anvyc-pr-guard" in hook.read_text()
+
+
+def test_guard_install_no_target_dir_exit0(tmp_path: Path) -> None:
+    """존재하지 않는/비-git --project → exit 0 + 안내(typo silent-success 회피)."""
+    proc = run_anvyc("guard", "install", "--project", str(tmp_path / "nope"), cwd=tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert "대상 repo 없음" in proc.stdout
