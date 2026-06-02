@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -36,7 +36,7 @@ from anvyc.core.creds import (
     rotate_credential,
 )
 from anvyc.core.diff import compute_diff
-from anvyc.core.doctor import DoctorReport, run_doctor
+from anvyc.core.doctor import CheckRun, DoctorReport, run_doctor
 from anvyc.core.extras import collect_extras_status, install_hint, is_available
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
@@ -88,6 +88,10 @@ from anvyc.core.workctx import (
 )
 from anvyc.templates import DEFAULT_ANVYC_YAML
 from anvyc.utils.errors import print_error, safe_msg
+
+if TYPE_CHECKING:
+    # 타입 힌트 전용 — 런타임 import 는 project_doctor 명령이 lazy 로 수행.
+    from anvyc.core.project_doctor import ProjectDoctorReport
 
 app = typer.Typer(
     name="anvyc",
@@ -500,32 +504,44 @@ def _severity_glyph(s: Severity) -> str:
     }[s]
 
 
-def _doctor_buckets(report: DoctorReport) -> tuple[int, int, int]:
+def _doctor_buckets(results: list[CheckResult]) -> tuple[int, int, int]:
     """(critical, warning, info) 3-bucket 카운트. warning/info 변종을 합산한다."""
-    b = report.by_severity()
-    crit = len(b[Severity.CRITICAL])
-    warn = (
-        len(b[Severity.WARNING])
-        + len(b[Severity.WARNING_FOREIGN])
-        + len(b[Severity.WARNING_DANGLING])
-    )
-    info = len(b[Severity.INFO]) + len(b[Severity.INFO_ALIASED])
+    warn_kinds = (Severity.WARNING, Severity.WARNING_FOREIGN, Severity.WARNING_DANGLING)
+    info_kinds = (Severity.INFO, Severity.INFO_ALIASED)
+    crit = sum(1 for r in results if r.severity is Severity.CRITICAL)
+    warn = sum(1 for r in results if r.severity in warn_kinds)
+    info = sum(1 for r in results if r.severity in info_kinds)
     return crit, warn, info
 
 
-def _print_doctor_header(report: DoctorReport) -> None:
-    """제목 + 한 줄 verdict (severity 글리프 카운트 + 통과 check 롤업)."""
-    crit, warn, info = _doctor_buckets(report)
+def _print_doctor_header(
+    title: str,
+    results: list[CheckResult],
+    *,
+    runs: list[CheckRun] | None = None,
+    subtitle: str | None = None,
+) -> None:
+    """제목 + 한 줄 verdict (severity 글리프 카운트 + 통과 check 롤업).
+
+    top-level `anvyc doctor` 와 `anvyc project doctor` 공용. title/subtitle 은
+    데이터(project path 등)일 수 있어 escape. runs 가 주어지면 '통과 check 수/전체'
+    롤업을 덧붙인다(project doctor 는 runs 없음 → 생략). subtitle(path)은 길 수 있어
+    title 줄도 soft_wrap.
+    """
+    crit, warn, info = _doctor_buckets(results)
     segs = [
         f"[red bold]✗ {crit} critical[/]" if crit else "[green]✓[/] [dim]0 critical[/]",
         f"[yellow]⚠ {warn} warning[/]" if warn else "[green]✓[/] [dim]0 warning[/]",
         f"[cyan]ℹ {info} info[/]" if info else "[dim]ℹ 0 info[/]",
     ]
     tail = ""
-    if report.runs:
-        passed = sum(1 for r in report.runs if r.passed)
-        tail = f"     [dim]·[/]  [green]✓ {passed}[/][dim]/{len(report.runs)} checks clean[/]"
-    console.print("[bold]anvyc doctor[/]")
+    if runs:
+        passed = sum(1 for r in runs if r.passed)
+        tail = f"     [dim]·[/]  [green]✓ {passed}[/][dim]/{len(runs)} checks clean[/]"
+    head = f"[bold]{escape(title)}[/]"
+    if subtitle:
+        head += f"  [dim]{escape(subtitle)}[/]"
+    console.print(head, soft_wrap=True)
     console.print("  " + "    ".join(segs) + tail, soft_wrap=True)
 
 
@@ -577,9 +593,9 @@ def _render_finding_group(
         console.print(f"      [dim]… +{len(rs) - cap} more[/]", soft_wrap=True)
 
 
-def _print_findings(report: DoctorReport, *, cap: int | None) -> None:
+def _print_findings(results: list[CheckResult], *, cap: int | None) -> None:
     """finding 을 '조치 필요'(blocking) / '정보'(info) 두 섹션으로 그룹 출력."""
-    groups = _group_findings(report.results)
+    groups = _group_findings(results)
     attention = [g for g in groups if g[2].is_blocking]
     info_groups = [g for g in groups if not g[2].is_blocking]
     if attention:
@@ -592,13 +608,13 @@ def _print_findings(report: DoctorReport, *, cap: int | None) -> None:
             _render_finding_group(name, rs, sev, cap=cap)
 
 
-def _print_check_list(report: DoctorReport) -> None:
+def _print_check_list(runs: list[CheckRun]) -> None:
     """실행된 check 전체를 ✓/글리프 체크리스트로 출력 (--verbose, runs 필요)."""
-    if not report.runs:
+    if not runs:
         return
     console.print("\n[bold]검사 항목[/]")
-    width = max((len(r.name) for r in report.runs), default=0)
-    for run in report.runs:
+    width = max((len(r.name) for r in runs), default=0)
+    for run in runs:
         sev = run.max_severity
         if run.passed or sev is None:
             console.print(f"  [green]{_OK_GLYPH}[/] [dim]{escape(run.name)}[/]")
@@ -617,8 +633,8 @@ def _print_summary(report: DoctorReport) -> None:
         suffix = f" — 검사 {n}건, finding 없음" if n else " — finding 없음"
         console.print(f"[green]{_OK_GLYPH} doctor: clean{suffix}[/]")
         return
-    _print_doctor_header(report)
-    _print_findings(report, cap=_SUMMARY_GROUP_CAP)
+    _print_doctor_header("anvyc doctor", report.results, runs=report.runs)
+    _print_findings(report.results, cap=_SUMMARY_GROUP_CAP)
     console.print(
         "\n[dim]전체 finding: [/][cyan]anvyc doctor --verbose[/]"
         "   [dim]· 기계 출력: [/][cyan]anvyc doctor --json[/]",
@@ -630,10 +646,27 @@ def _print_verbose(report: DoctorReport) -> None:
     if not report.results and not report.runs:
         console.print(f"[green]{_OK_GLYPH} doctor: clean — finding 없음[/]")
         return
-    _print_doctor_header(report)
-    _print_check_list(report)
+    _print_doctor_header("anvyc doctor", report.results, runs=report.runs)
+    _print_check_list(report.runs)
     if report.results:
-        _print_findings(report, cap=None)
+        _print_findings(report.results, cap=None)
+
+
+def _render_project_doctor(report: ProjectDoctorReport) -> None:
+    """`anvyc project doctor` 사람용 출력 — top-level doctor 와 동일 스타일.
+
+    명령에서 분리해 테스트 가능하게 한다(escape 생존 단언 등). project doctor 는
+    runs 추적이 없어 verdict 롤업은 생략하고, finding 은 cap 없이 전부 노출한다.
+    통과 check 도 INFO result 로 발행되므로 '정보' 섹션에 확인으로 표시된다.
+    """
+    if not report.results:
+        console.print(f"[bold]project doctor[/]  [dim]{escape(str(report.path))}[/]", soft_wrap=True)
+        console.print(
+            "  [dim]적용 가능한 check 없음 — .envrc / .git / Pulumi.yaml / tool_versions 부재[/]"
+        )
+        return
+    _print_doctor_header("project doctor", report.results, subtitle=str(report.path))
+    _print_findings(report.results, cap=None)
 
 
 @app.command(
@@ -1887,28 +1920,7 @@ def project_doctor(
         }
         typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        console.print(f"[bold]project doctor[/] {report.path}")
-        if not report.results:
-            console.print(
-                "[dim]no checks applicable (no .envrc / .git / Pulumi.yaml / tool_versions)[/]"
-            )
-        else:
-            table = Table(show_header=True, header_style="bold")
-            table.add_column("severity")
-            table.add_column("check")
-            table.add_column("message")
-            for r in report.results:
-                style = _severity_style(r.severity)
-                table.add_row(
-                    f"[{style}]{r.severity.value}[/]",
-                    r.check_name,
-                    r.message,
-                )
-            console.print(table)
-            # suggestion 출력 (blocking 만)
-            for r in report.results:
-                if r.severity.is_blocking and r.suggestion:
-                    console.print(f"  [dim]→ {r.suggestion}[/]")
+        _render_project_doctor(report)
 
     if strict and report.has_blocking():
         raise typer.Exit(code=1)
