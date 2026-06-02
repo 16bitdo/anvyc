@@ -549,6 +549,33 @@ def _print_verbose(report: DoctorReport) -> None:
     console.print(table)
 
 
+@app.command(
+    rich_help_panel=PANEL_EXTERNAL,
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def gh(ctx: typer.Context) -> None:
+    """cwd repo 의 origin account 로 `gh` 실행 (race-immune 토큰 주입).
+
+    예: `anvyc gh pr create --title X`. account 는 origin remote 의 SSH alias
+    (github.com-<account>) 에서 도출 — 전역 active account 를 건드리지 않는다.
+    """
+    from anvyc.core.gh_route import GhRouteError, resolve_account, run_gh
+
+    account = resolve_account(Path.cwd())
+    if account is None:
+        console.print(
+            "[red]anvyc gh: cwd 의 origin remote 에서 account 를 도출할 수 없습니다 "
+            "(SSH alias 'github.com-<account>' remote 필요). bare gh 를 쓰거나 account 를 확인하세요.[/red]"
+        )
+        raise typer.Exit(code=2)
+    try:
+        code = run_gh(account, list(ctx.args))
+    except GhRouteError as e:
+        console.print(f"[red]anvyc gh: {escape(str(e))}[/red]")
+        raise typer.Exit(code=2) from e
+    raise typer.Exit(code=code)
+
+
 @app.command(rich_help_panel=PANEL_EXTERNAL)
 def extras(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
