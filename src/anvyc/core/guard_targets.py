@@ -4,32 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from anvyc.core.project_roots import resolve_project_roots
-
-
-def _git_repos_under(base: Path) -> list[Path]:
-    if not base.is_dir():
-        return []
-    out: list[Path] = []
-    for entry in sorted(base.iterdir()):
-        if entry.is_dir() and (entry / ".git").is_dir():
-            out.append(entry)
-    return out
-
 
 def resolve_guard_targets(
     project: list[Path] | None, root: Path | None
 ) -> list[Path]:
+    from anvyc.core.project_scope import iter_project_dirs
+
     if project:
         expanded = [p.expanduser().resolve() for p in project]
         return [p for p in expanded if (p / ".git").is_dir()]
-    bases = [root.expanduser()] if root else [Path(r).expanduser() for r in resolve_project_roots()]
-    seen: set[Path] = set()
-    out: list[Path] = []
-    for base in bases:
-        for repo in _git_repos_under(base):
-            r = repo.resolve()
-            if r not in seen:
-                seen.add(r)
-                out.append(r)
-    return out
+    if root:
+        base = root.expanduser()
+        return [
+            d.resolve() for d in sorted(base.iterdir())
+            if d.is_dir() and (d / ".git").is_dir()
+        ] if base.is_dir() else []
+    return iter_project_dirs(markers=(".git",), max_depth=1)
