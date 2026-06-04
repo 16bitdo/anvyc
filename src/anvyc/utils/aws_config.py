@@ -87,3 +87,19 @@ def load_aws_sso_index(
             _add(direct, None, profile)
 
     return {url: (session, sorted(profiles)) for url, (session, profiles) in index.items()}
+
+
+def load_profile_config(profile: str, path: Path | None = None) -> dict[str, str] | None:
+    """`[profile X]`(또는 `[default]`) 섹션의 key→value. profile 부재/파싱 실패 → None."""
+    target = path or DEFAULT_AWS_CONFIG
+    if not target.is_file():
+        return None
+    cp = configparser.RawConfigParser()
+    try:
+        cp.read(target, encoding="utf-8")
+    except (OSError, configparser.Error):
+        return None
+    section = "default" if profile == "default" else f"{_PROFILE_PREFIX}{profile}"
+    if not cp.has_section(section):
+        return None
+    return dict(cp.items(section))
