@@ -4081,7 +4081,7 @@ def guard_protect(
 
 @aws_profile_app.command("list")
 def aws_profile_list(
-    as_json: bool = typer.Option(False, "--json", help="JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     status: bool = typer.Option(True, "--status/--no-status", help="연결 상태 판정(오프라인)."),
     probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
 ) -> None:
@@ -4100,14 +4100,20 @@ def aws_profile_list(
     names = sorted(load_aws_profile_names(home / ".aws" / "config"))
     rows: list[dict[str, object]] = []
     for name in names:
-        row: dict[str, object] = {"name": name, "auth_method": None, "status": None}
+        row: dict[str, object] = {
+            "name": name,
+            "auth_method": None,
+            "status": None,
+            "sso_session": None,
+            "expires_at": None,
+            "probe": None,
+        }
         if status:
             st = evaluate_profile_state(name, home=home)
             row["auth_method"] = st.auth_method
             row["status"] = st.status
             row["sso_session"] = st.sso_session
             row["expires_at"] = st.expires_at
-        row["probe"] = None
         if probe:
             from anvyc.core.aws_probe import probe_caller_identity
 
@@ -4115,7 +4121,7 @@ def aws_profile_list(
             row["probe"] = {"ok": pr.ok, "account": pr.account, "arn": pr.arn, "error": pr.error}
         rows.append(row)
 
-    if as_json:
+    if json_out:
         typer.echo(_json.dumps({"profiles": rows}, ensure_ascii=False))
         return
     if not rows:
@@ -4127,14 +4133,14 @@ def aws_profile_list(
             line += f"  [{row['auth_method']}] {row.get('status')}"
         probe_out = row.get("probe")
         if isinstance(probe_out, dict):
-            line += f"  probe={'ok ' + str(probe_out['account']) if probe_out['ok'] else 'fail: ' + str(probe_out['error'])}"
+            line += f"  probe: {'ok ' + str(probe_out['account']) if probe_out['ok'] else 'fail ' + str(probe_out['error'])}"
         typer.echo(escape(line))
 
 
 @aws_profile_app.command("show")
 def aws_profile_show(
     name: str = typer.Argument(..., help="profile 이름."),
-    as_json: bool = typer.Option(False, "--json", help="JSON 출력."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
 ) -> None:
     """단일 profile 의 해석 키 + 인증 방식 + 연결 상태 (+--probe 시 라이브 verdict)."""
@@ -4150,7 +4156,7 @@ def aws_profile_show(
     keys = load_profile_config(name, home / ".aws" / "config")
     if keys is None:
         typer.echo(f"profile '{name}' 가 ~/.aws/config 에 없음.")
-        raise typer.Exit(1)
+        raise typer.Exit(code=1)
 
     st = evaluate_profile_state(name, home=home)
     out: dict[str, object] = {
@@ -4169,7 +4175,7 @@ def aws_profile_show(
         pr = probe_caller_identity(name)
         out["probe"] = {"ok": pr.ok, "account": pr.account, "arn": pr.arn, "error": pr.error}
 
-    if as_json:
+    if json_out:
         typer.echo(_json.dumps(out, ensure_ascii=False))
         return
     typer.echo(escape(f"{name}  [{st.auth_method}] {st.status}"))
@@ -4177,7 +4183,7 @@ def aws_profile_show(
         typer.echo(escape(f"  {k} = {v}"))
     pr_out = out["probe"]
     if isinstance(pr_out, dict):
-        typer.echo(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail: ' + str(pr_out['error'])}"))
+        typer.echo(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"))
 
 
 if __name__ == "__main__":
