@@ -6,6 +6,12 @@
 
 version: 1
 
+# 프로젝트 컨테이너 root — anvyc 가 자식을 순회해 프로젝트를 discovery.
+# 미설정 시 내장 defaults(~/dev, ~/Projects, ~/code, ~/Code, ~/workspace, ~/src) 사용.
+# 관리: anvyc config roots <list|add|rm|clear>
+project_roots:
+  - ~/dev
+
 storage:
   root: ".anvyc"
   keep_backups: 5

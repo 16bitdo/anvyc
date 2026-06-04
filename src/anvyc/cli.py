@@ -115,6 +115,9 @@ app.add_typer(sops_app, name="sops", rich_help_panel=PANEL_EXTERNAL)
 config_app = typer.Typer(name="config", help="anvyc.yaml 편집/조회.")
 app.add_typer(config_app, name="config", rich_help_panel=PANEL_PROJECT)
 
+roots_app = typer.Typer(name="roots", help="프로젝트 컨테이너 root 조회/관리 (anvyc.yaml project_roots).")
+config_app.add_typer(roots_app, name="roots")
+
 tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
 app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 
@@ -1455,6 +1458,15 @@ def _resolve_anvyc_yaml(explicit: Path | None) -> Path:
     return candidates[0]
 
 
+def _resolve_roots_target(config: Path | None, local: bool) -> Path:
+    """roots 명령 대상 파일. 기본 전역 ~/.anvyc/anvyc.yaml, --local 은 cwd-우선."""
+    if config is not None:
+        return config
+    if local:
+        return _resolve_anvyc_yaml(None)
+    return Path("~/.anvyc/anvyc.yaml").expanduser()
+
+
 @config_app.command("edit")
 def config_edit(
     config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
@@ -1567,6 +1579,119 @@ def config_show(
         typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2, default=str))
     else:
         typer.echo(_yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+
+
+# ============================================================================
+# config roots subcommands
+# ============================================================================
+
+
+@roots_app.command("list")
+def roots_list(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """등록된 컨테이너 root 를 출처/존재/프로젝트 수와 함께 출력."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import load_roots_model
+
+    target = _resolve_roots_target(config, local)
+    model = load_roots_model(target)
+    if json_out:
+        payload = {
+            "config": str(target),
+            "explicit": model.explicit,
+            "roots": [
+                {"path": e.path, "source": e.source, "exists": e.exists, "projects": e.projects}
+                for e in model.entries
+            ],
+        }
+        typer.echo(_json.dumps(payload, ensure_ascii=False))
+        return
+    console.print(f"[dim]config: {escape(str(target))} ({'explicit' if model.explicit else 'default'})[/]")
+    for e in model.entries:
+        mark = "✓" if e.exists else "✗"
+        console.print(
+            f"  {escape(e.path):24} [dim]({e.source})[/]  {mark}  "
+            f"[dim]{e.projects} projects[/]",
+            soft_wrap=True,
+        )
+
+
+@roots_app.command("add")
+def roots_add(
+    paths: list[str] = typer.Argument(..., help="추가할 컨테이너 root(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """컨테이너 root 를 추가한다(첫 추가 시 defaults 를 명시 리스트로 구체화)."""
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import add_roots
+
+    target = _resolve_roots_target(config, local)
+    res = add_roots(target, paths)
+    for w in res.warnings:
+        console.print(f"[yellow]warning[/] {escape(w)}")
+    if res.materialized and res.written:
+        console.print("[dim]defaults 를 명시 리스트로 구체화함[/]")
+    for p in res.added:
+        console.print(f"[green]added[/] {escape(p)}")
+    for p in res.skipped:
+        console.print(f"[dim]skip[/] {escape(p)} (이미 등록됨)")
+    if res.written:
+        console.print(f"[dim]→ {escape(str(target))}[/]")
+    else:
+        console.print("[dim]변경 없음[/]")
+
+
+@roots_app.command("rm")
+def roots_rm(
+    paths: list[str] = typer.Argument(..., help="제거할 컨테이너 root(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """컨테이너 root 를 제거한다(결과가 비면 defaults 로 복귀)."""
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import remove_roots
+
+    target = _resolve_roots_target(config, local)
+    res = remove_roots(target, paths)
+    for p in res.removed:
+        console.print(f"[green]removed[/] {escape(p)}")
+    for p in res.skipped:
+        console.print(f"[yellow]warning[/] {escape(p)} (목록에 없음)")
+    if res.cleared_to_default:
+        console.print("[dim]명시 리스트 비어 default 로 복귀[/]")
+    if res.written:
+        console.print(f"[dim]→ {escape(str(target))}[/]")
+    elif not res.removed:
+        console.print("[dim]변경 없음[/]")
+
+
+@roots_app.command("clear")
+def roots_clear(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """명시 project_roots 를 모두 제거하고 내장 defaults 로 복귀한다."""
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import clear_roots
+
+    target = _resolve_roots_target(config, local)
+    res = clear_roots(target)
+    if not res.written:
+        console.print("[dim]이미 default 사용 중 — 변경 없음[/]")
+        return
+    console.print(f"[green]cleared[/] {len(res.removed)} explicit root(s)")
+    console.print("[dim]default 복귀: " + escape(", ".join(res.effective_after)) + "[/]")
+    console.print(f"[dim]→ {escape(str(target))}[/]")
 
 
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:

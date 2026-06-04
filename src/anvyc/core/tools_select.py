@@ -13,15 +13,14 @@ anvyc 불변식: 값(secret) 미접촉 — 이 모듈은 enabled 토글만 다�
 """
 from __future__ import annotations
 
-import contextlib
-import os
-import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from anvyc.core.yaml_io import atomic_write_yaml
 
 # file path 만 생성자로 받는 adapter (cli._collect_tools_rows 와 동일 집합).
 _FILE_CTOR_ADAPTERS = {"shell", "git", "aws", "gh", "pulumi"}
@@ -209,20 +208,5 @@ def apply_enabled(
         backup_path = config_path.with_name(config_path.name + ".bak")
         backup_path.write_bytes(config_path.read_bytes())
 
-    _atomic_write_yaml(raw, config_path)
+    atomic_write_yaml(raw, config_path)
     return ConfigureResult(changes, written=True, config_path=config_path, backup_path=backup_path)
-
-
-def _atomic_write_yaml(data: dict[str, Any], path: Path) -> None:
-    """YAML atomic write — tempfile.mkstemp + os.replace (mcp_setup 패턴 미러)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        os.replace(tmp, path)
-    except Exception:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
