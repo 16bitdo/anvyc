@@ -45,5 +45,8 @@ def test_iter_union_projects_minus_excludes(tmp_path: Path) -> None:
 def test_iter_individual_without_marker_skipped(tmp_path: Path) -> None:
     indiv = tmp_path / "no-marker"
     indiv.mkdir()
-    cfg = AnvycConfig(project_roots=[], projects=[str(indiv)])
+    # 빈 컨테이너(자식 없음)로 project_roots 를 채워 DEFAULT fallback(~/dev 등) 회피.
+    empty_container = tmp_path / "empty"
+    empty_container.mkdir()
+    cfg = AnvycConfig(project_roots=[str(empty_container)], projects=[str(indiv)])
     assert iter_project_dirs(cfg, markers=(".git",)) == []

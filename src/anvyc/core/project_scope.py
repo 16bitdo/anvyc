@@ -58,8 +58,8 @@ def iter_project_dirs(
     """컨테이너(project_roots) walk ∪ 개별(projects, marker 보유) − exclude_projects.
 
     각 dir 는 markers 중 하나 이상을(파일/디렉터리) 보유. resolve 기준 dedup·정렬.
-    config 가 None 이면 load_anvyc_config() 후 resolve_project_roots (DEFAULT fallback 포함).
-    config 가 명시 제공되면 config.project_roots 를 직접 사용(빈 리스트 = 컨테이너 없음).
+    project_roots 는 항상 `resolve_project_roots` 를 거친다 — 빈 리스트면 DEFAULT
+    fallback (config 인자 유무와 무관한 일관 계약; 소비처가 의존).
     """
     from anvyc.core.config import load_anvyc_config
     from anvyc.core.project_roots import (
@@ -71,13 +71,7 @@ def iter_project_dirs(
     cfg = config if config is not None else load_anvyc_config()
     marker_t = tuple(markers)
     found: set[Path] = set()
-    # config 명시 제공 시: project_roots 직접 사용(빈 리스트 허용 — DEFAULT fallback 없음)
-    # config 가 None 이어서 load 한 경우: resolve_project_roots(DEFAULT fallback 포함)
-    if config is not None:
-        roots_iter: Iterable[str] = getattr(cfg, "project_roots", None) or []
-    else:
-        roots_iter = resolve_project_roots(cfg)
-    for root_str in roots_iter:
+    for root_str in resolve_project_roots(cfg):
         root = Path(root_str).expanduser()
         if root.is_dir():
             _walk_markers(root, depth=1, max_depth=max_depth, markers=marker_t, found=found)
