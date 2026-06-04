@@ -1637,7 +1637,7 @@ def roots_add(
     res = add_roots(target, paths)
     for w in res.warnings:
         console.print(f"[yellow]warning[/] {escape(w)}")
-    if res.materialized:
+    if res.materialized and res.written:
         console.print("[dim]defaults 를 명시 리스트로 구체화함[/]")
     for p in res.added:
         console.print(f"[green]added[/] {escape(p)}")

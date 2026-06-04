@@ -83,3 +83,18 @@ def test_roots_clear_reverts(tmp_path: Path) -> None:
     assert "project_roots" not in (yaml.safe_load(cfg.read_text()) or {})
     # before→after 출력에 default 표시
     assert "~/dev" in result.stdout
+
+
+def test_roots_add_existing_default_no_materialize_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """default config 에 이미 있는 default root 를 add → 미반영이므로 '구체화' 메시지 없음."""
+    home = tmp_path / "home"
+    (home / "dev").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    result = runner.invoke(app, ["config", "roots", "add", "~/dev", "--config", str(cfg)])
+    assert result.exit_code == 0
+    assert "구체화" not in result.stdout  # written=False 이면 materialize 메시지 미출력
+    assert "변경 없음" in result.stdout
