@@ -7,6 +7,7 @@ from anvyc.core.aws_config_edit import (
     AwsConfigEditError,
     create_profile,
     edit_profile,
+    remove_profile,
 )
 
 
@@ -128,3 +129,43 @@ def test_edit_missing_profile_errors(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, "[profile dev]\nregion = x\n")
     with pytest.raises(AwsConfigEditError, match="없습니다"):
         edit_profile(cfg, "ghost", sets={"region": "y"})
+
+
+def test_remove_deletes_section_preserving_rest(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "# header\n[profile keep]\nregion = a\n\n[profile gone]\nregion = b\n\n[profile keep2]\nregion = c\n",
+    )
+    res = remove_profile(cfg, "gone")
+    text = cfg.read_text(encoding="utf-8")
+    assert "[profile gone]" not in text
+    assert "# header" in text
+    assert "[profile keep]" in text and "[profile keep2]" in text
+    assert res.changed is True and res.backup_path is not None
+
+
+def test_remove_warns_orphan_sso_session(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "[sso-session ws]\nsso_start_url = https://u/start\n\n[profile only]\nsso_session = ws\n",
+    )
+    res = remove_profile(cfg, "only")
+    assert any("orphan" in w for w in res.warnings)
+    # 자동 삭제 안 함
+    assert "[sso-session ws]" in cfg.read_text(encoding="utf-8")
+
+
+def test_remove_no_orphan_warning_when_session_still_used(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "[sso-session ws]\nsso_start_url = https://u/start\n\n"
+        "[profile a]\nsso_session = ws\n\n[profile b]\nsso_session = ws\n",
+    )
+    res = remove_profile(cfg, "a")
+    assert not any("orphan" in w for w in res.warnings)
+
+
+def test_remove_missing_profile_errors(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, "[profile a]\nregion = x\n")
+    with pytest.raises(AwsConfigEditError, match="없습니다"):
+        remove_profile(cfg, "ghost")
