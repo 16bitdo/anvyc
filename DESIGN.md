@@ -2,7 +2,7 @@
 
 > 문서 버전: v0.3
 > 작성일: 2026-05-17
-> 개정일: 2026-05-27 (v0.3 — CP-13 cost observability 추가, axis 본문 분리)
+> 개정일: 2026-06-04 (config roots 관리 명령 추가; 직전 v0.3 — CP-13 cost observability, axis 본문 분리)
 > 프로젝트 가칭: `anvyc`
 > 목적: 여러 장치에서 Claude Code, Cursor IDE, AWS CLI, GitHub CLI, Pulumi, iTerm2 등 로컬 개발환경 설정을 안전하고 일관되게 동기화한다.
 
@@ -1447,6 +1447,9 @@ anvyc 가 "사용자 프로젝트 루트" 아래를 스캔하는 모든 경로 �
 - `resolve_project_roots(config)` — anvyc.yaml 의 top-level `project_roots` 를 읽고,
   없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback. config 인지가 필요한 진입점
   (doctor 5 check, `project list`, MCP `project_list`)이 호출.
+- 관리 명령: `anvyc config roots <list|add|rm|clear>` (`core/project_roots_edit.py`) —
+  전역 `~/.anvyc/anvyc.yaml` 의 `project_roots` 를 materialize 후 편집. 개별 프로젝트
+  관리(`config projects`)는 Phase 2(별도 spec/plan).
 
 설정 예:
 

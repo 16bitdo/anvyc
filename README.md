@@ -314,6 +314,7 @@ anvyc scan-secrets             # secret 패턴 스캔
 # --- 설정 / 도구 / 프로젝트 view ---
 anvyc config edit              # $EDITOR 로 anvyc.yaml 편집 + schema 검증 (v0.6.3+)
 anvyc config show [--effective] [--json]   # raw 또는 default 적용된 yaml/json (v0.6.3+/v0.8.0)
+anvyc config roots {list|add|rm|clear}     # 프로젝트 컨테이너 root 관리 (전역 ~/.anvyc; --local/--config, varargs)
 anvyc tools list [--json]      # 10 도구의 메타데이터+상태 (label/category/요약/enabled/detect); --json 은 포함·제외 등 전체 (v0.6.3+)
 anvyc tools configure [--yes]  # 도구 enable/disable 대화형 선택 → anvyc.yaml 반영 ([tui] extra 시 체크박스 TUI, 없으면 번호 메뉴; 재실행, 미리보기 + .bak)
 
