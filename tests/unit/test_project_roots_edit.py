@@ -192,6 +192,16 @@ def test_remove_from_materialized_defaults(tmp_path: Path) -> None:
     assert "~/Code" not in written and "~/dev" in written
 
 
+def test_remove_matches_hand_edited_trailing_slash(tmp_path: Path) -> None:
+    """저장값 정규화 — hand-edit 된 후행 슬래시 root 도 rm 이 매칭한다."""
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/work/\n  - ~/dev\n")  # 후행 슬래시(hand-edit)
+    res = remove_roots(cfg, ["~/work"])
+    assert res.removed == ["~/work"] and res.skipped == []
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev"]
+
+
 # ---------------------------------------------------------------------------
 # Task 7: clear_roots
 # ---------------------------------------------------------------------------

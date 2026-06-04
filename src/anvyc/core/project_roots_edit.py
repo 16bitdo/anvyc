@@ -47,7 +47,8 @@ def _current_explicit_roots(raw: dict[str, Any]) -> tuple[list[str], bool]:
     """(roots, was_explicit). 명시 비어있으면 DEFAULT 로 materialize."""
     val = raw.get("project_roots")
     if isinstance(val, list):
-        cleaned = [str(x).strip() for x in val if str(x).strip()]
+        # 저장값도 정규화 — hand-edit 된 `~/work/`(후행 슬래시) 등이 rm/dedup 비교와 일치하도록.
+        cleaned = [n for n in (normalize_root(str(x)) for x in val) if n]
         if cleaned:
             return cleaned, True
     return list(DEFAULT_PROJECT_ROOTS), False
