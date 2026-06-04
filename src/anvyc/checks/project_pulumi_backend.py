@@ -19,36 +19,13 @@ import re
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.core.project_roots import resolve_project_roots
 from anvyc.utils.pulumi_project import detect_pulumi_project, normalize_backend_url
-
-_MAX_DEPTH = 3  # <root>/<group>/<project>/Pulumi.yaml 까지
 
 # 한 줄에 `export PULUMI_BACKEND_URL=foo` 또는 `="foo"` 매칭 (project_gh_account 패턴).
 _PULUMI_BACKEND_URL_RE = re.compile(
     r"""^\s*export\s+PULUMI_BACKEND_URL\s*=\s*['"]?([^'"\s#]+)""",
     re.MULTILINE,
 )
-
-
-def _iter_pulumi_yaml(root: Path, max_depth: int = _MAX_DEPTH) -> list[Path]:
-    """root 아래 max_depth 까지 `Pulumi.yaml` 파일 수집."""
-    if not root.is_dir():
-        return []
-    out: list[Path] = []
-    try:
-        for p in root.rglob("Pulumi.yaml"):
-            try:
-                rel = p.relative_to(root)
-            except ValueError:
-                continue
-            if len(rel.parts) > max_depth:
-                continue
-            if p.is_file():
-                out.append(p)
-    except (OSError, PermissionError):
-        return []
-    return sorted(out)
 
 
 def _read_envrc_pulumi_backend(envrc: Path) -> str | None:
@@ -65,30 +42,15 @@ class ProjectPulumiBackendMappingCheck:
     name = "project-pulumi-backend-mapping"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
-        yaml_files: list[Path] = []
-        seen: set[Path] = set()
-        for root_str in resolve_project_roots():
-            root = Path(root_str).expanduser()
-            for y in _iter_pulumi_yaml(root):
-                try:
-                    key = y.resolve()
-                except OSError:
-                    key = y
-                if key in seen:
-                    continue
-                seen.add(key)
-                yaml_files.append(y)
+        from anvyc.core.project_scope import iter_project_dirs
 
         # backend (Pulumi.yaml) 또는 PULUMI_BACKEND_URL (.envrc) 을 선언한 project 만 대상.
         targets: list[tuple[Path, str | None, str | None]] = []
-        for yaml_path in yaml_files:
-            project_dir = yaml_path.parent
+        for project_dir in iter_project_dirs(markers=("Pulumi.yaml",), max_depth=2):
             info = detect_pulumi_project(project_dir)
             yaml_backend = info.backend_url if info else None
             envrc = project_dir / ".envrc"
-            envrc_backend = (
-                _read_envrc_pulumi_backend(envrc) if envrc.is_file() else None
-            )
+            envrc_backend = _read_envrc_pulumi_backend(envrc) if envrc.is_file() else None
             if yaml_backend or envrc_backend:
                 targets.append((project_dir, yaml_backend, envrc_backend))
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
 
 _MAX_DETAILS = 10  # 한 번에 표시할 sample 개수 — 그 이상은 summary 만
 
@@ -21,6 +20,7 @@ class CursorProjectsSuggestCheck:
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
         from anvyc.core.config import load_anvyc_config
+        from anvyc.core.project_scope import iter_project_dirs
 
         # 이미 등록된 roots 추출 (중복 제안 회피)
         registered: set[Path] = set()
@@ -38,28 +38,16 @@ class CursorProjectsSuggestCheck:
             # config 로드 실패해도 check 는 계속 — registered 가 비어있을 뿐
             pass
 
-        # candidate roots 스캔
+        # candidate roots 스캔 (config-aware + excludes honoring)
         discovered: list[Path] = []
-        for cand in DEFAULT_PROJECT_ROOTS:
-            base = Path(cand).expanduser()
-            if not base.is_dir():
-                continue
+        for entry in iter_project_dirs(markers=(".cursor",), max_depth=1):
             try:
-                for entry in base.iterdir():
-                    if not entry.is_dir():
-                        continue
-                    cursor_dir = entry / ".cursor"
-                    if not cursor_dir.is_dir():
-                        continue
-                    try:
-                        resolved = entry.resolve()
-                    except OSError:
-                        continue
-                    if resolved in registered:
-                        continue
-                    discovered.append(entry)
-            except (OSError, PermissionError):
+                resolved = entry.resolve()
+            except OSError:
                 continue
+            if resolved in registered:
+                continue
+            discovered.append(entry)
 
         if not discovered:
             return []

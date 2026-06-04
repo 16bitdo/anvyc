@@ -264,12 +264,15 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
         return to_dict(info)
 
     if name == "project_list":
-        from anvyc.core.project_discovery import discover_projects
+        from anvyc.core.project_discovery import PROJECT_MARKERS, discover_projects
         from anvyc.core.project_info import collect_project_info, to_dict
-        from anvyc.core.project_roots import resolve_project_roots
+        from anvyc.core.project_scope import iter_project_dirs
 
-        roots = args.get("roots") or list(resolve_project_roots())
-        projs = discover_projects(roots)
+        explicit = args.get("roots")
+        if explicit:
+            projs = discover_projects(list(explicit))  # 명시 override
+        else:
+            projs = iter_project_dirs(markers=PROJECT_MARKERS, max_depth=2)
         reveal = bool(args.get("reveal_secrets", False))
         return [to_dict(collect_project_info(p, redact_secrets=not reveal)) for p in projs]
 

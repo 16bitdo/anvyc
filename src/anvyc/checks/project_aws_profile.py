@@ -13,10 +13,7 @@ import re
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.core.project_roots import resolve_project_roots
 from anvyc.utils.aws_config import load_aws_profile_names
-
-_MAX_DEPTH = 3  # <root>/<group>/<project>/.envrc 까지
 
 # 한 줄에 `export AWS_PROFILE=foo` 또는 `export AWS_PROFILE="foo"` 등을 매칭.
 # 인용부호 끝나기 전 까지 또는 공백/#/끝까지 캡쳐.
@@ -24,27 +21,6 @@ _AWS_PROFILE_RE = re.compile(
     r"""^\s*export\s+AWS_PROFILE\s*=\s*['"]?([^'"\s#]+)""",
     re.MULTILINE,
 )
-
-
-def _iter_envrcs(root: Path, max_depth: int = _MAX_DEPTH) -> list[Path]:
-    """root 아래 max_depth 까지 `.envrc` 파일 수집."""
-    if not root.is_dir():
-        return []
-    out: list[Path] = []
-    try:
-        # rglob 은 depth 제한 없음 — 명시적 depth 비교
-        for p in root.rglob(".envrc"):
-            try:
-                rel = p.relative_to(root)
-            except ValueError:
-                continue
-            if len(rel.parts) > max_depth:
-                continue
-            if p.is_file():
-                out.append(p)
-    except (OSError, PermissionError):
-        return []
-    return sorted(out)
 
 
 def _read_envrc_profile(envrc: Path) -> str | None:
@@ -61,27 +37,13 @@ class ProjectAwsProfileMappingCheck:
     name = "project-aws-profile-mapping"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
-        envrcs: list[Path] = []
-        seen: set[Path] = set()
-        for root_str in resolve_project_roots():
-            root = Path(root_str).expanduser()
-            for e in _iter_envrcs(root):
-                try:
-                    key = e.resolve()
-                except OSError:
-                    key = e
-                if key in seen:
-                    continue
-                seen.add(key)
-                envrcs.append(e)
-        if not envrcs:
-            return []
+        from anvyc.core.project_scope import iter_project_dirs
 
         mappings: list[tuple[Path, str]] = []
-        for e in envrcs:
-            prof = _read_envrc_profile(e)
+        for project_dir in iter_project_dirs(markers=(".envrc",), max_depth=2):
+            prof = _read_envrc_profile(project_dir / ".envrc")
             if prof:
-                mappings.append((e, prof))
+                mappings.append((project_dir / ".envrc", prof))
 
         if not mappings:
             return []
