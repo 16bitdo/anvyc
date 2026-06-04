@@ -147,3 +147,46 @@ def test_add_warns_missing_dir_but_adds(tmp_path: Path) -> None:
 def normalize_for(p: Path) -> str:
     """테스트 헬퍼 — tmp_path 는 $HOME 밖이므로 절대경로 그대로."""
     return normalize_root(str(p))
+
+
+# ---------------------------------------------------------------------------
+# Task 6: remove_roots
+# ---------------------------------------------------------------------------
+
+
+def test_remove_existing(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n  - ~/work\n")
+    res = remove_roots(cfg, ["~/work"])
+    assert res.removed == ["~/work"] and res.written is True
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev"]
+
+
+def test_remove_to_empty_clears_key(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+    res = remove_roots(cfg, ["~/dev"])
+    assert res.cleared_to_default is True
+    import yaml as _y
+    assert "project_roots" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+def test_remove_not_in_list_reported(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+    res = remove_roots(cfg, ["~/nope"])
+    assert res.skipped == ["~/nope"] and res.removed == []
+    assert res.written is False
+
+
+def test_remove_from_materialized_defaults(tmp_path: Path) -> None:
+    """project_roots 미설정(default) 상태에서 default 멤버 rm → materialize 후 기록 (spec §7)."""
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")  # project_roots 없음
+    res = remove_roots(cfg, ["~/Code"])
+    assert res.materialized is True
+    assert res.removed == ["~/Code"] and res.written is True
+    import yaml as _y
+    written = _y.safe_load(cfg.read_text())["project_roots"]
+    assert "~/Code" not in written and "~/dev" in written
