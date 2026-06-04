@@ -14,10 +14,13 @@ from anvyc.core.project_roots_edit import (
     add_projects,
     add_roots,
     clear_roots,
+    exclude_project,
+    load_projects_model,
     load_roots_model,
     normalize_root,
     remove_projects,
     remove_roots,
+    unexclude_project,
 )
 
 
@@ -291,3 +294,41 @@ def test_remove_projects_to_empty_drops_key(tmp_path: Path) -> None:
     assert res.removed == ["~/work/x"]
     import yaml as _y
     assert "projects" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+# ---------------------------------------------------------------------------
+# Task 6: exclude_project / unexclude_project / load_projects_model
+# ---------------------------------------------------------------------------
+
+
+def test_exclude_and_unexclude(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = exclude_project(cfg, ["~/dev/archived"])
+    assert res.key == "exclude_projects" and res.added == ["~/dev/archived"]
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["exclude_projects"] == ["~/dev/archived"]
+    res2 = unexclude_project(cfg, ["~/dev/archived"])
+    assert res2.removed == ["~/dev/archived"]
+    assert "exclude_projects" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+def test_add_project_in_exclude_warns_conflict(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text(f"exclude_projects:\n  - {proj}\n")
+    res = add_projects(cfg, [str(proj)])
+    assert any("exclude 우선" in w for w in res.warnings)
+
+
+def test_load_projects_model(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text(f"projects:\n  - {proj}\nexclude_projects:\n  - ~/dev/gone\n")
+    model = load_projects_model(cfg)
+    inc = model.includes[0]
+    assert inc.kind == "include" and inc.exists is True and inc.has_marker is True
+    exc = model.excludes[0]
+    assert exc.kind == "exclude" and exc.exists is False

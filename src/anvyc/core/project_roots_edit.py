@@ -282,3 +282,59 @@ def _write_roots(raw: dict[str, Any], config_path: Path, *, make_backup: bool) -
             config_path.write_bytes(backup.read_bytes())
         raise
     return backup
+
+
+def exclude_project(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "exclude_projects", raw_paths,
+        op="add", action="exclude", require_marker=False, make_backup=make_backup,
+    )
+
+
+def unexclude_project(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "exclude_projects", raw_paths,
+        op="remove", action="unexclude", require_marker=False, make_backup=make_backup,
+    )
+
+
+@dataclass
+class ProjectEntry:
+    path: str
+    kind: str        # "include" | "exclude"
+    exists: bool
+    has_marker: bool
+
+
+@dataclass
+class ProjectsModel:
+    includes: list[ProjectEntry]
+    excludes: list[ProjectEntry]
+    config_path: Path
+
+
+def load_projects_model(config_path: Path) -> ProjectsModel:
+    raw = _load_raw(config_path)
+
+    def _entries(key: str, kind: str) -> list[ProjectEntry]:
+        out: list[ProjectEntry] = []
+        for p in _current_list(raw, key):
+            pp = Path(p).expanduser()
+            exists = pp.is_dir()
+            out.append(
+                ProjectEntry(
+                    path=p, kind=kind, exists=exists,
+                    has_marker=exists and _has_project_marker(pp),
+                )
+            )
+        return out
+
+    return ProjectsModel(
+        includes=_entries("projects", "include"),
+        excludes=_entries("exclude_projects", "exclude"),
+        config_path=config_path,
+    )
