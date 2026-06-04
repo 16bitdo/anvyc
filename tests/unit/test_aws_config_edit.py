@@ -6,6 +6,7 @@ import pytest
 from anvyc.core.aws_config_edit import (
     AwsConfigEditError,
     create_profile,
+    edit_profile,
 )
 
 
@@ -93,3 +94,37 @@ def test_create_rollback_on_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     with pytest.raises(AwsConfigEditError):
         create_profile(cfg, "b", region="y")
     assert cfg.read_text(encoding="utf-8") == before  # 롤백됨
+
+
+def test_edit_replaces_key_in_place_preserving_comments(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "[profile dev]\n# keep me\nregion = us-east-1\noutput = json\n\n[profile other]\nregion = z\n",
+    )
+    res = edit_profile(cfg, "dev", sets={"region": "ap-northeast-2"})
+    text = cfg.read_text(encoding="utf-8")
+    assert "region = ap-northeast-2" in text
+    assert "region = us-east-1" not in text
+    assert "# keep me" in text                 # 섹션 내 주석 보존
+    assert "[profile other]\nregion = z" in text  # 다른 섹션 불변
+    assert res.changed is True
+
+
+def test_edit_inserts_new_key(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, "[profile dev]\nregion = us-east-1\n")
+    edit_profile(cfg, "dev", sets={"output": "yaml"})
+    from anvyc.utils.aws_config import load_profile_config
+    keys = load_profile_config("dev", cfg)
+    assert keys is not None and keys["output"] == "yaml" and keys["region"] == "us-east-1"
+
+
+def test_edit_rejects_static_cred_keys(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, "[profile dev]\nregion = us-east-1\n")
+    with pytest.raises(AwsConfigEditError, match="정적 자격 키"):
+        edit_profile(cfg, "dev", sets={"aws_access_key_id": "AKIA_X"})
+
+
+def test_edit_missing_profile_errors(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, "[profile dev]\nregion = x\n")
+    with pytest.raises(AwsConfigEditError, match="없습니다"):
+        edit_profile(cfg, "ghost", sets={"region": "y"})
