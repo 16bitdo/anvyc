@@ -117,7 +117,11 @@ def evaluate_profile_state(
     if method == AUTH_CREDENTIAL_PROCESS:
         cmd = keys.get("credential_process", "")
         st.credential_process_cmd = cmd
-        first = shlex.split(cmd)[0] if cmd.strip() else ""
+        try:
+            parts = shlex.split(cmd) if cmd.strip() else []
+        except ValueError:
+            parts = []  # 따옴표 불균형 등 malformed → cmd_missing (크래시 금지)
+        first = parts[0] if parts else ""
         st.status = "cmd_ok" if (first and shutil.which(first)) else "cmd_missing"
         return st
 

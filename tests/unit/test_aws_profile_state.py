@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from anvyc.checks.base import Severity
-from anvyc.core.aws_profile_state import (  # noqa: E402
+from anvyc.core.aws_profile_state import (
     AUTH_ASSUME_ROLE,
     AUTH_CREDENTIAL_PROCESS,
     AUTH_INCOMPLETE,
@@ -223,3 +223,68 @@ def test_result_incomplete_warns() -> None:
     st = AwsProfileState(profile="bare", defined=True, auth_method=AUTH_INCOMPLETE, status="incomplete")
     r = state_to_result(st, check_name=CN)
     assert r is not None and r.severity is Severity.WARNING
+
+
+# ── Fix 1: shlex.split ValueError 가드 ───────────────────────────────────────
+
+def test_eval_credential_process_malformed_no_crash(tmp_path: Path) -> None:
+    # 따옴표 불균형 → shlex.split ValueError → 크래시 없이 cmd_missing.
+    home = _home(tmp_path, '[profile vault]\ncredential_process = aws-vault exec "x\n')
+    st = evaluate_profile_state("vault", home=home, now=_NOW)
+    assert st.auth_method == "credential_process"
+    assert st.status == "cmd_missing"
+
+
+def test_eval_credential_process_cmd_ok(tmp_path: Path) -> None:
+    import shutil
+
+    real = shutil.which("ls") or shutil.which("sh")
+    assert real is not None  # POSIX 보장
+    home = _home(tmp_path, f"[profile vault]\ncredential_process = {real} --version\n")
+    st = evaluate_profile_state("vault", home=home, now=_NOW)
+    assert st.status == "cmd_ok"
+
+
+def test_eval_sso_unresolvable_start_url(tmp_path: Path) -> None:
+    # sso_session 참조하나 [sso-session] 블록에 sso_start_url 없음 → unknown.
+    home = _home(
+        tmp_path,
+        "[sso-session ws]\nsso_region = ap-northeast-2\n\n[profile dev]\nsso_session = ws\n",
+    )
+    st = evaluate_profile_state("dev", home=home, now=_NOW)
+    assert st.auth_method == "sso"
+    assert st.status == "unknown"
+
+
+def test_eval_assume_role_credential_source_env(tmp_path: Path) -> None:
+    home = _home(
+        tmp_path,
+        "[profile ec2]\nrole_arn = arn:aws:iam::1:role/r\ncredential_source = Ec2InstanceMetadata\n",
+    )
+    st = evaluate_profile_state("ec2", home=home, now=_NOW)
+    assert st.auth_method == "assume_role"
+    assert st.status == "env"
+
+
+def test_eval_web_identity_token_present(tmp_path: Path) -> None:
+    token = tmp_path / "tok.jwt"
+    token.write_text("x", encoding="utf-8")
+    home = _home(
+        tmp_path,
+        f"[profile oidc]\nrole_arn = arn:aws:iam::1:role/r\nweb_identity_token_file = {token}\n",
+    )
+    st = evaluate_profile_state("oidc", home=home, now=_NOW)
+    assert st.auth_method == "web_identity"
+    assert st.token_file_exists is True
+
+
+def test_result_web_identity_info() -> None:
+    st = AwsProfileState(profile="oidc", defined=True, auth_method="web_identity", status="classified", token_file_exists=False)
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.INFO
+
+
+def test_result_credential_process_ok_info() -> None:
+    st = AwsProfileState(profile="v", defined=True, auth_method=AUTH_CREDENTIAL_PROCESS, status="cmd_ok")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.INFO
