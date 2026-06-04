@@ -2075,6 +2075,7 @@ Control Plane v2 의 마지막 axis. GitHub PAT / AWS session / Claude OAuth
 [CP-4 §7](./docs/design-axes/cp-04-snapshot.md) 의 4-layer 안전 패턴 미러.
 v0.21.0 에서 `aws-account-status` doctor check + `anvyc aws profile list/show`
 (인증 방식 + 오프라인 상태, `--probe` opt-in) 가 추가됐다. 역할 분리는 [CP-5 §5.1](./docs/design-axes/cp-05-creds.md) 참조.
+Phase 2 에서 `anvyc aws profile create/edit/rm` (`~/.aws/config` profile CRUD, surgical 텍스트 편집 + diff/dry-run/.bak/재파싱 검증)을 추가했다. 신규 모듈: `core/ini_io.py` (atomic 텍스트 쓰기 + 섹션 라인 범위 탐지), `core/aws_config_edit.py` (CRUD 로직 + 정적 시크릿 불가침 + orphan sso-session 경고).
 
 상세 (schema v1 / 3 kind detection 전략 / CP-3 scheduler 시너지 / rotate
 안전 절차) → [CP-5 본문](./docs/design-axes/cp-05-creds.md).

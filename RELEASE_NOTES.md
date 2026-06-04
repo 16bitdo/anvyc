@@ -3,6 +3,7 @@
 ## v0.21.0 — (unreleased)
 
 - **feat: AWS 계정 인증/연결 상태 점검** (`aws-account-status` 전역 doctor check + `project doctor` `aws_account_status`) + `anvyc aws profile list/show` (`--probe` opt-in). Phase 1 (읽기 전용); Phase 2 (profile CRUD) 예정.
+- **feat: `anvyc aws profile create/edit/rm`** — `~/.aws/config` profile CRUD (surgical 텍스트 편집 + diff/dry-run/.bak/재파싱 검증, 정적 시크릿 불가침, orphan sso-session 경고). AWS account-status Phase 2.
 
 ## v0.20.0 — 2026-05-30 (minor — creds-expiry 임계 anvyc.yaml config화)
 

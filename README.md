@@ -457,6 +457,19 @@ anvyc aws profile show ws-dev           # 단일 profile 상세
 anvyc aws profile list --probe          # 라이브 liveness (aws sts get-caller-identity)
 ```
 
+#### profile 생성/수정/삭제 (Phase 2)
+
+```bash
+anvyc aws profile create ws-dev --sso-session ws --start-url https://d-x.awsapps.com/start \
+  --account-id 111122223333 --role-name Dev --region ap-northeast-2 --dry-run   # 미리보기
+anvyc aws profile create ws-dev --sso-session ws --region ap-northeast-2 -y      # 적용(.bak 백업)
+anvyc aws profile edit ws-dev --set region=us-east-1 -y
+anvyc aws profile rm ws-dev                                                      # 확인 후 삭제
+```
+
+`~/.aws/config` 만 수정하며(주석 보존), `~/.aws/credentials`(정적 키)는 건드리지 않는다.
+변경 전 unified diff 미리보기 + `--dry-run` + `.bak` 백업 + 재파싱 검증을 거친다.
+
 ---
 
 ## 12. 호스트별 overlay (v0.6.4+)
