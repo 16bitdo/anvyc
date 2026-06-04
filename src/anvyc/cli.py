@@ -128,6 +128,12 @@ app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 project_app = typer.Typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
 app.add_typer(project_app, name="project", rich_help_panel=PANEL_PROJECT)
 
+aws_app = typer.Typer(name="aws", help="AWS profile 조회/관리 (~/.aws/config).")
+app.add_typer(aws_app, name="aws", rich_help_panel=PANEL_PROJECT)
+
+aws_profile_app = typer.Typer(name="profile", help="AWS profile 조회/관리 (인증 방식·연결 상태).")
+aws_app.add_typer(aws_profile_app, name="profile")
+
 snapshot_app = typer.Typer(
     name="snapshot",
     help="작업 회복 — git stash + meta 묶음 snapshot (v0.14.0+).",
@@ -4071,6 +4077,58 @@ def guard_protect(
         color = {"created": "green", "updated": "green", "exists": "dim",
                  "no-access": "dim"}.get(res.action, "yellow")
         console.print(f"[{color}]{res.action}[/] {owner}/{name} {res.detail}")
+
+
+@aws_profile_app.command("list")
+def aws_profile_list(
+    as_json: bool = typer.Option(False, "--json", help="JSON 출력."),
+    status: bool = typer.Option(True, "--status/--no-status", help="연결 상태 판정(오프라인)."),
+    probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
+) -> None:
+    """~/.aws/config 의 profile 목록 + 인증 방식 + (기본) 오프라인 연결 상태."""
+    import json as _json
+    from pathlib import Path
+
+    from rich.markup import escape
+
+    from anvyc.core.aws_profile_state import evaluate_profile_state
+    from anvyc.utils.aws_config import load_aws_profile_names
+
+    # HOME-기준 경로로 통일 — DEFAULT_AWS_CONFIG(import 시점 고정)을 우회해
+    # 테스트의 HOME monkeypatch 및 실행 시점 HOME 변경을 일관되게 반영.
+    home = Path.home()
+    names = sorted(load_aws_profile_names(home / ".aws" / "config"))
+    rows: list[dict[str, object]] = []
+    for name in names:
+        row: dict[str, object] = {"name": name, "auth_method": None, "status": None}
+        if status:
+            st = evaluate_profile_state(name, home=home)
+            row["auth_method"] = st.auth_method
+            row["status"] = st.status
+            row["sso_session"] = st.sso_session
+            row["expires_at"] = st.expires_at
+        row["probe"] = None
+        if probe:
+            from anvyc.core.aws_probe import probe_caller_identity
+
+            pr = probe_caller_identity(name)
+            row["probe"] = {"ok": pr.ok, "account": pr.account, "arn": pr.arn, "error": pr.error}
+        rows.append(row)
+
+    if as_json:
+        typer.echo(_json.dumps({"profiles": rows}, ensure_ascii=False))
+        return
+    if not rows:
+        typer.echo("AWS profile 없음 (~/.aws/config).")
+        return
+    for row in rows:
+        line = f"{row['name']}"
+        if row.get("auth_method"):
+            line += f"  [{row['auth_method']}] {row.get('status')}"
+        probe_out = row.get("probe")
+        if isinstance(probe_out, dict):
+            line += f"  probe={'ok ' + str(probe_out['account']) if probe_out['ok'] else 'fail: ' + str(probe_out['error'])}"
+        typer.echo(escape(line))
 
 
 if __name__ == "__main__":
