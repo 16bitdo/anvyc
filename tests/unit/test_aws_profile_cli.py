@@ -49,3 +49,20 @@ def test_list_no_status_skips_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["profiles"][0]["status"] is None
+
+
+def test_show_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["aws", "profile", "show", "ws-dev", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["name"] == "ws-dev"
+    assert data["auth_method"] == "sso"
+    assert data["sso_session"] == "ws"
+
+
+def test_show_unknown_profile_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["aws", "profile", "show", "ghost"])
+    assert result.exit_code == 1
+    assert "ghost" in result.stdout

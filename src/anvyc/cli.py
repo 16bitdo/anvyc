@@ -4131,5 +4131,54 @@ def aws_profile_list(
         typer.echo(escape(line))
 
 
+@aws_profile_app.command("show")
+def aws_profile_show(
+    name: str = typer.Argument(..., help="profile 이름."),
+    as_json: bool = typer.Option(False, "--json", help="JSON 출력."),
+    probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
+) -> None:
+    """단일 profile 의 해석 키 + 인증 방식 + 연결 상태 (+--probe 시 라이브 verdict)."""
+    import json as _json
+    from pathlib import Path
+
+    from rich.markup import escape
+
+    from anvyc.core.aws_profile_state import evaluate_profile_state
+    from anvyc.utils.aws_config import load_profile_config
+
+    home = Path.home()  # HOME-기준 통일 (DEFAULT_AWS_CONFIG import-고정 우회)
+    keys = load_profile_config(name, home / ".aws" / "config")
+    if keys is None:
+        typer.echo(f"profile '{name}' 가 ~/.aws/config 에 없음.")
+        raise typer.Exit(1)
+
+    st = evaluate_profile_state(name, home=home)
+    out: dict[str, object] = {
+        "name": name,
+        "auth_method": st.auth_method,
+        "status": st.status,
+        "sso_session": st.sso_session,
+        "expires_at": st.expires_at,
+        "source_profile": st.source_profile,
+        "keys": keys,
+        "probe": None,
+    }
+    if probe:
+        from anvyc.core.aws_probe import probe_caller_identity
+
+        pr = probe_caller_identity(name)
+        out["probe"] = {"ok": pr.ok, "account": pr.account, "arn": pr.arn, "error": pr.error}
+
+    if as_json:
+        typer.echo(_json.dumps(out, ensure_ascii=False))
+        return
+    typer.echo(escape(f"{name}  [{st.auth_method}] {st.status}"))
+    for k, v in keys.items():
+        typer.echo(escape(f"  {k} = {v}"))
+    pr_out = out["probe"]
+    if isinstance(pr_out, dict):
+        typer.echo(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail: ' + str(pr_out['error'])}"))
+
+
 if __name__ == "__main__":
     app()
