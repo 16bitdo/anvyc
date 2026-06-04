@@ -43,3 +43,19 @@ def test_project_doctor_no_aws_profile_silent(
 
     report = run_project_doctor(proj)
     assert "aws_account_status" not in {r.check_name for r in report.results}
+
+
+def test_project_doctor_undefined_profile_defers_to_aws_profile_defined(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # .envrc 가 ~/.aws/config 에 없는 profile 을 가리킴 → aws_account_status 는 침묵(state.defined=False),
+    # 미정의 WARNING 은 기존 aws_profile_defined 가 발행 (중복 WARNING 방지 설계 검증).
+    monkeypatch.setenv("HOME", str(_home_with_profile(tmp_path)))
+    proj = tmp_path / "proj_ghost"
+    proj.mkdir()
+    (proj / ".envrc").write_text('export AWS_PROFILE="ghost"\n', encoding="utf-8")
+
+    report = run_project_doctor(proj)
+    names = [r.check_name for r in report.results]
+    assert "aws_account_status" not in names
+    assert "aws_profile_defined" in names  # 미정의는 이 체크가 보고
