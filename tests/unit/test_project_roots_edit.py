@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
-from anvyc.core.project_roots_edit import _current_explicit_roots, _load_raw, normalize_root
+from anvyc.core.project_roots_edit import (
+    _current_explicit_roots,
+    _load_raw,
+    _write_roots,
+    normalize_root,
+)
 
 
 def test_normalize_keeps_tilde(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -65,3 +70,36 @@ def test_current_roots_empty_list_materializes(tmp_path: Path) -> None:
     roots, was_explicit = _current_explicit_roots(_load_raw(cfg))
     assert roots == list(DEFAULT_PROJECT_ROOTS)
     assert was_explicit is False
+
+
+# ---------------------------------------------------------------------------
+# Task 4: RootsEditResult + _write_roots
+# ---------------------------------------------------------------------------
+
+
+def test_write_roots_backup_and_revalidate(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+    backup = _write_roots({"project_roots": ["~/dev", "~/work"]}, cfg, make_backup=True)
+    assert backup is not None and backup.name == "anvyc.yaml.bak"
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev", "~/work"]
+    # 백업엔 변경 전 내용 보존 (단일 .bak — 매 변경 덮어씀, tools_select 선례)
+    assert _y.safe_load(backup.read_text())["project_roots"] == ["~/dev"]
+
+
+def test_write_roots_restores_on_revalidate_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+
+    def _boom(_path: Path) -> object:
+        raise ValueError("schema invalid")
+
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", _boom)
+    with pytest.raises(ValueError):
+        _write_roots({"project_roots": ["~/x"]}, cfg, make_backup=True)
+    # 원본 복구
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev"]

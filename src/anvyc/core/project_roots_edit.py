@@ -7,12 +7,14 @@ materialize(defaults 구체화) → add/remove/clear. 쓰기는 yaml_io.atomic_w
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
+from anvyc.core.yaml_io import atomic_write_yaml
 
 
 def normalize_root(raw: str) -> str:
@@ -49,3 +51,35 @@ def _current_explicit_roots(raw: dict[str, Any]) -> tuple[list[str], bool]:
         if cleaned:
             return cleaned, True
     return list(DEFAULT_PROJECT_ROOTS), False
+
+
+@dataclass
+class RootsEditResult:
+    action: str                                  # "add" | "remove" | "clear"
+    added: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)      # 중복(add) / 비목록(remove)
+    warnings: list[str] = field(default_factory=list)     # 미존재 dir / 상대경로
+    effective_after: list[str] = field(default_factory=list)
+    materialized: bool = False
+    cleared_to_default: bool = False
+    written: bool = False
+    config_path: Path | None = None
+    backup_path: Path | None = None
+
+
+def _write_roots(raw: dict[str, Any], config_path: Path, *, make_backup: bool) -> Path | None:
+    backup: Path | None = None
+    if make_backup and config_path.is_file():
+        backup = config_path.with_name(config_path.name + ".bak")
+        backup.write_bytes(config_path.read_bytes())
+    atomic_write_yaml(raw, config_path)
+    from anvyc.core.config import load_anvyc_config
+
+    try:
+        load_anvyc_config(config_path)
+    except Exception:
+        if backup is not None:
+            config_path.write_bytes(backup.read_bytes())
+        raise
+    return backup
