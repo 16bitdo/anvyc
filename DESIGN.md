@@ -1921,11 +1921,12 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 렌더가 suggestion 의 `[profile x]` 를 Rich markup 으로 삼키던 버그를 해소(회귀 lock:
 `tests/unit/test_project_doctor_render.py`).
 
-### 33.3 project doctor check 명세 (8 check)
+### 33.3 project doctor check 명세 (9 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
 | `aws_profile_defined` | `.envrc` 의 AWS_PROFILE 있을 때만 | WARNING |
+| `aws_account_status` | `.envrc` 의 AWS_PROFILE 있을 때만 (인증 방식 + 연결 상태; v0.21.0+) | WARNING |
 | `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
 | `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
 | `claude_account_dir_exists` | `.envrc` 의 CLAUDE_CONFIG_DIR 있을 때만 | WARNING |
@@ -2072,6 +2073,8 @@ Control Plane v2 의 마지막 axis. GitHub PAT / AWS session / Claude OAuth
 `CredentialsReport schema v1` + `anvyc creds {status|rotate}` + doctor
 `creds-expiry` check (CP-3 scheduler 자동 합류, per-kind 임계). rotate 는
 [CP-4 §7](./docs/design-axes/cp-04-snapshot.md) 의 4-layer 안전 패턴 미러.
+v0.21.0 에서 `aws-account-status` doctor check + `anvyc aws profile list/show`
+(인증 방식 + 오프라인 상태, `--probe` opt-in) 가 추가됐다. 역할 분리는 [CP-5 §5.1](./docs/design-axes/cp-05-creds.md) 참조.
 
 상세 (schema v1 / 3 kind detection 전략 / CP-3 scheduler 시너지 / rotate
 안전 절차) → [CP-5 본문](./docs/design-axes/cp-05-creds.md).

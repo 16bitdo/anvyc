@@ -94,6 +94,44 @@ anvyc doctor --only aws-profile-status
 anvyc doctor --only multi-account-detected
 ```
 
+### 1.6 AWS profile 인증/연결 상태 (`anvyc aws profile`, v0.21.0+)
+
+profile 이 존재할 때 인증 방식과 연결 상태를 read-only 로 보고한다.
+`doctor` / `project doctor` 는 **완전 오프라인** — 네트워크 호출 없음.
+`--probe` 만 `aws sts get-caller-identity` 를 실행해 라이브 verdict 를 추가한다.
+
+```bash
+# 전체 profile 목록 + 인증 방식 + 오프라인 상태
+anvyc aws profile list
+
+# JSON 출력
+anvyc aws profile list --json
+
+# 상태 판정 생략 (이름 목록만)
+anvyc aws profile list --no-status
+
+# 네트워크 liveness 확인 포함
+anvyc aws profile list --probe
+
+# 단일 profile 상세 (keys + 인증 방식 + 상태)
+anvyc aws profile show ws-dev
+
+# 단일 profile + liveness
+anvyc aws profile show ws-dev --probe
+```
+
+| 인증 방식 | 판정 기준 | status 예시 |
+|---|---|---|
+| `sso` | `~/.aws/config` 의 `sso_session` 또는 `sso_start_url` + SSO 캐시 | `valid` / `expiring` / `expired` / `unknown` / `none` |
+| `static` | `~/.aws/credentials` 에 섹션 존재 | `present` |
+| `assume_role` | `role_arn` + `source_profile` 선언 | `source_ok` / `source_missing` / `env` |
+| `credential_process` | `credential_process` 키 존재 | `cmd_ok` / `cmd_missing` |
+| `web_identity` | `web_identity_token_file` 키 존재 | `classified` |
+| `undefined` | 인증 키 없음 | `missing` |
+| `incomplete` | config 섹션 존재하지만 인증 키 전무 | `incomplete` |
+
+SSO 로그인 만료 시 doctor 가 suggestion 으로 `aws sso login` 을 안내하지만 실행은 하지 않는다.
+
 ## 2. GitHub 계정 라우팅 (v0.11.0+)
 
 AWS profile 과 같은 문제가 GitHub 계정에도 있다. `gh` CLI 는 **single global
@@ -131,7 +169,7 @@ cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 
 ```bash
 anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 8 check
+anvyc project doctor              # cwd 에 gh_account_routing 포함 9 check
 ```
 
 `anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을
@@ -167,7 +205,7 @@ direnv allow
 
 ```bash
 anvyc doctor --only project-claude-account-mapping
-anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 8 check
+anvyc project doctor              # cwd 에 claude_account_dir_exists 포함 9 check
 ```
 
 `anvyc project show --json` 의 `claude_account` 필드로 라우팅 계정을 확인할 수
@@ -205,7 +243,7 @@ direnv allow
 
 ```bash
 anvyc doctor --only project-pulumi-backend-mapping
-anvyc project doctor              # cwd 에 pulumi_backend_routing 포함 8 check
+anvyc project doctor              # cwd 에 pulumi_backend_routing 포함 9 check
 ```
 
 `anvyc project show --json` 의 `pulumi.backend` 필드로 backend 를 확인할 수 있다

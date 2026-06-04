@@ -22,7 +22,7 @@ anvyc doctor --skip cursor-projects-suggest --json
 
 | 필드 | 타입 | 비고 |
 |---|---|---|
-| `check_name` | `str` | 발행한 check (예: `cross-user`, `cursor-symlink-integrity`) |
+| `check_name` | `str` | 발행한 check (예: `cross-user`, `cursor-symlink-integrity`, `aws-account-status`) |
 | `severity` | `str` | `info` / `info-aliased` / `warning` / `warning-foreign` / `warning-dangling` / `critical` |
 | `message` | `str` | 사람-가독 요약 |
 | `location` | `str \| null` | 절대 경로 또는 null |
@@ -49,6 +49,11 @@ anvyc doctor --skip cursor-projects-suggest --json
 | `0` | clean 또는 blocking 없는 결과 (--strict 없을 때) |
 | `1` | --strict 일 때 blocking severity (warning*/critical) 발견 |
 | `2` | argparse 등 사용 오류 |
+
+## 5.1 신규 check_name (v0.21.0+)
+
+`aws-account-status` (전역 doctor) 및 `aws_account_status` (project doctor) 가 추가됐다.
+JSON schema 자체는 변경 없음 — `check_name` 필드의 값이 늘어났을 뿐이며, 기존 CI 파이프라인은 수정 없이 그대로 동작한다.
 
 ## 6. 활용 예 (jq)
 

@@ -440,10 +440,22 @@ aws:company-dev gh:16bitdo claude:edward
 
 | 도구 | env var | doctor check | 도입 |
 |---|---|---|---|
-| AWS | `AWS_PROFILE` (direnv) | `project-aws-profile-mapping` 외 3 | v0.6.1+ |
+| AWS | `AWS_PROFILE` (direnv) | `project-aws-profile-mapping` 외 3, `aws-account-status` | v0.6.1+, v0.21.0+ |
 | GitHub | `GH_CONFIG_DIR` | `project-gh-account-mapping`, `gh_account_routing` | v0.11.0+ |
 | Claude Code | `CLAUDE_CONFIG_DIR` | `project-claude-account-mapping`, `claude_account_dir_exists` | v0.12.0+ |
 | Pulumi | `PULUMI_BACKEND_URL` + `Pulumi.yaml backend.url` | `project-pulumi-backend-mapping`, `pulumi_backend_routing` | v0.12.0+ |
+
+### AWS profile 인증/연결 상태 (v0.21.0+)
+
+profile 의 인증 방식(sso/static/assume-role/credential_process/web_identity)과
+연결 상태를 read-only 로 보고한다. `doctor` / `project doctor` 는 오프라인;
+`--probe` 만 네트워크를 사용한다.
+
+```bash
+anvyc aws profile list                  # 전체 profile 목록 + 인증 방식 + 오프라인 상태
+anvyc aws profile show ws-dev           # 단일 profile 상세
+anvyc aws profile list --probe          # 라이브 liveness (aws sts get-caller-identity)
+```
 
 ---
 
