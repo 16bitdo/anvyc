@@ -331,9 +331,10 @@ def test_write_roots_backup_and_revalidate(tmp_path: Path) -> None:
     cfg.write_text("project_roots:\n  - ~/dev\n")
     backup = _write_roots({"project_roots": ["~/dev", "~/work"]}, cfg, make_backup=True)
     assert backup is not None and backup.name == "anvyc.yaml.bak"
-    assert "old" not in cfg.read_text()
     import yaml as _y
     assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev", "~/work"]
+    # 백업엔 변경 전 내용 보존 (단일 .bak — 매 변경 덮어씀, tools_select 선례)
+    assert _y.safe_load(backup.read_text())["project_roots"] == ["~/dev"]
 
 
 def test_write_roots_restores_on_revalidate_failure(
@@ -475,13 +476,13 @@ def add_roots(
         norm = normalize_root(rp)
         if not norm:
             continue
+        if norm in roots:           # dedup 먼저 — 중복은 경고 없이 skip
+            res.skipped.append(norm)
+            continue
         if not norm.startswith(("~", "/")):
             res.warnings.append(f"상대경로(권장 안 함): {norm}")
         if not Path(norm).expanduser().is_dir():
             res.warnings.append(f"미존재 디렉터리: {norm}")
-        if norm in roots:
-            res.skipped.append(norm)
-            continue
         roots.append(norm)
         res.added.append(norm)
     res.effective_after = roots
@@ -543,6 +544,18 @@ def test_remove_not_in_list_reported(tmp_path: Path) -> None:
     res = remove_roots(cfg, ["~/nope"])
     assert res.skipped == ["~/nope"] and res.removed == []
     assert res.written is False
+
+
+def test_remove_from_materialized_defaults(tmp_path: Path) -> None:
+    """project_roots 미설정(default) 상태에서 default 멤버 rm → materialize 후 기록 (spec §7)."""
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")  # project_roots 없음
+    res = remove_roots(cfg, ["~/Code"])
+    assert res.materialized is True
+    assert res.removed == ["~/Code"] and res.written is True
+    import yaml as _y
+    written = _y.safe_load(cfg.read_text())["project_roots"]
+    assert "~/Code" not in written and "~/dev" in written
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -691,12 +704,15 @@ def test_load_model_explicit_with_existence_and_count(tmp_path: Path) -> None:
     assert missing.exists is False and missing.projects == 0
 
 
-def test_load_model_default_source(tmp_path: Path) -> None:
+def test_load_model_default_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # HOME 격리(autouse conftest 가 HOME 을 격리하지 않음) → defaults 미존재 → 실제 FS 스캔 회피.
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
     cfg = tmp_path / "anvyc.yaml"
     cfg.write_text("storage:\n  root: .anvyc\n")
     model = load_roots_model(cfg)
     assert model.explicit is False
     assert all(e.source == "default" for e in model.entries)
+    assert all(e.projects == 0 for e in model.entries)  # 빈 HOME → discover 0 (헤르메틱)
     assert [e.path for e in model.entries] == list(_DEF)
 ```
 
@@ -774,7 +790,9 @@ from anvyc.cli import app
 runner = CliRunner()
 
 
-def test_roots_list_default_shows_six(tmp_path: Path) -> None:
+def test_roots_list_default_shows_six(tmp_path: Path, monkeypatch) -> None:
+    # HOME 격리 → materialize 된 defaults 의 실제 FS discover 회피(헤르메틱).
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
     cfg = tmp_path / "anvyc.yaml"
     cfg.write_text("storage:\n  root: .anvyc\n")
     result = runner.invoke(app, ["config", "roots", "list", "--config", str(cfg)])
@@ -1174,6 +1192,8 @@ anvyc config roots clear             # defaults 로 복귀
   관리(`config projects`)는 Phase 2(별도 spec/plan).
 ```
 
+추가로 `DESIGN.md` 상단 frontmatter 의 날짜 필드(`design_version`/`maintenance.last_updated` 등 존재하는 필드)를 `2026-06-04` 로 갱신 (rule 03-comm-design-formatter).
+
 - [ ] **Step 4: `CONTEXT.md` 진행 상태 갱신**
 
 진행 상황 섹션에 항목 추가:
@@ -1181,6 +1201,8 @@ anvyc config roots clear             # defaults 로 복귀
 - config roots (Phase 1) 구현: `anvyc config roots list/add/rm/clear` — 컨테이너 root CRUD.
   개별 프로젝트(config projects)는 Phase 2 대기.
 ```
+
+추가로 `CONTEXT.md` 상단 frontmatter 의 `maintenance.last_updated`(또는 `context_version` 등 존재하는 날짜 필드)를 `2026-06-04` 로 갱신 (rule 02-comm-context-formatter).
 
 - [ ] **Step 5: Commit**
 

@@ -168,7 +168,10 @@ exclude_projects: list[str] = field(default_factory=list)   # (신규)
 
 ## 9. 엣지 / 에러 처리
 
-- **대상 config 부재**: `add`/`exclude` → 최소 파일 생성(해당 키만). `list` → defaults/빈 표시. `rm`/`clear`/`unexclude` → "명시 항목 없음" 안내(no-op).
+- **대상 config 부재**: `add`/`exclude` → 최소 파일 생성(해당 키만). `list` → defaults/빈 표시.
+  `rm` 은 §7 materialize 를 따른다 — `project_roots` 미설정 상태에서 default 멤버를 rm 하면
+  defaults 를 구체화한 뒤 해당 항목을 뺀 리스트를 기록하고, **비-멤버 rm 만 no-op**. `clear`/
+  `unexclude` 는 제거할 명시 항목이 없으면 no-op.
 - **overlay**: roots/projects 명령은 base 파일만 편집. `anvyc.<hostname>.yaml` 가 roots 를 override 중이면 `list` 에 안내(편집 대상은 base 임을 명시).
 - **충돌**: `projects` ∩ `exclude_projects` → exclude 우선 + 편집 시 경고. 같은 경로 중복 add → no-op.
 - **재검증 실패**: 쓰기 후 `load_anvyc_config(target)` 가 throw → `.bak` 복구 + exit 1.
