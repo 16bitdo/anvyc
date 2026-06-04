@@ -3,7 +3,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from anvyc.core.aws_profile_state import (
+from anvyc.checks.base import Severity
+from anvyc.core.aws_profile_state import (  # noqa: E402
     AUTH_ASSUME_ROLE,
     AUTH_CREDENTIAL_PROCESS,
     AUTH_INCOMPLETE,
@@ -13,8 +14,10 @@ from anvyc.core.aws_profile_state import (
     AUTH_UNDEFINED,
     AUTH_WEB_IDENTITY,
     TOKEN_NONE,
+    AwsProfileState,
     detect_auth_method,
     evaluate_profile_state,
+    state_to_result,
 )
 
 
@@ -166,3 +169,57 @@ def test_eval_incomplete(tmp_path: Path) -> None:
     home = _home(tmp_path, "[profile bare]\nregion = us-east-1\n")
     st = evaluate_profile_state("bare", home=home, now=_NOW)
     assert st.auth_method == "incomplete"
+
+
+CN = "aws-account-status"
+
+
+def test_result_undefined_warns() -> None:
+    st = AwsProfileState(profile="ghost", defined=False, auth_method=AUTH_UNDEFINED, status="missing")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING
+    assert r.check_name == CN and "미정의" in r.message
+
+
+def test_result_sso_valid_info() -> None:
+    st = AwsProfileState(profile="dev", defined=True, auth_method="sso", status="valid", sso_session="ws")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.INFO and "연결됨" in r.message
+
+
+def test_result_sso_none_warns() -> None:
+    st = AwsProfileState(profile="dev", defined=True, auth_method="sso", status=TOKEN_NONE, sso_session="ws")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING and "미로그인" in r.message
+    assert "aws sso login --profile dev" in (r.suggestion or "")
+
+
+def test_result_sso_never_critical() -> None:
+    # 만료여도 ≤WARNING (CRITICAL 은 creds-expiry 소유).
+    st = AwsProfileState(profile="dev", defined=True, auth_method="sso", status="expired", sso_session="ws")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING
+
+
+def test_result_static_info() -> None:
+    st = AwsProfileState(profile="legacy", defined=True, auth_method="static", status="present")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.INFO
+
+
+def test_result_assume_role_missing_warns() -> None:
+    st = AwsProfileState(profile="deploy", defined=True, auth_method=AUTH_ASSUME_ROLE, status="source_missing", source_profile="gone")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING and "gone" in r.message
+
+
+def test_result_credential_process_missing_warns() -> None:
+    st = AwsProfileState(profile="v", defined=True, auth_method=AUTH_CREDENTIAL_PROCESS, status="cmd_missing", credential_process_cmd="x exec")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING
+
+
+def test_result_incomplete_warns() -> None:
+    st = AwsProfileState(profile="bare", defined=True, auth_method=AUTH_INCOMPLETE, status="incomplete")
+    r = state_to_result(st, check_name=CN)
+    assert r is not None and r.severity is Severity.WARNING

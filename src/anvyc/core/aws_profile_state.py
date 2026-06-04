@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from anvyc.checks.base import CheckResult, Severity  # noqa: F401
+from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.creds import (
     AWS_SSO_WARN_DAYS,
-    STATUS_EXPIRED,  # noqa: F401
-    STATUS_EXPIRING,  # noqa: F401
+    STATUS_EXPIRED,
+    STATUS_EXPIRING,
     STATUS_UNKNOWN,
-    STATUS_VALID,  # noqa: F401
+    STATUS_VALID,
     detect_aws_sso,
 )
 from anvyc.utils.aws_config import (
@@ -133,3 +133,67 @@ def evaluate_profile_state(
 
     st.status = "incomplete"
     return st
+
+
+def state_to_result(state: AwsProfileState, *, check_name: str) -> CheckResult | None:
+    """AwsProfileState → CheckResult. CRITICAL 미발행(만료 escalation 은 creds-expiry)."""
+    m, s, p = state.auth_method, state.status, state.profile
+
+    if m == AUTH_UNDEFINED:
+        return CheckResult(
+            check_name=check_name, severity=Severity.WARNING,
+            message=f"AWS profile '{p}' 가 ~/.aws/config 에 미정의",
+            suggestion=f"anvyc aws profile create {p} --sso ... (또는 .envrc AWS_PROFILE 수정)",
+        )
+
+    if m == AUTH_SSO:
+        sess = f", session {state.sso_session}" if state.sso_session else ""
+        if s in (STATUS_VALID, STATUS_EXPIRING):
+            return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"SSO 연결됨 '{p}'{sess}")
+        if s == STATUS_EXPIRED:
+            return CheckResult(
+                check_name=check_name, severity=Severity.WARNING,
+                message=f"SSO 세션 만료 '{p}'{sess} — 재로그인 필요",
+                suggestion=f"aws sso login --profile {p}",
+            )
+        if s == TOKEN_NONE:
+            return CheckResult(
+                check_name=check_name, severity=Severity.WARNING,
+                message=f"미로그인 '{p}'{sess} — SSO 로그인 필요",
+                suggestion=f"aws sso login --profile {p}",
+            )
+        return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"SSO 토큰 상태 불명 '{p}'{sess}")
+
+    if m in (AUTH_STATIC, AUTH_STATIC_TEMP):
+        kind = "임시 자격" if m == AUTH_STATIC_TEMP else "정적 키"
+        return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"{kind} 구성됨 '{p}'")
+
+    if m == AUTH_ASSUME_ROLE:
+        if s == "source_ok":
+            return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"역할 위임 '{p}' (source: {state.source_profile})")
+        if s == "source_missing":
+            return CheckResult(
+                check_name=check_name, severity=Severity.WARNING,
+                message=f"'{p}' 의 source_profile '{state.source_profile}' 미정의",
+                suggestion="source profile 생성/수정 (anvyc aws profile)",
+            )
+        return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"'{p}' 환경 기반 위임 (credential_source)")
+
+    if m == AUTH_CREDENTIAL_PROCESS:
+        if s == "cmd_ok":
+            return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"credential_process 구성됨 '{p}'")
+        return CheckResult(
+            check_name=check_name, severity=Severity.WARNING,
+            message=f"'{p}' 의 credential_process 명령 미발견: {state.credential_process_cmd}",
+            suggestion="해당 도구 설치 / PATH 확인",
+        )
+
+    if m == AUTH_WEB_IDENTITY:
+        tf = "존재" if state.token_file_exists else "부재"
+        return CheckResult(check_name=check_name, severity=Severity.INFO, message=f"web identity '{p}' (token_file {tf})")
+
+    return CheckResult(
+        check_name=check_name, severity=Severity.WARNING,
+        message=f"'{p}' 인증 구성 불완전 (사용 가능한 자격 키 없음)",
+        suggestion="profile 키 보완 (anvyc aws profile edit)",
+    )
