@@ -169,3 +169,19 @@ def test_remove_missing_profile_errors(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, "[profile a]\nregion = x\n")
     with pytest.raises(AwsConfigEditError, match="없습니다"):
         remove_profile(cfg, "ghost")
+
+
+def test_remove_absorbs_own_comment_preserves_next(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "# Dev account\n[profile dev]\nregion = us-east-1\n\n"
+        "# Prod account - DANGER\n[profile prod]\nregion = us-west-2\n\n"
+        "# Staging account\n[profile stg]\nregion = eu-west-1\n",
+    )
+    remove_profile(cfg, "prod")
+    text = cfg.read_text(encoding="utf-8")
+    assert "[profile prod]" not in text
+    assert "# Prod account - DANGER" not in text     # 제거 대상의 주석도 함께 삭제
+    assert "# Staging account" in text               # 다음 섹션 주석 보존
+    assert "# Dev account" in text and "[profile dev]" in text and "[profile stg]" in text
+    assert "# Staging account\n[profile stg]" in text  # 오귀속 없음(주석이 stg 바로 위 유지)

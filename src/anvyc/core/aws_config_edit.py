@@ -90,6 +90,11 @@ def _commit(config_path: Path, new_text: str, *, make_backup: bool) -> Path | No
     return backup
 
 
+def _is_comment(line: str) -> bool:
+    s = line.strip()
+    return s.startswith("#") or s.startswith(";")
+
+
 def _append_block(before: str, block_text: str) -> str:
     """기존 내용과 빈 줄 1개로 구분해 block 을 EOF 에 덧붙인다(끝 개행 보장)."""
     head = before.rstrip("\n")
@@ -258,10 +263,24 @@ def remove_profile(
     meta = load_profile_sso_meta(profile, config_path)
     removed_session = meta[0] if meta else None  # (sso_session, start_url)
 
-    end_trim = end
-    if end_trim < len(lines) and lines[end_trim].strip() == "":
-        end_trim += 1  # 섹션 직후 빈 줄 1개 정리
-    after = "".join(lines[:start] + lines[end_trim:])
+    # 삭제 범위: (1) 헤더 바로 위 연속 주석(이 섹션의 leading comment)까지 뒤로 확장,
+    # (2) 본문 끝(첫 빈 줄)에서 종료 — 그 뒤 빈 줄/주석은 다음 섹션 소유이므로 보존.
+    lead = start
+    while lead > 0 and _is_comment(lines[lead - 1]):
+        lead -= 1
+    body_end = start + 1
+    while body_end < end and lines[body_end].strip() != "":
+        body_end += 1
+    head = lines[:lead]
+    tail = lines[body_end:]
+    while tail and tail[0].strip() == "":  # seam 빈 줄 제거(아래서 필요 시 1개만 재삽입)
+        tail.pop(0)
+    if head and tail and head[-1].strip() != "":
+        head = [*head, "\n"]
+    after = "".join(head + tail)
+    after = after.rstrip("\n")
+    if after:
+        after += "\n"
 
     if removed_session:
         cp = configparser.RawConfigParser()
