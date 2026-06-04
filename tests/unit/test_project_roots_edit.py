@@ -12,10 +12,10 @@ from anvyc.core.project_roots_edit import (
     _load_raw,
     _write_roots,
     add_roots,
-    clear_roots,  # noqa: F401 — used in Task 7 tests below
-    load_roots_model,  # noqa: F401 — used in Task 8 tests below
+    clear_roots,
+    load_roots_model,
     normalize_root,
-    remove_roots,  # noqa: F401 — used in Task 6 tests below
+    remove_roots,
 )
 
 
@@ -212,3 +212,35 @@ def test_clear_already_default_noop(tmp_path: Path) -> None:
     cfg.write_text("storage:\n  root: .anvyc\n")
     res = clear_roots(cfg)
     assert res.written is False and res.cleared_to_default is False
+
+
+# ---------------------------------------------------------------------------
+# Task 8: load_roots_model (RootEntry / RootsModel)
+# ---------------------------------------------------------------------------
+
+
+def test_load_model_explicit_with_existence_and_count(tmp_path: Path) -> None:
+    root = tmp_path / "dev"
+    (root / "proj").mkdir(parents=True)
+    (root / "proj" / ".git").mkdir()
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text(f"project_roots:\n  - {root}\n  - ~/nonexistent-xyz\n")
+    model = load_roots_model(cfg)
+    assert model.explicit is True
+    by_path = {e.path: e for e in model.entries}
+    dev = by_path[normalize_for(root)]
+    assert dev.source == "explicit" and dev.exists is True and dev.projects == 1
+    missing = by_path["~/nonexistent-xyz"]
+    assert missing.exists is False and missing.projects == 0
+
+
+def test_load_model_default_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # HOME 격리(autouse conftest 가 HOME 을 격리하지 않음) → defaults 미존재 → 실제 FS 스캔 회피.
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    model = load_roots_model(cfg)
+    assert model.explicit is False
+    assert all(e.source == "default" for e in model.entries)
+    assert all(e.projects == 0 for e in model.entries)  # 빈 HOME → discover 0 (헤르메틱)
+    assert [e.path for e in model.entries] == list(_DEF)
