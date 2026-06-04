@@ -36,6 +36,14 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         lambda config=None: (str(docs),),
     )
     monkeypatch.setattr(
+        "anvyc.core.project_roots.resolve_projects",
+        lambda config=None: (),
+    )
+    monkeypatch.setattr(
+        "anvyc.core.project_roots.resolve_excludes",
+        lambda config=None: (),
+    )
+    monkeypatch.setattr(
         "anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg
     )
     return {"docs": docs, "aws_cfg": aws_cfg}
@@ -87,3 +95,21 @@ def test_no_envrcs_all_profiles_unused(patched_paths: dict[str, Any]) -> None:
     assert res[0].severity is Severity.INFO
     assert "ws-dev" in res[0].message
     assert "ws-prd" in res[0].message
+
+
+def test_unused_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """컨테이너는 비우고, 개별 project 의 .envrc 가 profile 을 '사용 중'으로 만든다."""
+    aws_cfg = tmp_path / "aws_config"
+    aws_cfg.write_text("[profile used-prof]\n[profile lonely]\n")
+    monkeypatch.setattr("anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    indiv = tmp_path / "proj"
+    indiv.mkdir()
+    (indiv / ".envrc").write_text("export AWS_PROFILE=used-prof\n")
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(empty),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: (str(indiv),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    results = UnusedAwsProfilesCheck().run(CheckContext())
+    msg = " ".join(r.message for r in results)
+    assert "lonely" in msg and "used-prof" not in msg  # used-prof 는 개별 project 가 사용

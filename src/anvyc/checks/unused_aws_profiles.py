@@ -26,20 +26,16 @@ class UnusedAwsProfilesCheck:
         if not candidates:
             return []
 
-        # 함수 내 import — resolve_project_roots 가 호출 시점에 config 를 로드하고
+        # 함수 내 import — iter_project_dirs 가 호출 시점에 config 를 로드하고
         # 테스트 monkeypatch(anvyc.core.project_roots)가 반영되도록 한다.
-        from pathlib import Path
-
-        from anvyc.checks.project_aws_profile import _iter_envrcs, _read_envrc_profile
-        from anvyc.core.project_roots import resolve_project_roots
+        from anvyc.checks.project_aws_profile import _read_envrc_profile
+        from anvyc.core.project_scope import iter_project_dirs
 
         used: set[str] = set()
-        for root_str in resolve_project_roots():
-            root = Path(root_str).expanduser()
-            for envrc in _iter_envrcs(root):
-                prof = _read_envrc_profile(envrc)
-                if prof:
-                    used.add(prof)
+        for project_dir in iter_project_dirs(markers=(".envrc",), max_depth=2):
+            prof = _read_envrc_profile(project_dir / ".envrc")
+            if prof:
+                used.add(prof)
 
         unused = sorted(candidates - used)
         if not unused:
