@@ -10,10 +10,10 @@ from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS, resolve_project_root
 
 
 def test_default_roots_dev_first() -> None:
-    """DEFAULT_PROJECT_ROOTS 는 ~/dev 를 선두로 한 7-루트."""
+    """DEFAULT_PROJECT_ROOTS 는 ~/dev 를 선두로 한 6-루트, ~/Documents 는 제외(deprecated)."""
     assert DEFAULT_PROJECT_ROOTS[0] == "~/dev"
-    assert len(DEFAULT_PROJECT_ROOTS) == 7
-    assert "~/Documents" in DEFAULT_PROJECT_ROOTS
+    assert len(DEFAULT_PROJECT_ROOTS) == 6
+    assert "~/Documents" not in DEFAULT_PROJECT_ROOTS
 
 
 def test_resolve_load_failure_uses_default(monkeypatch: pytest.MonkeyPatch) -> None:
