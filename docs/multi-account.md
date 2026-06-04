@@ -132,6 +132,21 @@ anvyc aws profile show ws-dev --probe
 
 SSO 로그인 만료 시 doctor 가 suggestion 으로 `aws sso login` 을 안내하지만 실행은 하지 않는다.
 
+### 1.7 profile CRUD (`anvyc aws profile create/edit/rm`, v0.21.0 Phase 2)
+
+`~/.aws/config` 의 profile 을 surgical 텍스트 편집으로 생성·수정·삭제한다.
+
+```bash
+anvyc aws profile create ws-dev --sso-session ws --start-url https://d-x.awsapps.com/start \
+  --sso-region ap-northeast-2 --account-id 111122223333 --role-name Dev \
+  --region ap-northeast-2 --dry-run      # 미리보기 (쓰기 안 함)
+anvyc aws profile create ws-dev --sso-session ws --region ap-northeast-2 -y   # 적용
+anvyc aws profile edit ws-dev --set region=us-east-1 -y   # 키 수정 (in-place, 주석 보존)
+anvyc aws profile rm ws-dev                               # 삭제 (확인 후 적용)
+```
+
+안전 절차: 변경 전 unified diff 미리보기 → `--dry-run` 확인 → `.bak` 백업 → atomic write → 재파싱 검증 → 실패 시 원본 자동 복구. `~/.aws/credentials`(정적 시크릿)는 절대 건드리지 않으며 `aws_access_key_id`/`aws_secret_access_key`/`aws_session_token` 입력을 거부한다. profile 삭제 시 참조하던 sso-session 이 고아가 되면 경고만 출력하고 자동 삭제는 하지 않는다.
+
 ## 2. GitHub 계정 라우팅 (v0.11.0+)
 
 AWS profile 과 같은 문제가 GitHub 계정에도 있다. `gh` CLI 는 **single global

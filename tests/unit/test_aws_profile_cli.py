@@ -98,3 +98,182 @@ def test_show_human(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert "ws-dev" in result.stdout
     assert "sso_session" in result.stdout  # profile 키가 출력됨
+
+
+def test_create_writes_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    result = runner.invoke(
+        app,
+        ["aws", "profile", "create", "newp", "--region", "ap-northeast-2", "--yes"],
+    )
+    assert result.exit_code == 0
+    text = (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+    assert "[profile newp]" in text and "region = ap-northeast-2" in text
+
+
+def test_create_dry_run_no_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile a]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "b", "--region", "y", "--dry-run"]
+    )
+    assert result.exit_code == 0
+    assert "[profile b]" not in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_create_existing_errors_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dup]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "dup", "--region", "y", "--yes"]
+    )
+    assert result.exit_code == 1
+    assert "이미 존재" in result.stdout
+
+
+def test_create_confirm_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "p", "--region", "y"], input="n\n"
+    )
+    assert result.exit_code == 0
+    assert not (tmp_path / ".aws" / "config").exists() or "[profile p]" not in (
+        tmp_path / ".aws" / "config"
+    ).read_text(encoding="utf-8")
+
+
+def test_edit_sets_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text(
+        "[profile dev]\nregion = us-east-1\n", encoding="utf-8"
+    )
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "dev", "--set", "region=ap-northeast-2", "--yes"]
+    )
+    assert result.exit_code == 0
+    assert "region = ap-northeast-2" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_edit_rejects_static_key_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "dev", "--set", "aws_access_key_id=AKIA_X", "--yes"]
+    )
+    assert result.exit_code == 1
+    assert "정적 자격 키" in result.stdout
+
+
+def test_edit_missing_profile_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "ghost", "--set", "region=y", "--yes"]
+    )
+    assert result.exit_code == 1
+
+
+def test_rm_deletes_with_yes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text(
+        "[profile keep]\nregion = a\n\n[profile gone]\nregion = b\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone", "--yes"])
+    assert result.exit_code == 0
+    text = (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+    assert "[profile gone]" not in text and "[profile keep]" in text
+
+
+def test_rm_dry_run_no_delete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile gone]\nregion = b\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone", "--dry-run"])
+    assert result.exit_code == 0
+    assert "[profile gone]" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_rm_confirm_abort_keeps_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile gone]\nregion = b\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone"], input="n\n")
+    assert result.exit_code == 0
+    assert "[profile gone]" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_rm_missing_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile a]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "ghost", "--yes"])
+    assert result.exit_code == 1
+
+
+def test_create_with_sso_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    result = runner.invoke(app, [
+        "aws", "profile", "create", "ws-dev",
+        "--sso-session", "ws", "--start-url", "https://d-x.awsapps.com/start",
+        "--sso-region", "ap-northeast-2", "--account-id", "111122223333",
+        "--role-name", "Dev", "--region", "ap-northeast-2", "--yes",
+    ])
+    assert result.exit_code == 0
+    text = (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+    assert "[sso-session ws]" in text and "sso_start_url = https://d-x.awsapps.com/start" in text
+    assert "[profile ws-dev]" in text and "sso_session = ws" in text
+
+
+def test_edit_dry_run_no_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = us-east-1\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "edit", "dev", "--set", "region=ap-northeast-2", "--dry-run"])
+    assert result.exit_code == 0
+    assert "region = us-east-1" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_edit_confirm_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = us-east-1\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "edit", "dev", "--set", "region=ap-northeast-2"], input="n\n")
+    assert result.exit_code == 0
+    assert "region = us-east-1" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_edit_no_keys_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "edit", "dev", "--yes"])
+    assert result.exit_code == 1
+
+
+def test_edit_malformed_set_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "edit", "dev", "--set", "noequalsign", "--yes"])
+    assert result.exit_code == 1
+
+
+def test_rm_orphan_warning_in_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text(
+        "[sso-session ws]\nsso_start_url = https://u/start\n\n[profile only]\nsso_session = ws\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["aws", "profile", "rm", "only", "--yes"])
+    assert result.exit_code == 0
+    assert "orphan" in result.stdout

@@ -91,6 +91,9 @@ from anvyc.utils.errors import print_error, safe_msg
 
 if TYPE_CHECKING:
     # 타입 힌트 전용 — 런타임 import 는 각 명령이 lazy 로 수행.
+    from collections.abc import Callable
+
+    from anvyc.core.aws_config_edit import ProfileEditResult
     from anvyc.core.project_doctor import ProjectDoctorReport
     from anvyc.core.project_roots_edit import ProjectsEditResult
 
@@ -4184,6 +4187,140 @@ def aws_profile_show(
     pr_out = out["probe"]
     if isinstance(pr_out, dict):
         console.print(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"), soft_wrap=True)
+
+
+def _apply_aws_edit(
+    result: ProfileEditResult,
+    *,
+    dry_run: bool,
+    yes: bool,
+    commit_fn: Callable[[], ProfileEditResult],
+) -> None:
+    """ProfileEditResult 미리보기(write=False) → diff/경고 출력 → dry-run/확인 → commit."""
+    if not result.changed:
+        console.print("변경 없음.", soft_wrap=True)
+        return
+    console.print(escape(result.diff), soft_wrap=True)
+    for w in result.warnings:
+        console.print(escape(f"경고: {w}"), soft_wrap=True)
+    if dry_run:
+        console.print("(dry-run — 쓰기 안 함)", soft_wrap=True)
+        return
+    if not yes and not typer.confirm("위 변경을 적용할까요?"):
+        console.print("취소됨.", soft_wrap=True)
+        return
+    final = commit_fn()
+    console.print(escape(f"적용됨: {final.action} '{final.profile}'"), soft_wrap=True)
+    if final.backup_path:
+        console.print(escape(f"백업: {final.backup_path}"), soft_wrap=True)
+
+
+@aws_profile_app.command("create")
+def aws_profile_create(
+    name: str = typer.Argument(..., help="profile 이름."),
+    sso_session: str | None = typer.Option(None, "--sso-session", help="SSO 세션 이름."),
+    start_url: str | None = typer.Option(None, "--start-url", help="신규 sso-session 의 start URL."),
+    sso_region: str | None = typer.Option(None, "--sso-region", help="신규 sso-session 의 region."),
+    account_id: str | None = typer.Option(None, "--account-id", help="sso_account_id."),
+    role_name: str | None = typer.Option(None, "--role-name", help="sso_role_name."),
+    region: str | None = typer.Option(None, "--region", help="region."),
+    output: str | None = typer.Option(None, "--output", help="output 형식."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만(쓰기 안 함)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """SSO 우선 profile 생성 (~/.aws/config 에 append). diff 미리보기 + .bak."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, create_profile
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = create_profile(
+            config_path, name, write=False,
+            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
+            account_id=account_id, role_name=role_name, region=region, output=output,
+        )
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: create_profile(
+            config_path, name, write=True,
+            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
+            account_id=account_id, role_name=role_name, region=region, output=output,
+        ),
+    )
+
+
+@aws_profile_app.command("edit")
+def aws_profile_edit(
+    name: str = typer.Argument(..., help="profile 이름."),
+    set_: list[str] | None = typer.Option(
+        None, "--set", help="key=value (반복 가능). 정적 자격 키는 거부.", metavar="KEY=VALUE"
+    ),
+    region: str | None = typer.Option(None, "--region", help="region 단축."),
+    output: str | None = typer.Option(None, "--output", help="output 단축."),
+    sso_session: str | None = typer.Option(None, "--sso-session", help="sso_session 단축."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """profile 키 수정 (in-place, 주석 보존). ~/.aws/credentials 정적 키는 거부."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, edit_profile
+
+    sets: dict[str, str] = {}
+    for item in set_ or []:
+        if "=" not in item:
+            console.print(escape(f"오류: --set 는 key=value 형식이어야 합니다: {item}"), soft_wrap=True)
+            raise typer.Exit(code=1) from None
+        k, v = item.split("=", 1)
+        sets[k.strip()] = v.strip()
+    # 단축 옵션(--region/--output/--sso-session)은 동일 키의 --set 값보다 우선한다.
+    if region is not None:
+        sets["region"] = region
+    if output is not None:
+        sets["output"] = output
+    if sso_session is not None:
+        sets["sso_session"] = sso_session
+    if not sets:
+        console.print("수정할 키가 없습니다 (--set / --region / --output / --sso-session).", soft_wrap=True)
+        raise typer.Exit(code=1) from None
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = edit_profile(config_path, name, sets=sets, write=False)
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: edit_profile(config_path, name, sets=sets, write=True),
+    )
+
+
+@aws_profile_app.command("rm")
+def aws_profile_rm(
+    name: str = typer.Argument(..., help="삭제할 profile 이름."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """profile 삭제 (~/.aws/config). 고아 sso-session 은 경고만(자동 삭제 안 함)."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, remove_profile
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = remove_profile(config_path, name, write=False)
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: remove_profile(config_path, name, write=True),
+    )
 
 
 if __name__ == "__main__":
