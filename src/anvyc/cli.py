@@ -1738,6 +1738,49 @@ def projects_list(
         console.print(f"  [red]-[/] {escape(e.path):28} {mark} [dim](exclude)[/]", soft_wrap=True)
 
 
+def _print_projects_result(res: object, target: Path) -> None:
+    from rich.markup import escape
+
+    for w in res.warnings:  # type: ignore[attr-defined]
+        console.print(f"[yellow]warning[/] {escape(w)}")
+    for p in res.added:  # type: ignore[attr-defined]
+        console.print(f"[green]added[/] {escape(p)}")
+    for p in res.removed:  # type: ignore[attr-defined]
+        console.print(f"[green]removed[/] {escape(p)}")
+    for p in res.skipped:  # type: ignore[attr-defined]
+        console.print(f"[dim]skip[/] {escape(p)}")
+    if res.written:  # type: ignore[attr-defined]
+        console.print(f"[dim]→ {escape(str(target))}[/]")
+    else:
+        console.print("[dim]변경 없음[/]")
+
+
+@projects_app.command("add")
+def projects_add(
+    paths: list[str] = typer.Argument(..., help="추가할 개별 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 포함 목록에 추가한다(마커 없으면 경고)."""
+    from anvyc.core.project_roots_edit import add_projects
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(add_projects(target, paths), target)
+
+
+@projects_app.command("rm")
+def projects_rm(
+    paths: list[str] = typer.Argument(..., help="포함 목록에서 제거할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 포함 목록에서 제거한다."""
+    from anvyc.core.project_roots_edit import remove_projects
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(remove_projects(target, paths), target)
+
+
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
     """tools list / MCP tools_list 의 row 데이터 (core SoT 위임, PR3).
 
