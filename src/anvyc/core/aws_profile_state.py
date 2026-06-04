@@ -6,26 +6,26 @@ doctor / project doctor / `aws profile` 가 공유하는 순수 코어. SSO 캐�
 """
 from __future__ import annotations
 
-import shlex  # noqa: F401
-import shutil  # noqa: F401
+import shlex
+import shutil
 from dataclasses import dataclass
-from datetime import UTC, datetime  # noqa: F401
-from pathlib import Path  # noqa: F401
+from datetime import UTC, datetime
+from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity  # noqa: F401
 from anvyc.core.creds import (
-    AWS_SSO_WARN_DAYS,  # noqa: F401
+    AWS_SSO_WARN_DAYS,
     STATUS_EXPIRED,  # noqa: F401
     STATUS_EXPIRING,  # noqa: F401
-    STATUS_UNKNOWN,  # noqa: F401
+    STATUS_UNKNOWN,
     STATUS_VALID,  # noqa: F401
-    detect_aws_sso,  # noqa: F401
+    detect_aws_sso,
 )
 from anvyc.utils.aws_config import (
-    load_aws_profile_names,  # noqa: F401
-    load_credentials_profile_names,  # noqa: F401
-    load_profile_config,  # noqa: F401
-    load_profile_sso_meta,  # noqa: F401
+    load_aws_profile_names,
+    load_credentials_profile_names,
+    load_profile_config,
+    load_profile_sso_meta,
 )
 
 AUTH_UNDEFINED = "undefined"
@@ -67,3 +67,69 @@ def detect_auth_method(keys: dict[str, str], *, has_static: bool) -> str:
     if has_static or "aws_access_key_id" in keys:
         return AUTH_STATIC_TEMP if "aws_session_token" in keys else AUTH_STATIC
     return AUTH_INCOMPLETE
+
+
+def evaluate_profile_state(
+    profile: str, *, home: Path | None = None, now: datetime | None = None
+) -> AwsProfileState:
+    """profile 의 인증 방식과 오프라인 상태를 판정한다 (네트워크 호출 없음)."""
+    home = home or Path.home()
+    now = now or datetime.now(UTC)
+    config_path = home / ".aws" / "config"
+    creds_path = home / ".aws" / "credentials"
+
+    if profile not in load_aws_profile_names(config_path):
+        return AwsProfileState(profile=profile, defined=False, auth_method=AUTH_UNDEFINED, status="missing")
+
+    keys = load_profile_config(profile, config_path) or {}
+    has_static = (profile in load_credentials_profile_names(creds_path)) or ("aws_access_key_id" in keys)
+    method = detect_auth_method(keys, has_static=has_static)
+    st = AwsProfileState(profile=profile, defined=True, auth_method=method)
+
+    if method == AUTH_SSO:
+        meta = load_profile_sso_meta(profile, config_path) or (None, None)
+        st.sso_session, start_url = meta
+        if not start_url:
+            st.status = STATUS_UNKNOWN
+            return st
+        by_url = {
+            c.identifier: c
+            for c in detect_aws_sso(home, warn_threshold_days=AWS_SSO_WARN_DAYS, now=now)
+        }
+        cred = by_url.get(start_url)
+        if cred is None:
+            st.status = TOKEN_NONE
+        else:
+            st.status = cred.status
+            st.expires_at = cred.expires_at
+            st.expires_in_seconds = cred.expires_in_seconds
+        return st
+
+    if method == AUTH_ASSUME_ROLE:
+        src = keys.get("source_profile")
+        if src:
+            st.source_profile = src
+            st.status = "source_ok" if src in load_aws_profile_names(config_path) else "source_missing"
+        else:
+            st.status = "env"
+        return st
+
+    if method == AUTH_CREDENTIAL_PROCESS:
+        cmd = keys.get("credential_process", "")
+        st.credential_process_cmd = cmd
+        first = shlex.split(cmd)[0] if cmd.strip() else ""
+        st.status = "cmd_ok" if (first and shutil.which(first)) else "cmd_missing"
+        return st
+
+    if method == AUTH_WEB_IDENTITY:
+        tf = keys.get("web_identity_token_file", "")
+        st.token_file_exists = bool(tf) and Path(tf).expanduser().is_file()
+        st.status = "classified"
+        return st
+
+    if method in (AUTH_STATIC, AUTH_STATIC_TEMP):
+        st.status = "present"
+        return st
+
+    st.status = "incomplete"
+    return st
