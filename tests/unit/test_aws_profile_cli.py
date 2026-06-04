@@ -98,3 +98,49 @@ def test_show_human(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert "ws-dev" in result.stdout
     assert "sso_session" in result.stdout  # profile 키가 출력됨
+
+
+def test_create_writes_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    result = runner.invoke(
+        app,
+        ["aws", "profile", "create", "newp", "--region", "ap-northeast-2", "--yes"],
+    )
+    assert result.exit_code == 0
+    text = (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+    assert "[profile newp]" in text and "region = ap-northeast-2" in text
+
+
+def test_create_dry_run_no_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile a]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "b", "--region", "y", "--dry-run"]
+    )
+    assert result.exit_code == 0
+    assert "[profile b]" not in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_create_existing_errors_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dup]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "dup", "--region", "y", "--yes"]
+    )
+    assert result.exit_code == 1
+    assert "이미 존재" in result.stdout
+
+
+def test_create_confirm_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    result = runner.invoke(
+        app, ["aws", "profile", "create", "p", "--region", "y"], input="n\n"
+    )
+    assert result.exit_code == 0
+    assert not (tmp_path / ".aws" / "config").exists() or "[profile p]" not in (
+        tmp_path / ".aws" / "config"
+    ).read_text(encoding="utf-8")

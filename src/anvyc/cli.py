@@ -91,6 +91,9 @@ from anvyc.utils.errors import print_error, safe_msg
 
 if TYPE_CHECKING:
     # 타입 힌트 전용 — 런타임 import 는 각 명령이 lazy 로 수행.
+    from collections.abc import Callable
+
+    from anvyc.core.aws_config_edit import ProfileEditResult
     from anvyc.core.project_doctor import ProjectDoctorReport
     from anvyc.core.project_roots_edit import ProjectsEditResult
 
@@ -4184,6 +4187,70 @@ def aws_profile_show(
     pr_out = out["probe"]
     if isinstance(pr_out, dict):
         console.print(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"), soft_wrap=True)
+
+
+def _apply_aws_edit(
+    result: ProfileEditResult,
+    *,
+    dry_run: bool,
+    yes: bool,
+    commit_fn: Callable[[], ProfileEditResult],
+) -> None:
+    """ProfileEditResult 미리보기(write=False) → diff/경고 출력 → dry-run/확인 → commit."""
+    if not result.changed:
+        console.print("변경 없음.", soft_wrap=True)
+        return
+    console.print(escape(result.diff), soft_wrap=True)
+    for w in result.warnings:
+        console.print(escape(f"경고: {w}"), soft_wrap=True)
+    if dry_run:
+        console.print("(dry-run — 쓰기 안 함)", soft_wrap=True)
+        return
+    if not yes and not typer.confirm("위 변경을 적용할까요?"):
+        console.print("취소됨.", soft_wrap=True)
+        return
+    final = commit_fn()
+    console.print(escape(f"적용됨: {final.action} '{final.profile}'"), soft_wrap=True)
+    if final.backup_path:
+        console.print(escape(f"백업: {final.backup_path}"), soft_wrap=True)
+
+
+@aws_profile_app.command("create")
+def aws_profile_create(
+    name: str = typer.Argument(..., help="profile 이름."),
+    sso_session: str | None = typer.Option(None, "--sso-session", help="SSO 세션 이름."),
+    start_url: str | None = typer.Option(None, "--start-url", help="신규 sso-session 의 start URL."),
+    sso_region: str | None = typer.Option(None, "--sso-region", help="신규 sso-session 의 region."),
+    account_id: str | None = typer.Option(None, "--account-id", help="sso_account_id."),
+    role_name: str | None = typer.Option(None, "--role-name", help="sso_role_name."),
+    region: str | None = typer.Option(None, "--region", help="region."),
+    output: str | None = typer.Option(None, "--output", help="output 형식."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만(쓰기 안 함)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """SSO 우선 profile 생성 (~/.aws/config 에 append). diff 미리보기 + .bak."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, create_profile
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = create_profile(
+            config_path, name, write=False,
+            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
+            account_id=account_id, role_name=role_name, region=region, output=output,
+        )
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: create_profile(
+            config_path, name, write=True,
+            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
+            account_id=account_id, role_name=role_name, region=region, output=output,
+        ),
+    )
 
 
 if __name__ == "__main__":
