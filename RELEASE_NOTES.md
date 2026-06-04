@@ -1,5 +1,9 @@
 # anvyc 릴리즈 노트
 
+## v0.21.0 — (unreleased)
+
+- **feat: AWS 계정 인증/연결 상태 점검** (`aws-account-status` 전역 doctor check + `project doctor` `aws_account_status`) + `anvyc aws profile list/show` (`--probe` opt-in). Phase 1 (읽기 전용); Phase 2 (profile CRUD) 예정.
+
 ## v0.20.0 — 2026-05-30 (minor — creds-expiry 임계 anvyc.yaml config화)
 
 per-kind creds-expiry 임계를 코드 기본값에서 **org 별 설정 가능**으로 확장. SSO 세션

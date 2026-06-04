@@ -74,6 +74,10 @@ payload 에 만료 정보 포함 → CP-3 statusline 인디케이터에 자동 �
 **별도 wire 작업 불요** — CP-3 axis 가 만든 일반화된 doctor JSON contract
 의 cross-axis 재사용 가치 입증 (v1 cut-over 학습 L7 의 확장 효과).
 
+## 5.1 `aws-account-status` 와 역할 분리 (v0.21.0+)
+
+`aws-account-status` (전역) / `aws_account_status` (project doctor) 는 **인증 방식 + 연결 존재/유효성** 을 보고한다 — severity 는 최대 WARNING. `creds-expiry` 는 **만료 기간 기반 에스컬레이션** (WARNING→CRITICAL) 을 계속 담당한다. 두 check 는 공존하며, SSO 만료 시 `aws-account-status` 가 `expired` status 를 WARNING 으로 발행하고 `creds-expiry` 가 별도로 CRITICAL 로 에스컬레이션하는 경미한 중복은 의도적이다 — 각 check 가 다른 관점(인증 방식 분류 vs 만료 잔여 시간)으로 접근하기 때문이다.
+
 ## 6. Out of scope (CP-5 axis 완결 기준)
 
 - Claude OAuth 의 실 expiry 추출 (keychain 접근) — polish

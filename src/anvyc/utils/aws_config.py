@@ -8,6 +8,7 @@ import configparser
 from pathlib import Path
 
 DEFAULT_AWS_CONFIG = Path("~/.aws/config").expanduser()
+DEFAULT_AWS_CREDENTIALS = Path("~/.aws/credentials").expanduser()
 
 _PROFILE_PREFIX = "profile "
 
@@ -87,3 +88,63 @@ def load_aws_sso_index(
             _add(direct, None, profile)
 
     return {url: (session, sorted(profiles)) for url, (session, profiles) in index.items()}
+
+
+def load_profile_config(profile: str, path: Path | None = None) -> dict[str, str] | None:
+    """`[profile X]`(또는 `[default]`) 섹션의 key→value. profile 부재/파싱 실패 → None."""
+    target = path or DEFAULT_AWS_CONFIG
+    if not target.is_file():
+        return None
+    cp = configparser.RawConfigParser()
+    try:
+        cp.read(target, encoding="utf-8")
+    except (OSError, configparser.Error):
+        return None
+    section = "default" if profile == "default" else f"{_PROFILE_PREFIX}{profile}"
+    if not cp.has_section(section):
+        return None
+    return dict(cp.items(section))
+
+
+def load_credentials_profile_names(path: Path | None = None) -> set[str]:
+    """`~/.aws/credentials` 의 `[name]` 섹션 이름 집합. **값(시크릿)은 읽지 않음.**
+
+    config 와 달리 섹션이 `[profilename]` (접두사 'profile ' 없음). 부재/파싱 실패 → 빈 set.
+    """
+    target = path or DEFAULT_AWS_CREDENTIALS
+    if not target.is_file():
+        return set()
+    cp = configparser.RawConfigParser()
+    try:
+        cp.read(target, encoding="utf-8")
+    except (OSError, configparser.Error):
+        return set()
+    return set(cp.sections())
+
+
+def load_profile_sso_meta(
+    profile: str, path: Path | None = None
+) -> tuple[str | None, str | None] | None:
+    """profile → (sso_session, sso_start_url). 비-SSO → None.
+
+    신형: `sso_session=S` → `[sso-session S]` 의 sso_start_url 해석.
+    구형: profile 의 sso_start_url 직접 → (None, url).
+    """
+    keys = load_profile_config(profile, path)
+    if keys is None:
+        return None
+    session = keys.get("sso_session")
+    if session:
+        target = path or DEFAULT_AWS_CONFIG
+        cp = configparser.RawConfigParser()
+        try:
+            cp.read(target, encoding="utf-8")
+        except (OSError, configparser.Error):
+            return (session, None)
+        sec = f"{_SSO_SESSION_PREFIX}{session}"
+        url = cp.get(sec, "sso_start_url", fallback=None) if cp.has_section(sec) else None
+        return (session, url)
+    direct = keys.get("sso_start_url")
+    if direct:
+        return (None, direct)
+    return None

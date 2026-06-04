@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.adapter_validate import AdapterValidationCheck
+from anvyc.checks.aws_account_status import AwsAccountStatusCheck
 from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
 from anvyc.checks.base import Check, CheckContext, CheckResult, Severity
 from anvyc.checks.container_runtime import ContainerRuntimeHealthCheck
@@ -97,6 +98,7 @@ _REGISTRY: dict[str, Check] = {
     "project-claude-account-mapping": ProjectClaudeAccountMappingCheck(),
     "project-pulumi-backend-mapping": ProjectPulumiBackendMappingCheck(),
     "aws-profile-status": AwsProfileStatusCheck(),
+    "aws-account-status": AwsAccountStatusCheck(),
     "multi-account-detected": MultiAccountDetectedCheck(),
     "unused-aws-profiles": UnusedAwsProfilesCheck(),
     "creds-expiry": CredsExpiryCheck(),
