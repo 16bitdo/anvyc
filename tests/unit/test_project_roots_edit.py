@@ -190,3 +190,25 @@ def test_remove_from_materialized_defaults(tmp_path: Path) -> None:
     import yaml as _y
     written = _y.safe_load(cfg.read_text())["project_roots"]
     assert "~/Code" not in written and "~/dev" in written
+
+
+# ---------------------------------------------------------------------------
+# Task 7: clear_roots
+# ---------------------------------------------------------------------------
+
+
+def test_clear_removes_key(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n  - ~/work\n")
+    res = clear_roots(cfg)
+    assert res.cleared_to_default is True and res.written is True
+    assert res.removed == ["~/dev", "~/work"]
+    import yaml as _y
+    assert "project_roots" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+def test_clear_already_default_noop(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = clear_roots(cfg)
+    assert res.written is False and res.cleared_to_default is False
