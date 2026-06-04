@@ -22,9 +22,6 @@ from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.project_info import expand_envrc_path
-from anvyc.core.project_roots import resolve_project_roots
-
-_MAX_DEPTH = 3  # <root>/<group>/<project>/.envrc 까지
 
 # 한 줄에 `export CLAUDE_CONFIG_DIR=foo` 또는 `export CLAUDE_CONFIG_DIR="foo"` 매칭.
 # 인용부호 끝 또는 공백/#/끝까지 캡쳐 (`project_gh_account` 와 동일 패턴).
@@ -32,26 +29,6 @@ _CLAUDE_CONFIG_DIR_RE = re.compile(
     r"""^\s*export\s+CLAUDE_CONFIG_DIR\s*=\s*['"]?([^'"\s#]+)""",
     re.MULTILINE,
 )
-
-
-def _iter_envrc_files(root: Path, max_depth: int = _MAX_DEPTH) -> list[Path]:
-    """root 아래 max_depth 까지 `.envrc` 파일 수집."""
-    if not root.is_dir():
-        return []
-    out: list[Path] = []
-    try:
-        for p in root.rglob(".envrc"):
-            try:
-                rel = p.relative_to(root)
-            except ValueError:
-                continue
-            if len(rel.parts) > max_depth:
-                continue
-            if p.is_file():
-                out.append(p)
-    except (OSError, PermissionError):
-        return []
-    return sorted(out)
 
 
 def _read_envrc_claude_dir(envrc: Path) -> str | None:
@@ -71,26 +48,14 @@ class ProjectClaudeAccountMappingCheck:
     name = "project-claude-account-mapping"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
-        envrc_files: list[Path] = []
-        seen: set[Path] = set()
-        for root_str in resolve_project_roots():
-            root = Path(root_str).expanduser()
-            for e in _iter_envrc_files(root):
-                try:
-                    key = e.resolve()
-                except OSError:
-                    key = e
-                if key in seen:
-                    continue
-                seen.add(key)
-                envrc_files.append(e)
+        from anvyc.core.project_scope import iter_project_dirs
 
         # CLAUDE_CONFIG_DIR 을 선언한 .envrc 만 검증 대상.
         targets: list[tuple[Path, str]] = []  # (project_dir, raw_value)
-        for envrc in envrc_files:
-            raw = _read_envrc_claude_dir(envrc)
+        for project_dir in iter_project_dirs(markers=(".envrc",), max_depth=2):
+            raw = _read_envrc_claude_dir(project_dir / ".envrc")
             if raw:
-                targets.append((envrc.parent, raw))
+                targets.append((project_dir, raw))
 
         if not targets:
             return []

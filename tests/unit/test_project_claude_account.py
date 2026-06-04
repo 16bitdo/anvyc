@@ -14,6 +14,23 @@ import pytest
 
 from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.project_claude_account import ProjectClaudeAccountMappingCheck
+from anvyc.core.config import AnvycConfig
+
+
+def test_claude_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    indiv = tmp_path / "proj"
+    indiv.mkdir()
+    missing_dir = tmp_path / "nope"   # 존재하지 않는 CLAUDE_CONFIG_DIR
+    (indiv / ".envrc").write_text(f'export CLAUDE_CONFIG_DIR="{missing_dir}"\n')
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(empty),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: (str(indiv),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
+    results = ProjectClaudeAccountMappingCheck().run(CheckContext())
+    # indiv 의 .envrc 가 스캔돼야만 missing_dir 경고가 나타남
+    assert any(str(missing_dir) in (r.message + str(r.suggestion or "")) for r in results)
 
 
 def _write_envrc_claude(project: Path, config_dir: Path) -> Path:
@@ -27,10 +44,10 @@ def _write_envrc_claude(project: Path, config_dir: Path) -> Path:
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     r = tmp_path / "dev"
     r.mkdir()
-    monkeypatch.setattr(
-        "anvyc.checks.project_claude_account.resolve_project_roots",
-        lambda config=None: (str(r),),
-    )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(r),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
     return r
 
 
@@ -118,9 +135,12 @@ def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     _write_envrc_claude(root_a / "proj-a", cfg_a)
     _write_envrc_claude(root_b / "proj-b", cfg_b)
     monkeypatch.setattr(
-        "anvyc.checks.project_claude_account.resolve_project_roots",
+        "anvyc.core.project_roots.resolve_project_roots",
         lambda config=None: (str(root_a), str(root_b)),
     )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
 
     res = ProjectClaudeAccountMappingCheck().run(CheckContext())
     assert len(res) == 1
