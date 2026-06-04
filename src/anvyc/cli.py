@@ -4253,5 +4253,51 @@ def aws_profile_create(
     )
 
 
+@aws_profile_app.command("edit")
+def aws_profile_edit(
+    name: str = typer.Argument(..., help="profile 이름."),
+    set_: list[str] | None = typer.Option(
+        None, "--set", help="key=value (반복 가능). 정적 자격 키는 거부.", metavar="KEY=VALUE"
+    ),
+    region: str | None = typer.Option(None, "--region", help="region 단축."),
+    output: str | None = typer.Option(None, "--output", help="output 단축."),
+    sso_session: str | None = typer.Option(None, "--sso-session", help="sso_session 단축."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """profile 키 수정 (in-place, 주석 보존). ~/.aws/credentials 정적 키는 거부."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, edit_profile
+
+    sets: dict[str, str] = {}
+    for item in set_ or []:
+        if "=" not in item:
+            console.print(escape(f"오류: --set 는 key=value 형식이어야 합니다: {item}"), soft_wrap=True)
+            raise typer.Exit(code=1) from None
+        k, v = item.split("=", 1)
+        sets[k.strip()] = v.strip()
+    if region is not None:
+        sets["region"] = region
+    if output is not None:
+        sets["output"] = output
+    if sso_session is not None:
+        sets["sso_session"] = sso_session
+    if not sets:
+        console.print("수정할 키가 없습니다 (--set / --region / --output / --sso-session).", soft_wrap=True)
+        raise typer.Exit(code=1) from None
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = edit_profile(config_path, name, sets=sets, write=False)
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: edit_profile(config_path, name, sets=sets, write=True),
+    )
+
+
 if __name__ == "__main__":
     app()

@@ -144,3 +144,37 @@ def test_create_confirm_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert not (tmp_path / ".aws" / "config").exists() or "[profile p]" not in (
         tmp_path / ".aws" / "config"
     ).read_text(encoding="utf-8")
+
+
+def test_edit_sets_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text(
+        "[profile dev]\nregion = us-east-1\n", encoding="utf-8"
+    )
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "dev", "--set", "region=ap-northeast-2", "--yes"]
+    )
+    assert result.exit_code == 0
+    assert "region = ap-northeast-2" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_edit_rejects_static_key_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "dev", "--set", "aws_access_key_id=AKIA_X", "--yes"]
+    )
+    assert result.exit_code == 1
+    assert "정적 자격 키" in result.stdout
+
+
+def test_edit_missing_profile_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile dev]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(
+        app, ["aws", "profile", "edit", "ghost", "--set", "region=y", "--yes"]
+    )
+    assert result.exit_code == 1
