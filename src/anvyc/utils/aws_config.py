@@ -8,6 +8,7 @@ import configparser
 from pathlib import Path
 
 DEFAULT_AWS_CONFIG = Path("~/.aws/config").expanduser()
+DEFAULT_AWS_CREDENTIALS = Path("~/.aws/credentials").expanduser()
 
 _PROFILE_PREFIX = "profile "
 
@@ -103,3 +104,19 @@ def load_profile_config(profile: str, path: Path | None = None) -> dict[str, str
     if not cp.has_section(section):
         return None
     return dict(cp.items(section))
+
+
+def load_credentials_profile_names(path: Path | None = None) -> set[str]:
+    """`~/.aws/credentials` 의 `[name]` 섹션 이름 집합. **값(시크릿)은 읽지 않음.**
+
+    config 와 달리 섹션이 `[profilename]` (접두사 'profile ' 없음). 부재/파싱 실패 → 빈 set.
+    """
+    target = path or DEFAULT_AWS_CREDENTIALS
+    if not target.is_file():
+        return set()
+    cp = configparser.RawConfigParser()
+    try:
+        cp.read(target, encoding="utf-8")
+    except (OSError, configparser.Error):
+        return set()
+    return set(cp.sections())
