@@ -21,10 +21,7 @@ import re
 from pathlib import Path, PurePosixPath
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.core.project_roots import resolve_project_roots
 from anvyc.utils.git_remote import parse_git_config
-
-_MAX_DEPTH = 3  # <root>/<group>/<project>/.git 까지
 
 # 한 줄에 `export GH_CONFIG_DIR=foo` 또는 `export GH_CONFIG_DIR="foo"` 등을 매칭.
 # 인용부호 끝나기 전 까지 또는 공백/#/끝까지 캡쳐.
@@ -32,27 +29,6 @@ _GH_CONFIG_DIR_RE = re.compile(
     r"""^\s*export\s+GH_CONFIG_DIR\s*=\s*['"]?([^'"\s#]+)""",
     re.MULTILINE,
 )
-
-
-def _iter_git_dirs(root: Path, max_depth: int = _MAX_DEPTH) -> list[Path]:
-    """root 아래 max_depth 까지 `.git` 디렉터리 수집."""
-    if not root.is_dir():
-        return []
-    out: list[Path] = []
-    try:
-        # rglob 은 depth 제한 없음 — 명시적 depth 비교
-        for p in root.rglob(".git"):
-            try:
-                rel = p.relative_to(root)
-            except ValueError:
-                continue
-            if len(rel.parts) > max_depth:
-                continue
-            if p.is_dir():
-                out.append(p)
-    except (OSError, PermissionError):
-        return []
-    return sorted(out)
 
 
 def _origin_routing(git_dir: Path) -> tuple[str, str, str] | None:
@@ -121,32 +97,22 @@ class ProjectGhAccountMappingCheck:
     name = "project-gh-account-mapping"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:
-        git_dirs: list[Path] = []
-        seen: set[Path] = set()
-        for root_str in resolve_project_roots():
-            root = Path(root_str).expanduser()
-            for g in _iter_git_dirs(root):
-                try:
-                    key = g.resolve()
-                except OSError:
-                    key = g
-                if key in seen:
-                    continue
-                seen.add(key)
-                git_dirs.append(g)
-        if not git_dirs:
+        from anvyc.core.project_scope import iter_project_dirs
+
+        project_dirs = iter_project_dirs(markers=(".git",), max_depth=2)
+        if not project_dirs:
             return []
 
         # ssh alias 를 쓰는 GitHub origin 보유 project 만 검증 대상.
         targets: list[tuple[Path, str]] = []  # (project_dir, ssh_alias) — alias↔envrc 검증
         routing_targets: list[tuple[Path, str, str, str]] = []  # (dir, alias, owner, repo)
-        for git_dir in git_dirs:
-            info = _origin_routing(git_dir)
+        for project_dir in project_dirs:
+            info = _origin_routing(project_dir / ".git")
             if info:
                 alias, owner, repo = info
-                targets.append((git_dir.parent, alias))
+                targets.append((project_dir, alias))
                 if owner and repo:
-                    routing_targets.append((git_dir.parent, alias, owner, repo))
+                    routing_targets.append((project_dir, alias, owner, repo))
 
         if not targets:
             return []

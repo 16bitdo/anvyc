@@ -37,10 +37,9 @@ def _write_envrc_gh(project: Path, account: str) -> Path:
 def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "Documents"
     root.mkdir()
-    monkeypatch.setattr(
-        "anvyc.checks.project_gh_account.resolve_project_roots",
-        lambda config=None: (str(root),),
-    )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(root),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
     return root
 
 
@@ -165,10 +164,9 @@ def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     proj_b = root_b / "proj-b"
     _write_origin(proj_b, "git@github.com-secondary:acme/proj-b.git")
     _write_envrc_gh(proj_b, "secondary")
-    monkeypatch.setattr(
-        "anvyc.checks.project_gh_account.resolve_project_roots",
-        lambda config=None: (str(root_a), str(root_b)),
-    )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(root_a), str(root_b)))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
 
     res = ProjectGhAccountMappingCheck().run(CheckContext())
     assert len(res) == 1
@@ -273,3 +271,23 @@ def test_owner_routing_disabled_when_mapping_empty(
     res = ProjectGhAccountMappingCheck().run(CheckContext())  # 빈 매핑
     assert calls["n"] == 0
     assert not any("misroute" in r.message for r in res)
+
+
+def test_gh_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """개별 project (projects 설정) 가 스캔에 포함된다."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    indiv = tmp_path / "proj"
+    (indiv / ".git").mkdir(parents=True)
+    (indiv / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com-16bitdo:16bitdo/x.git\n'
+    )
+    # .envrc 에 GH_CONFIG_DIR 없음 → alias 라우팅 누락 경고 기대
+    # (P3) core 3종 패치 — refactor 후 iter_project_dirs 가 이를 통해 격리됨
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(empty),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: (str(indiv),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    results = ProjectGhAccountMappingCheck().run(CheckContext())
+    # refactor 전: empty root 스캔 → indiv 미포함 → results 비어 assert FAIL
+    # refactor 후: resolve_projects → indiv 포함 → "16bitdo" 경고 → assert PASS
+    assert any("proj" in r.message or "16bitdo" in r.message for r in results)
