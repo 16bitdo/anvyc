@@ -4277,6 +4277,7 @@ def aws_profile_edit(
             raise typer.Exit(code=1) from None
         k, v = item.split("=", 1)
         sets[k.strip()] = v.strip()
+    # 단축 옵션(--region/--output/--sso-session)은 동일 키의 --set 값보다 우선한다.
     if region is not None:
         sets["region"] = region
     if output is not None:
