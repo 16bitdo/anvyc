@@ -11,10 +11,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from anvyc.core.config import AnvycConfig
 
-# `~/dev` 가 현행 표준 — 선두. `~/Documents` 는 전환기 잔존 프로젝트 커버용.
+# `~/dev` 가 현행 표준 — 선두. `~/Documents` 는 전환 완료(deprecated)되어 제외.
 DEFAULT_PROJECT_ROOTS: tuple[str, ...] = (
     "~/dev",
-    "~/Documents",
     "~/Projects",
     "~/code",
     "~/Code",

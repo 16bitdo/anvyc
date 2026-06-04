@@ -1441,7 +1441,8 @@ anvyc 가 "사용자 프로젝트 루트" 아래를 스캔하는 모든 경로 �
 (및 MCP `project_list`), `dev_env` 어댑터, `cursor-projects-suggest` check — 는
 `core/project_roots.py` 를 SoT 로 참조한다.
 
-- `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 7-루트 기본값. 정적 fallback 이
+- `DEFAULT_PROJECT_ROOTS` — `~/dev` 를 선두로 한 6-루트 기본값(`~/Documents` 는
+  전환 완료되어 제외). 정적 fallback 이
   필요한 곳(`discover_projects`·`dev_env`·`cursor-projects-suggest`)이 직접 참조.
 - `resolve_project_roots(config)` — anvyc.yaml 의 top-level `project_roots` 를 읽고,
   없으면 `DEFAULT_PROJECT_ROOTS` 로 fallback. config 인지가 필요한 진입점
