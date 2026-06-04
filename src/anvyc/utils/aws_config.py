@@ -120,3 +120,31 @@ def load_credentials_profile_names(path: Path | None = None) -> set[str]:
     except (OSError, configparser.Error):
         return set()
     return set(cp.sections())
+
+
+def load_profile_sso_meta(
+    profile: str, path: Path | None = None
+) -> tuple[str | None, str | None] | None:
+    """profile → (sso_session, sso_start_url). 비-SSO → None.
+
+    신형: `sso_session=S` → `[sso-session S]` 의 sso_start_url 해석.
+    구형: profile 의 sso_start_url 직접 → (None, url).
+    """
+    keys = load_profile_config(profile, path)
+    if keys is None:
+        return None
+    session = keys.get("sso_session")
+    if session:
+        target = path or DEFAULT_AWS_CONFIG
+        cp = configparser.RawConfigParser()
+        try:
+            cp.read(target, encoding="utf-8")
+        except (OSError, configparser.Error):
+            return (session, None)
+        sec = f"{_SSO_SESSION_PREFIX}{session}"
+        url = cp.get(sec, "sso_start_url", fallback=None) if cp.has_section(sec) else None
+        return (session, url)
+    direct = keys.get("sso_start_url")
+    if direct:
+        return (None, direct)
+    return None
