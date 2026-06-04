@@ -118,6 +118,9 @@ app.add_typer(config_app, name="config", rich_help_panel=PANEL_PROJECT)
 roots_app = typer.Typer(name="roots", help="프로젝트 컨테이너 root 조회/관리 (anvyc.yaml project_roots).")
 config_app.add_typer(roots_app, name="roots")
 
+projects_app = typer.Typer(name="projects", help="개별 프로젝트 포함/제외 관리 (anvyc.yaml projects/exclude_projects).")
+config_app.add_typer(projects_app, name="projects")
+
 tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
 app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 
@@ -1692,6 +1695,47 @@ def roots_clear(
     console.print(f"[green]cleared[/] {len(res.removed)} explicit root(s)")
     console.print("[dim]default 복귀: " + escape(", ".join(res.effective_after)) + "[/]")
     console.print(f"[dim]→ {escape(str(target))}[/]")
+
+
+@projects_app.command("list")
+def projects_list(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """개별 포함(projects) + 제외(exclude_projects) 를 존재/마커와 함께 출력."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import load_projects_model
+
+    target = _resolve_roots_target(config, local)
+    model = load_projects_model(target)
+    if json_out:
+        payload = {
+            "config": str(target),
+            "includes": [
+                {"path": e.path, "exists": e.exists, "has_marker": e.has_marker}
+                for e in model.includes
+            ],
+            "excludes": [
+                {"path": e.path, "exists": e.exists} for e in model.excludes
+            ],
+        }
+        typer.echo(_json.dumps(payload, ensure_ascii=False))
+        return
+    if not model.includes and not model.excludes:
+        console.print("[dim]등록된 개별 프로젝트 없음 (config roots 의 컨테이너만 사용 중)[/]")
+        return
+    console.print(f"[dim]config: {escape(str(target))}[/]")
+    for e in model.includes:
+        mark = "✓" if e.exists else "✗"
+        warn = "" if e.has_marker else " [yellow](마커 없음)[/]"
+        console.print(f"  [green]+[/] {escape(e.path):28} {mark}{warn}", soft_wrap=True)
+    for e in model.excludes:
+        mark = "✓" if e.exists else "✗"
+        console.print(f"  [red]-[/] {escape(e.path):28} {mark} [dim](exclude)[/]", soft_wrap=True)
 
 
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
