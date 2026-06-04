@@ -178,3 +178,41 @@ def test_edit_missing_profile_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyP
         app, ["aws", "profile", "edit", "ghost", "--set", "region=y", "--yes"]
     )
     assert result.exit_code == 1
+
+
+def test_rm_deletes_with_yes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text(
+        "[profile keep]\nregion = a\n\n[profile gone]\nregion = b\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone", "--yes"])
+    assert result.exit_code == 0
+    text = (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+    assert "[profile gone]" not in text and "[profile keep]" in text
+
+
+def test_rm_dry_run_no_delete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile gone]\nregion = b\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone", "--dry-run"])
+    assert result.exit_code == 0
+    assert "[profile gone]" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_rm_confirm_abort_keeps_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile gone]\nregion = b\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "gone"], input="n\n")
+    assert result.exit_code == 0
+    assert "[profile gone]" in (tmp_path / ".aws" / "config").read_text(encoding="utf-8")
+
+
+def test_rm_missing_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".aws").mkdir()
+    (tmp_path / ".aws" / "config").write_text("[profile a]\nregion = x\n", encoding="utf-8")
+    result = runner.invoke(app, ["aws", "profile", "rm", "ghost", "--yes"])
+    assert result.exit_code == 1

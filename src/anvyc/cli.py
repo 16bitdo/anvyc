@@ -4299,5 +4299,28 @@ def aws_profile_edit(
     )
 
 
+@aws_profile_app.command("rm")
+def aws_profile_rm(
+    name: str = typer.Argument(..., help="삭제할 profile 이름."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="변경 미리보기만."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 프롬프트 생략."),
+) -> None:
+    """profile 삭제 (~/.aws/config). 고아 sso-session 은 경고만(자동 삭제 안 함)."""
+    from pathlib import Path
+
+    from anvyc.core.aws_config_edit import AwsConfigEditError, remove_profile
+
+    config_path = Path.home() / ".aws" / "config"
+    try:
+        preview = remove_profile(config_path, name, write=False)
+    except AwsConfigEditError as e:
+        console.print(escape(f"오류: {e}"), soft_wrap=True)
+        raise typer.Exit(code=1) from None
+    _apply_aws_edit(
+        preview, dry_run=dry_run, yes=yes,
+        commit_fn=lambda: remove_profile(config_path, name, write=True),
+    )
+
+
 if __name__ == "__main__":
     app()
