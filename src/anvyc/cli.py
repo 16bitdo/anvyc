@@ -2183,12 +2183,19 @@ def project_list(
     각 entry 는 `anvyc project show` 와 동일 schema (DESIGN §32).
     D11c redaction 동일 적용 — `--reveal-secrets` 명시 시 raw 값.
     """
-    from anvyc.core.project_discovery import discover_projects
+    from anvyc.core.project_discovery import PROJECT_MARKERS, discover_projects
     from anvyc.core.project_info import collect_project_info, to_dict
     from anvyc.core.project_roots import resolve_project_roots
+    from anvyc.core.project_scope import iter_project_dirs
 
-    roots_arg = roots if roots else list(resolve_project_roots())
-    projects = discover_projects(roots_arg)
+    if roots:
+        roots_arg = list(roots)
+        projects = discover_projects(roots_arg)  # 명시 --root: 개별/제외 미적용(명시 override)
+    else:
+        roots_arg = list(resolve_project_roots())
+        projects = iter_project_dirs(
+            markers=PROJECT_MARKERS, max_depth=2
+        )  # 무인자: projects/excludes honoring
     infos = [collect_project_info(p, redact_secrets=not reveal_secrets) for p in projects]
     payload = [to_dict(i) for i in infos]
 
