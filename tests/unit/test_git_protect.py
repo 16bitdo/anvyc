@@ -40,6 +40,15 @@ def test_apply_dry_run_would_create_when_absent() -> None:
     with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, "[]", "")]):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=True)
     assert res.action == "would-create"
+    assert "required_reviews=0" in res.detail
+
+
+def test_apply_dry_run_detail_shows_required_reviews() -> None:
+    # dry-run 출력에 적용 예정 required_reviews 값이 보여야 한다 (defaults 상속 오적용 사전 감지)
+    with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, "[]", "")]):
+        res = apply_ruleset("16bitdo", "anvyc", required_reviews=1, dry_run=True)
+    assert res.action == "would-create"
+    assert "required_reviews=1" in res.detail
 
 
 def test_apply_no_access_when_list_and_probe_404() -> None:
@@ -69,6 +78,7 @@ def test_apply_creates_when_not_dry_run() -> None:
     ):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
     assert res.action == "created"
+    assert "required_reviews=0" in res.detail
 
 
 def test_apply_post_error() -> None:
@@ -78,6 +88,7 @@ def test_apply_post_error() -> None:
     ):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
     assert res.action == "error"
+    assert "422 boom" in res.detail  # 실패 시 detail 은 오류 메시지 유지
 
 
 def test_apply_exists_when_present_dry_run() -> None:
@@ -85,6 +96,7 @@ def test_apply_exists_when_present_dry_run() -> None:
     with patch("anvyc.core.git_protect._gh_api", side_effect=[(0, listing, "")]):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=True)
     assert res.action == "exists"
+    assert "required_reviews=0" in res.detail
 
 
 def test_apply_updates_existing_non_dry() -> None:
@@ -95,3 +107,4 @@ def test_apply_updates_existing_non_dry() -> None:
     ):
         res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
     assert res.action == "updated"
+    assert "required_reviews=0" in res.detail

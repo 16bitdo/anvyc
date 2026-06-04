@@ -119,21 +119,24 @@ def apply_ruleset(
         return ProtectResult(owner, repo, "error", "rulesets list failed")
     existing = _find_named(items, RULESET_NAME)
     payload = build_ruleset_payload(required_reviews=required_reviews)
+    # 적용(예정)값 가시화 — manifest defaults 상속으로 의도치 않은 값이 가는 것을
+    # dry-run 단계에서 감지할 수 있게 한다 (2026-06-04 whatap count=1 오적용 재발 방지).
+    info = f"required_reviews={required_reviews}"
     if existing is None:
         if dry_run:
-            return ProtectResult(owner, repo, "would-create")
+            return ProtectResult(owner, repo, "would-create", info)
         rc, _, err = _gh_api(
             [f"repos/{owner}/{repo}/rulesets", "--method", "POST", "--input", "-"],
             input_str=json.dumps(payload),
         )
-        return ProtectResult(owner, repo, "created" if rc == 0 else "error", err.strip()[:120])
+        return ProtectResult(owner, repo, "created" if rc == 0 else "error", info if rc == 0 else err.strip()[:120])
     rid = existing.get("id")
     if rid is None:
         return ProtectResult(owner, repo, "error", "ruleset id missing in list response")
     if dry_run:
-        return ProtectResult(owner, repo, "exists")
+        return ProtectResult(owner, repo, "exists", info)
     rc, _, err = _gh_api(
         [f"repos/{owner}/{repo}/rulesets/{rid}", "--method", "PUT", "--input", "-"],
         input_str=json.dumps(payload),
     )
-    return ProtectResult(owner, repo, "updated" if rc == 0 else "error", err.strip()[:120])
+    return ProtectResult(owner, repo, "updated" if rc == 0 else "error", info if rc == 0 else err.strip()[:120])
