@@ -40,8 +40,16 @@ def patched_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     docs.mkdir()
     aws_cfg = tmp_path / "aws" / "config"
     monkeypatch.setattr(
-        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        "anvyc.core.project_roots.resolve_project_roots",
         lambda config=None: (str(docs),),
+    )
+    monkeypatch.setattr(
+        "anvyc.core.project_roots.resolve_projects",
+        lambda config=None: (),
+    )
+    monkeypatch.setattr(
+        "anvyc.core.project_roots.resolve_excludes",
+        lambda config=None: (),
     )
     monkeypatch.setattr(
         "anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg
@@ -112,9 +120,11 @@ def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     aws_cfg = tmp_path / "aws" / "config"
     _write_aws_config(aws_cfg, ["default", "ws-dev", "company-audit"])
     monkeypatch.setattr(
-        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        "anvyc.core.project_roots.resolve_project_roots",
         lambda config=None: (str(root_a), str(root_b)),
     )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
     monkeypatch.setattr("anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg)
 
     res = ProjectAwsProfileMappingCheck().run(CheckContext())
@@ -131,7 +141,7 @@ def test_duplicate_root_dedup(
     _write_envrc(docs / "proj-a", "ws-dev")
     _write_aws_config(patched_paths["aws_cfg"], ["default", "ws-dev"])
     monkeypatch.setattr(
-        "anvyc.checks.project_aws_profile.resolve_project_roots",
+        "anvyc.core.project_roots.resolve_project_roots",
         lambda config=None: (str(docs), str(docs)),
     )
 
@@ -157,3 +167,20 @@ def test_envrc_with_quoted_value(patched_paths: dict[str, Any]) -> None:
     res = ProjectAwsProfileMappingCheck().run(CheckContext())
     assert len(res) == 1
     assert res[0].severity is Severity.INFO
+
+
+def test_aws_profile_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """개별 project(.envrc 보유)가 root 컨테이너와 무관하게 스캔된다."""
+    aws_cfg = tmp_path / "aws_config"
+    aws_cfg.write_text("[profile defined-p]\n")
+    monkeypatch.setattr("anvyc.utils.aws_config.DEFAULT_AWS_CONFIG", aws_cfg)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    indiv = tmp_path / "proj"
+    indiv.mkdir()
+    (indiv / ".envrc").write_text("export AWS_PROFILE=undefined-p\n")
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(empty),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: (str(indiv),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    results = ProjectAwsProfileMappingCheck().run(CheckContext())
+    assert any("undefined-p" in r.message for r in results)  # 개별 project 의 미정의 profile 경고
