@@ -4134,7 +4134,7 @@ def aws_profile_list(
         probe_out = row.get("probe")
         if isinstance(probe_out, dict):
             line += f"  probe: {'ok ' + str(probe_out['account']) if probe_out['ok'] else 'fail ' + str(probe_out['error'])}"
-        typer.echo(escape(line))
+        console.print(escape(line), soft_wrap=True)
 
 
 @aws_profile_app.command("show")
@@ -4178,12 +4178,12 @@ def aws_profile_show(
     if json_out:
         typer.echo(_json.dumps(out, ensure_ascii=False))
         return
-    typer.echo(escape(f"{name}  [{st.auth_method}] {st.status}"))
+    console.print(escape(f"{name}  [{st.auth_method}] {st.status}"), soft_wrap=True)
     for k, v in keys.items():
-        typer.echo(escape(f"  {k} = {v}"))
+        console.print(escape(f"  {k} = {v}"), soft_wrap=True)
     pr_out = out["probe"]
     if isinstance(pr_out, dict):
-        typer.echo(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"))
+        console.print(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"), soft_wrap=True)
 
 
 if __name__ == "__main__":
