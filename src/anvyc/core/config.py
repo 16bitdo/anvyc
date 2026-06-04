@@ -207,6 +207,8 @@ class AnvycConfig:
     cost: CostConfig = field(default_factory=CostConfig)
     secrets: SecretsConfig = field(default_factory=SecretsConfig)
     project_roots: list[str] = field(default_factory=list)  # 빈 리스트면 SoT DEFAULT
+    projects: list[str] = field(default_factory=list)          # 개별 프로젝트 (직접 포함)
+    exclude_projects: list[str] = field(default_factory=list)  # 개별 제외
     source: Path | None = None  # 로드된 base yaml 경로 (debug 용)
     overlay_source: Path | None = None  # v0.6.4 — 적용된 host overlay 경로 (debug 용)
 
@@ -375,6 +377,8 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         cost=cost,
         secrets=secrets,
         project_roots=list(raw.get("project_roots") or []),
+        projects=list(raw.get("projects") or []),
+        exclude_projects=list(raw.get("exclude_projects") or []),
         source=source,
         overlay_source=overlay_source,
     )

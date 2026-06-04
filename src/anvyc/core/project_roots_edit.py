@@ -168,6 +168,105 @@ def load_roots_model(config_path: Path) -> RootsModel:
     return RootsModel(entries=entries, explicit=was_explicit, config_path=config_path)
 
 
+def _has_project_marker(path: Path) -> bool:
+    from anvyc.core.project_discovery import PROJECT_MARKERS
+
+    return any((path / m).exists() for m in PROJECT_MARKERS)
+
+
+def _current_list(raw: dict[str, Any], key: str) -> list[str]:
+    val = raw.get(key)
+    if isinstance(val, list):
+        return [n for n in (normalize_root(str(x)) for x in val) if n]
+    return []
+
+
+@dataclass
+class ProjectsEditResult:
+    action: str                                  # "add"|"remove"|"exclude"|"unexclude"
+    key: str                                     # "projects"|"exclude_projects"
+    added: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    effective_after: list[str] = field(default_factory=list)
+    written: bool = False
+    config_path: Path | None = None
+    backup_path: Path | None = None
+
+
+def _edit_list(
+    config_path: Path,
+    key: str,
+    raw_paths: list[str],
+    *,
+    op: str,
+    action: str,
+    require_marker: bool,
+    make_backup: bool,
+) -> ProjectsEditResult:
+    raw = _load_raw(config_path)
+    cur = _current_list(raw, key)
+    res = ProjectsEditResult(action=action, key=key, config_path=config_path)
+    if op == "add":
+        other_key = "exclude_projects" if key == "projects" else "projects"
+        other = _current_list(raw, other_key)
+        for rp in raw_paths:
+            norm = normalize_root(rp)
+            if not norm:
+                continue
+            if norm in cur:
+                res.skipped.append(norm)
+                continue
+            p = Path(norm).expanduser()
+            if not norm.startswith(("~", "/")):
+                res.warnings.append(f"상대경로(권장 안 함): {norm}")
+            if not p.is_dir():
+                res.warnings.append(f"미존재 디렉터리: {norm}")
+            elif require_marker and not _has_project_marker(p):
+                res.warnings.append(f"프로젝트 마커(.git/Pulumi.yaml) 없음: {norm}")
+            if norm in other:
+                res.warnings.append(f"{other_key} 에도 존재 — exclude 우선: {norm}")
+            cur.append(norm)
+            res.added.append(norm)
+    else:  # remove
+        targets = [normalize_root(rp) for rp in raw_paths if normalize_root(rp)]
+        kept: list[str] = []
+        for r in cur:
+            (res.removed if r in targets else kept).append(r)
+        for t in targets:
+            if t not in cur:
+                res.skipped.append(t)
+        cur = kept
+    res.effective_after = cur
+    if res.added or res.removed:
+        if cur:
+            raw[key] = cur
+        else:
+            raw.pop(key, None)
+        res.backup_path = _write_roots(raw, config_path, make_backup=make_backup)
+        res.written = True
+    return res
+
+
+def add_projects(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "projects", raw_paths,
+        op="add", action="add", require_marker=True, make_backup=make_backup,
+    )
+
+
+def remove_projects(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "projects", raw_paths,
+        op="remove", action="remove", require_marker=False, make_backup=make_backup,
+    )
+
+
 def _write_roots(raw: dict[str, Any], config_path: Path, *, make_backup: bool) -> Path | None:
     backup: Path | None = None
     if make_backup and config_path.is_file():
@@ -183,3 +282,59 @@ def _write_roots(raw: dict[str, Any], config_path: Path, *, make_backup: bool) -
             config_path.write_bytes(backup.read_bytes())
         raise
     return backup
+
+
+def exclude_project(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "exclude_projects", raw_paths,
+        op="add", action="exclude", require_marker=False, make_backup=make_backup,
+    )
+
+
+def unexclude_project(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> ProjectsEditResult:
+    return _edit_list(
+        config_path, "exclude_projects", raw_paths,
+        op="remove", action="unexclude", require_marker=False, make_backup=make_backup,
+    )
+
+
+@dataclass
+class ProjectEntry:
+    path: str
+    kind: str        # "include" | "exclude"
+    exists: bool
+    has_marker: bool
+
+
+@dataclass
+class ProjectsModel:
+    includes: list[ProjectEntry]
+    excludes: list[ProjectEntry]
+    config_path: Path
+
+
+def load_projects_model(config_path: Path) -> ProjectsModel:
+    raw = _load_raw(config_path)
+
+    def _entries(key: str, kind: str) -> list[ProjectEntry]:
+        out: list[ProjectEntry] = []
+        for p in _current_list(raw, key):
+            pp = Path(p).expanduser()
+            exists = pp.is_dir()
+            out.append(
+                ProjectEntry(
+                    path=p, kind=kind, exists=exists,
+                    has_marker=exists and _has_project_marker(pp),
+                )
+            )
+        return out
+
+    return ProjectsModel(
+        includes=_entries("projects", "include"),
+        excludes=_entries("exclude_projects", "exclude"),
+        config_path=config_path,
+    )

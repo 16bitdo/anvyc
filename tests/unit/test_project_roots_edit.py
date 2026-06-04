@@ -11,11 +11,16 @@ from anvyc.core.project_roots_edit import (
     _current_explicit_roots,
     _load_raw,
     _write_roots,
+    add_projects,
     add_roots,
     clear_roots,
+    exclude_project,
+    load_projects_model,
     load_roots_model,
     normalize_root,
+    remove_projects,
     remove_roots,
+    unexclude_project,
 )
 
 
@@ -254,3 +259,76 @@ def test_load_model_default_source(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert all(e.source == "default" for e in model.entries)
     assert all(e.projects == 0 for e in model.entries)  # 빈 HOME → discover 0 (헤르메틱)
     assert [e.path for e in model.entries] == list(_DEF)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: add_projects / remove_projects
+# ---------------------------------------------------------------------------
+
+
+def test_add_projects_with_marker(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = add_projects(cfg, [str(proj)])
+    assert res.added == [normalize_for(proj)] and res.written is True
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["projects"] == [normalize_for(proj)]
+
+
+def test_add_projects_warns_no_marker_but_adds(tmp_path: Path) -> None:
+    proj = tmp_path / "nomarker"
+    proj.mkdir()
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = add_projects(cfg, [str(proj)])
+    assert res.added == [normalize_for(proj)]
+    assert any("마커" in w for w in res.warnings)
+
+
+def test_remove_projects_to_empty_drops_key(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("projects:\n  - ~/work/x\n")
+    res = remove_projects(cfg, ["~/work/x"])
+    assert res.removed == ["~/work/x"]
+    import yaml as _y
+    assert "projects" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+# ---------------------------------------------------------------------------
+# Task 6: exclude_project / unexclude_project / load_projects_model
+# ---------------------------------------------------------------------------
+
+
+def test_exclude_and_unexclude(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = exclude_project(cfg, ["~/dev/archived"])
+    assert res.key == "exclude_projects" and res.added == ["~/dev/archived"]
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["exclude_projects"] == ["~/dev/archived"]
+    res2 = unexclude_project(cfg, ["~/dev/archived"])
+    assert res2.removed == ["~/dev/archived"]
+    assert "exclude_projects" not in (_y.safe_load(cfg.read_text()) or {})
+
+
+def test_add_project_in_exclude_warns_conflict(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text(f"exclude_projects:\n  - {proj}\n")
+    res = add_projects(cfg, [str(proj)])
+    assert any("exclude 우선" in w for w in res.warnings)
+
+
+def test_load_projects_model(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text(f"projects:\n  - {proj}\nexclude_projects:\n  - ~/dev/gone\n")
+    model = load_projects_model(cfg)
+    inc = model.includes[0]
+    assert inc.kind == "include" and inc.exists is True and inc.has_marker is True
+    exc = model.excludes[0]
+    assert exc.kind == "exclude" and exc.exists is False

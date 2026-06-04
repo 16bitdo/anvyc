@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from anvyc.core.config import AnvycConfig, load_anvyc_config
-from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS, resolve_project_roots
+from anvyc.core.project_roots import (
+    DEFAULT_PROJECT_ROOTS,
+    resolve_excludes,
+    resolve_project_roots,
+    resolve_projects,
+)
 
 
 def test_default_roots_dev_first() -> None:
@@ -58,3 +63,15 @@ def test_load_config_no_project_roots(tmp_path: Path) -> None:
     cfg_file.write_text("storage:\n  root: .anvyc\n")
     cfg = load_anvyc_config(cfg_file)
     assert cfg.project_roots == []
+
+
+def test_resolve_projects_reads_config() -> None:
+    cfg = AnvycConfig(projects=["~/work/x", "  ~/y  "], exclude_projects=["~/z"])
+    assert resolve_projects(cfg) == ("~/work/x", "~/y")
+    assert resolve_excludes(cfg) == ("~/z",)
+
+
+def test_resolve_projects_empty_default() -> None:
+    cfg = AnvycConfig()
+    assert resolve_projects(cfg) == ()
+    assert resolve_excludes(cfg) == ()

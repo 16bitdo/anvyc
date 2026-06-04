@@ -13,13 +13,10 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
+from anvyc.core.project_scope import _walk_markers
 
 PROJECT_MARKERS: tuple[str, ...] = (".git", "Pulumi.yaml")
 DEFAULT_MAX_DEPTH = 2
-
-
-def _has_marker(path: Path) -> bool:
-    return any((path / m).exists() for m in PROJECT_MARKERS)
 
 
 def discover_projects(
@@ -42,28 +39,5 @@ def discover_projects(
         root = Path(root_str).expanduser()
         if not root.is_dir():
             continue
-        _walk(root, depth=1, max_depth=max_depth, found=found)
+        _walk_markers(root, depth=1, max_depth=max_depth, markers=PROJECT_MARKERS, found=found)
     return sorted(found, key=lambda p: str(p))
-
-
-def _walk(directory: Path, *, depth: int, max_depth: int, found: set[Path]) -> None:
-    if depth > max_depth:
-        return
-    try:
-        entries = list(directory.iterdir())
-    except (OSError, PermissionError):
-        return
-    for entry in entries:
-        if not entry.is_dir() or entry.is_symlink():
-            # symlink 는 alias 또는 reference 일 가능성 — 별도로 처리 안 함
-            continue
-        try:
-            resolved = entry.resolve()
-        except OSError:
-            continue
-        if _has_marker(entry):
-            found.add(resolved)
-            # marker 발견 시 그 아래는 더 들어가지 않음 (project 의 sub-dir 은 별도 project 가 아님)
-            continue
-        if depth < max_depth:
-            _walk(entry, depth=depth + 1, max_depth=max_depth, found=found)

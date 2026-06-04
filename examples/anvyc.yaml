@@ -12,6 +12,11 @@ version: 1
 project_roots:
   - ~/dev
 
+# 개별 프로젝트 — 컨테이너(project_roots) 밖이라도 직접 포함. 관리: anvyc config projects add/rm
+projects: []
+# 개별 제외 — 모든 discovery/체크에서 스킵. 관리: anvyc config projects exclude/unexclude
+exclude_projects: []
+
 storage:
   root: ".anvyc"
   keep_backups: 5

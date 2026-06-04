@@ -90,8 +90,9 @@ from anvyc.templates import DEFAULT_ANVYC_YAML
 from anvyc.utils.errors import print_error, safe_msg
 
 if TYPE_CHECKING:
-    # 타입 힌트 전용 — 런타임 import 는 project_doctor 명령이 lazy 로 수행.
+    # 타입 힌트 전용 — 런타임 import 는 각 명령이 lazy 로 수행.
     from anvyc.core.project_doctor import ProjectDoctorReport
+    from anvyc.core.project_roots_edit import ProjectsEditResult
 
 app = typer.Typer(
     name="anvyc",
@@ -117,6 +118,9 @@ app.add_typer(config_app, name="config", rich_help_panel=PANEL_PROJECT)
 
 roots_app = typer.Typer(name="roots", help="프로젝트 컨테이너 root 조회/관리 (anvyc.yaml project_roots).")
 config_app.add_typer(roots_app, name="roots")
+
+projects_app = typer.Typer(name="projects", help="개별 프로젝트 포함/제외 관리 (anvyc.yaml projects/exclude_projects).")
+config_app.add_typer(projects_app, name="projects")
 
 tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
 app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
@@ -1694,6 +1698,116 @@ def roots_clear(
     console.print(f"[dim]→ {escape(str(target))}[/]")
 
 
+@projects_app.command("list")
+def projects_list(
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+) -> None:
+    """개별 포함(projects) + 제외(exclude_projects) 를 존재/마커와 함께 출력."""
+    import json as _json
+
+    from rich.markup import escape
+
+    from anvyc.core.project_roots_edit import load_projects_model
+
+    target = _resolve_roots_target(config, local)
+    model = load_projects_model(target)
+    if json_out:
+        payload = {
+            "config": str(target),
+            "includes": [
+                {"path": e.path, "exists": e.exists, "has_marker": e.has_marker}
+                for e in model.includes
+            ],
+            "excludes": [
+                {"path": e.path, "exists": e.exists} for e in model.excludes
+            ],
+        }
+        typer.echo(_json.dumps(payload, ensure_ascii=False))
+        return
+    if not model.includes and not model.excludes:
+        console.print("[dim]등록된 개별 프로젝트 없음 (config roots 의 컨테이너만 사용 중)[/]")
+        return
+    console.print(f"[dim]config: {escape(str(target))}[/]")
+    for e in model.includes:
+        mark = "✓" if e.exists else "✗"
+        warn = "" if e.has_marker else " [yellow](마커 없음)[/]"
+        console.print(f"  [green]+[/] {escape(e.path):28} {mark}{warn}", soft_wrap=True)
+    for e in model.excludes:
+        mark = "✓" if e.exists else "✗"
+        console.print(f"  [red]-[/] {escape(e.path):28} {mark} [dim](exclude)[/]", soft_wrap=True)
+
+
+def _print_projects_result(res: ProjectsEditResult, target: Path) -> None:
+    from rich.markup import escape
+
+    for w in res.warnings:
+        console.print(f"[yellow]warning[/] {escape(w)}")
+    for p in res.added:
+        console.print(f"[green]added[/] {escape(p)}")
+    for p in res.removed:
+        console.print(f"[green]removed[/] {escape(p)}")
+    for p in res.skipped:
+        console.print(f"[dim]skip[/] {escape(p)}")
+    if res.written:
+        console.print(f"[dim]→ {escape(str(target))}[/]")
+    else:
+        console.print("[dim]변경 없음[/]")
+
+
+@projects_app.command("add")
+def projects_add(
+    paths: list[str] = typer.Argument(..., help="추가할 개별 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 포함 목록에 추가한다(마커 없으면 경고)."""
+    from anvyc.core.project_roots_edit import add_projects
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(add_projects(target, paths), target)
+
+
+@projects_app.command("rm")
+def projects_rm(
+    paths: list[str] = typer.Argument(..., help="포함 목록에서 제거할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 포함 목록에서 제거한다."""
+    from anvyc.core.project_roots_edit import remove_projects
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(remove_projects(target, paths), target)
+
+
+@projects_app.command("exclude")
+def projects_exclude(
+    paths: list[str] = typer.Argument(..., help="모든 스캔에서 제외할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 제외 목록(exclude_projects)에 추가한다."""
+    from anvyc.core.project_roots_edit import exclude_project
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(exclude_project(target, paths), target)
+
+
+@projects_app.command("unexclude")
+def projects_unexclude(
+    paths: list[str] = typer.Argument(..., help="제외 목록에서 해제할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 제외 목록에서 해제한다."""
+    from anvyc.core.project_roots_edit import unexclude_project
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(unexclude_project(target, paths), target)
+
+
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
     """tools list / MCP tools_list 의 row 데이터 (core SoT 위임, PR3).
 
@@ -2070,12 +2184,19 @@ def project_list(
     각 entry 는 `anvyc project show` 와 동일 schema (DESIGN §32).
     D11c redaction 동일 적용 — `--reveal-secrets` 명시 시 raw 값.
     """
-    from anvyc.core.project_discovery import discover_projects
+    from anvyc.core.project_discovery import PROJECT_MARKERS, discover_projects
     from anvyc.core.project_info import collect_project_info, to_dict
     from anvyc.core.project_roots import resolve_project_roots
+    from anvyc.core.project_scope import iter_project_dirs
 
-    roots_arg = roots if roots else list(resolve_project_roots())
-    projects = discover_projects(roots_arg)
+    if roots:
+        roots_arg = list(roots)
+        projects = discover_projects(roots_arg)  # 명시 --root: 개별/제외 미적용(명시 override)
+    else:
+        roots_arg = list(resolve_project_roots())
+        projects = iter_project_dirs(
+            markers=PROJECT_MARKERS, max_depth=2
+        )  # 무인자: projects/excludes honoring
     infos = [collect_project_info(p, redact_secrets=not reveal_secrets) for p in projects]
     payload = [to_dict(i) for i in infos]
 

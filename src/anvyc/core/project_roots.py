@@ -44,3 +44,26 @@ def resolve_project_roots(config: AnvycConfig | None = None) -> tuple[str, ...]:
 
     cleaned = tuple(str(r).strip() for r in roots if str(r).strip())
     return cleaned or DEFAULT_PROJECT_ROOTS
+
+
+def _resolve_list(config: AnvycConfig | None, attr: str) -> tuple[str, ...]:
+    cfg = config
+    if cfg is None:
+        try:
+            from anvyc.core.config import load_anvyc_config
+
+            cfg = load_anvyc_config()
+        except Exception:
+            return ()
+    vals = getattr(cfg, attr, None) or []
+    return tuple(str(v).strip() for v in vals if str(v).strip())
+
+
+def resolve_projects(config: AnvycConfig | None = None) -> tuple[str, ...]:
+    """anvyc.yaml 의 top-level `projects`(개별 포함). 미설정/실패 시 빈 튜플."""
+    return _resolve_list(config, "projects")
+
+
+def resolve_excludes(config: AnvycConfig | None = None) -> tuple[str, ...]:
+    """anvyc.yaml 의 top-level `exclude_projects`(개별 제외). 미설정/실패 시 빈 튜플."""
+    return _resolve_list(config, "exclude_projects")
