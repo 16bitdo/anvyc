@@ -11,6 +11,27 @@ import pytest
 
 from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
+from anvyc.core.config import AnvycConfig
+
+
+def test_pulumi_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    indiv = tmp_path / "proj"
+    indiv.mkdir()
+    (indiv / "Pulumi.yaml").write_text("name: p\nruntime: python\nbackend:\n  url: s3://yaml-be\n")
+    (indiv / ".envrc").write_text('export PULUMI_BACKEND_URL="s3://envrc-be"\n')  # mismatch
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(empty),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: (str(indiv),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
+    results = ProjectPulumiBackendMappingCheck().run(CheckContext())
+    # 개별 project 가 스캔되어 mismatch 경고 (yaml-be vs envrc-be 불일치)
+    assert any(
+        "yaml-be" in r.message and "envrc-be" in r.message
+        or (r.location is not None and "proj" in str(r.location))
+        for r in results
+    )
 
 
 def _write_pulumi(project: Path, backend: str | None = None) -> None:
@@ -30,10 +51,10 @@ def _write_envrc_backend(project: Path, url: str) -> None:
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     r = tmp_path / "dev"
     r.mkdir()
-    monkeypatch.setattr(
-        "anvyc.checks.project_pulumi_backend.resolve_project_roots",
-        lambda config=None: (str(r),),
-    )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_project_roots", lambda config=None: (str(r),))
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
     return r
 
 
@@ -118,9 +139,12 @@ def test_multi_root_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     _write_pulumi(root_a / "proj-a", backend="s3://a")
     _write_pulumi(root_b / "proj-b", backend="s3://b")
     monkeypatch.setattr(
-        "anvyc.checks.project_pulumi_backend.resolve_project_roots",
+        "anvyc.core.project_roots.resolve_project_roots",
         lambda config=None: (str(root_a), str(root_b)),
     )
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_projects", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.project_roots.resolve_excludes", lambda config=None: ())
+    monkeypatch.setattr("anvyc.core.config.load_anvyc_config", lambda *a, **kw: AnvycConfig())
 
     res = ProjectPulumiBackendMappingCheck().run(CheckContext())
     assert len(res) == 1
