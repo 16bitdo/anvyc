@@ -11,10 +11,12 @@ from anvyc.core.project_roots_edit import (
     _current_explicit_roots,
     _load_raw,
     _write_roots,
+    add_projects,
     add_roots,
     clear_roots,
     load_roots_model,
     normalize_root,
+    remove_projects,
     remove_roots,
 )
 
@@ -254,3 +256,38 @@ def test_load_model_default_source(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert all(e.source == "default" for e in model.entries)
     assert all(e.projects == 0 for e in model.entries)  # 빈 HOME → discover 0 (헤르메틱)
     assert [e.path for e in model.entries] == list(_DEF)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: add_projects / remove_projects
+# ---------------------------------------------------------------------------
+
+
+def test_add_projects_with_marker(tmp_path: Path) -> None:
+    proj = tmp_path / "x"
+    (proj / ".git").mkdir(parents=True)
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = add_projects(cfg, [str(proj)])
+    assert res.added == [normalize_for(proj)] and res.written is True
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["projects"] == [normalize_for(proj)]
+
+
+def test_add_projects_warns_no_marker_but_adds(tmp_path: Path) -> None:
+    proj = tmp_path / "nomarker"
+    proj.mkdir()
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")
+    res = add_projects(cfg, [str(proj)])
+    assert res.added == [normalize_for(proj)]
+    assert any("마커" in w for w in res.warnings)
+
+
+def test_remove_projects_to_empty_drops_key(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("projects:\n  - ~/work/x\n")
+    res = remove_projects(cfg, ["~/work/x"])
+    assert res.removed == ["~/work/x"]
+    import yaml as _y
+    assert "projects" not in (_y.safe_load(cfg.read_text()) or {})
