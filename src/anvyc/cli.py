@@ -1781,6 +1781,32 @@ def projects_rm(
     _print_projects_result(remove_projects(target, paths), target)
 
 
+@projects_app.command("exclude")
+def projects_exclude(
+    paths: list[str] = typer.Argument(..., help="모든 스캔에서 제외할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 제외 목록(exclude_projects)에 추가한다."""
+    from anvyc.core.project_roots_edit import exclude_project
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(exclude_project(target, paths), target)
+
+
+@projects_app.command("unexclude")
+def projects_unexclude(
+    paths: list[str] = typer.Argument(..., help="제외 목록에서 해제할 프로젝트(다수 가능)."),
+    config: Path | None = typer.Option(None, "--config", help="명시 anvyc.yaml 경로."),
+    local: bool = typer.Option(False, "--local", help="cwd-우선 해석(기본: 전역)."),
+) -> None:
+    """개별 프로젝트를 제외 목록에서 해제한다."""
+    from anvyc.core.project_roots_edit import unexclude_project
+
+    target = _resolve_roots_target(config, local)
+    _print_projects_result(unexclude_project(target, paths), target)
+
+
 def _collect_tools_rows(config: Path | None) -> list[dict[str, Any]]:
     """tools list / MCP tools_list 의 row 데이터 (core SoT 위임, PR3).
 
