@@ -1,10 +1,11 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-8 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+9 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
+1b. aws_account_status        인증 방식별 연결 상태 (SSO 토큰/static/assume-role/process)
 2. github_remote_parseable    origin URL parse 가능 여부
 3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
 4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
@@ -21,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity
+from anvyc.core.aws_profile_state import evaluate_profile_state, state_to_result
 from anvyc.core.project_info import ProjectInfo, collect_project_info, expand_envrc_path
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 from anvyc.utils.aws_config import load_aws_profile_names
@@ -69,6 +71,17 @@ def _check_aws_profile_defined(info: ProjectInfo) -> list[CheckResult]:
             ),
         )
     ]
+
+
+def _check_aws_account_status(info: ProjectInfo) -> list[CheckResult]:
+    """profile 정의됨일 때 인증 방식·연결 상태 보고. 미정의는 aws_profile_defined 에 위임."""
+    if not info.aws_profile:
+        return []
+    state = evaluate_profile_state(info.aws_profile)
+    if not state.defined:
+        return []  # 미정의 → aws_profile_defined 가 보고
+    res = state_to_result(state, check_name="aws_account_status")
+    return [res] if res is not None else []
 
 
 def _check_github_remote_parseable(info: ProjectInfo) -> list[CheckResult]:
@@ -350,10 +363,11 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """8 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """9 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
+    report.results.extend(_check_aws_account_status(info))
     report.results.extend(_check_github_remote_parseable(info))
     report.results.extend(_check_gh_account_routing(info))
     report.results.extend(_check_claude_account_dir_exists(info))
