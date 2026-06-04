@@ -68,6 +68,105 @@ class RootsEditResult:
     backup_path: Path | None = None
 
 
+def add_roots(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> RootsEditResult:
+    raw = _load_raw(config_path)
+    roots, was_explicit = _current_explicit_roots(raw)
+    res = RootsEditResult(action="add", materialized=not was_explicit, config_path=config_path)
+    for rp in raw_paths:
+        norm = normalize_root(rp)
+        if not norm:
+            continue
+        if norm in roots:           # dedup 먼저 — 중복은 경고 없이 skip
+            res.skipped.append(norm)
+            continue
+        if not norm.startswith(("~", "/")):
+            res.warnings.append(f"상대경로(권장 안 함): {norm}")
+        if not Path(norm).expanduser().is_dir():
+            res.warnings.append(f"미존재 디렉터리: {norm}")
+        roots.append(norm)
+        res.added.append(norm)
+    res.effective_after = roots
+    if res.added:
+        raw["project_roots"] = roots
+        res.backup_path = _write_roots(raw, config_path, make_backup=make_backup)
+        res.written = True
+    return res
+
+
+def remove_roots(
+    config_path: Path, raw_paths: list[str], *, make_backup: bool = True
+) -> RootsEditResult:
+    raw = _load_raw(config_path)
+    roots, was_explicit = _current_explicit_roots(raw)
+    res = RootsEditResult(action="remove", materialized=not was_explicit, config_path=config_path)
+    targets = [normalize_root(rp) for rp in raw_paths if normalize_root(rp)]
+    kept: list[str] = []
+    for r in roots:
+        if r in targets:
+            res.removed.append(r)
+        else:
+            kept.append(r)
+    for t in targets:
+        if t not in roots:
+            res.skipped.append(t)
+    res.effective_after = kept
+    if res.removed:
+        if kept:
+            raw["project_roots"] = kept
+        else:
+            raw.pop("project_roots", None)
+            res.cleared_to_default = True
+        res.backup_path = _write_roots(raw, config_path, make_backup=make_backup)
+        res.written = True
+    return res
+
+
+def clear_roots(config_path: Path, *, make_backup: bool = True) -> RootsEditResult:
+    raw = _load_raw(config_path)
+    res = RootsEditResult(action="clear", config_path=config_path)
+    roots, was_explicit = _current_explicit_roots(raw)
+    res.effective_after = list(DEFAULT_PROJECT_ROOTS)
+    if not was_explicit:
+        return res  # 이미 default — no-op
+    res.removed = roots
+    raw.pop("project_roots", None)
+    res.cleared_to_default = True
+    res.backup_path = _write_roots(raw, config_path, make_backup=make_backup)
+    res.written = True
+    return res
+
+
+@dataclass
+class RootEntry:
+    path: str
+    source: str       # "explicit" | "default"
+    exists: bool
+    projects: int
+
+
+@dataclass
+class RootsModel:
+    entries: list[RootEntry]
+    explicit: bool
+    config_path: Path
+
+
+def load_roots_model(config_path: Path) -> RootsModel:
+    from anvyc.core.project_discovery import discover_projects
+
+    raw = _load_raw(config_path)
+    roots, was_explicit = _current_explicit_roots(raw)
+    source = "explicit" if was_explicit else "default"
+    entries: list[RootEntry] = []
+    for r in roots:
+        exists = Path(r).expanduser().is_dir()
+        count = len(discover_projects([r])) if exists else 0
+        entries.append(RootEntry(path=r, source=source, exists=exists, projects=count))
+    return RootsModel(entries=entries, explicit=was_explicit, config_path=config_path)
+
+
 def _write_roots(raw: dict[str, Any], config_path: Path, *, make_backup: bool) -> Path | None:
     backup: Path | None = None
     if make_backup and config_path.is_file():

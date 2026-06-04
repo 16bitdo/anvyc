@@ -6,11 +6,16 @@ from pathlib import Path
 import pytest
 
 from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS as _DEF
 from anvyc.core.project_roots_edit import (
     _current_explicit_roots,
     _load_raw,
     _write_roots,
+    add_roots,
+    clear_roots,  # noqa: F401 — used in Task 7 tests below
+    load_roots_model,  # noqa: F401 — used in Task 8 tests below
     normalize_root,
+    remove_roots,  # noqa: F401 — used in Task 6 tests below
 )
 
 
@@ -103,3 +108,42 @@ def test_write_roots_restores_on_revalidate_failure(
     # 원본 복구
     import yaml as _y
     assert _y.safe_load(cfg.read_text())["project_roots"] == ["~/dev"]
+
+
+# ---------------------------------------------------------------------------
+# Task 5: add_roots
+# ---------------------------------------------------------------------------
+
+
+def test_add_materializes_then_appends(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("storage:\n  root: .anvyc\n")  # 명시 없음
+    work = tmp_path / "work"
+    work.mkdir()
+    res = add_roots(cfg, [str(work)])
+    assert res.materialized is True
+    assert res.effective_after == [*list(_DEF), normalize_for(work)]
+    import yaml as _y
+    assert _y.safe_load(cfg.read_text())["project_roots"][-1] == normalize_for(work)
+
+
+def test_add_dedupes_existing(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+    res = add_roots(cfg, ["~/dev"])
+    assert res.added == [] and res.skipped == ["~/dev"]
+    assert res.written is False
+
+
+def test_add_warns_missing_dir_but_adds(tmp_path: Path) -> None:
+    cfg = tmp_path / "anvyc.yaml"
+    cfg.write_text("project_roots:\n  - ~/dev\n")
+    res = add_roots(cfg, ["~/definitely-not-here-xyz"])
+    assert res.added == ["~/definitely-not-here-xyz"]
+    assert any("미존재" in w for w in res.warnings)
+    assert res.written is True
+
+
+def normalize_for(p: Path) -> str:
+    """테스트 헬퍼 — tmp_path 는 $HOME 밖이므로 절대경로 그대로."""
+    return normalize_root(str(p))
