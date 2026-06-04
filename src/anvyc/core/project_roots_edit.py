@@ -8,6 +8,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
+
+import yaml
+
+from anvyc.core.project_roots import DEFAULT_PROJECT_ROOTS
 
 
 def normalize_root(raw: str) -> str:
@@ -24,3 +29,23 @@ def normalize_root(raw: str) -> str:
     if expanded.startswith(home + os.sep):
         return "~/" + expanded[len(home) + 1:]
     return s
+
+
+def _load_raw(config_path: Path) -> dict[str, Any]:
+    if not config_path.is_file():
+        return {}
+    try:
+        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _current_explicit_roots(raw: dict[str, Any]) -> tuple[list[str], bool]:
+    """(roots, was_explicit). 명시 비어있으면 DEFAULT 로 materialize."""
+    val = raw.get("project_roots")
+    if isinstance(val, list):
+        cleaned = [str(x).strip() for x in val if str(x).strip()]
+        if cleaned:
+            return cleaned, True
+    return list(DEFAULT_PROJECT_ROOTS), False
