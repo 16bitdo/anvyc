@@ -25,6 +25,7 @@ def test_probe_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aws_probe.subprocess, "run", fake_run)  # type: ignore[attr-defined]
     r = probe_caller_identity("dev")
     assert r.ok is True and r.account == "123456789012"
+    assert r.arn == "arn:aws:iam::1:user/x"
 
 
 def test_probe_denied(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,6 +39,17 @@ def test_probe_denied(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aws_probe.subprocess, "run", fake_run)  # type: ignore[attr-defined]
     r = probe_caller_identity("dev")
     assert r.ok is False and "credentials" in (r.error or "")
+
+
+def test_probe_bad_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(aws_probe.shutil, "which", lambda _: "/usr/bin/aws")  # type: ignore[attr-defined]
+
+    def fake_run(*_a, **_k):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="not json", stderr="")
+
+    monkeypatch.setattr(aws_probe.subprocess, "run", fake_run)  # type: ignore[attr-defined]
+    r = probe_caller_identity("dev")
+    assert r.ok is False and r.error == "parse error"
 
 
 def test_probe_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
