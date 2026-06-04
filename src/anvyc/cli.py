@@ -90,8 +90,9 @@ from anvyc.templates import DEFAULT_ANVYC_YAML
 from anvyc.utils.errors import print_error, safe_msg
 
 if TYPE_CHECKING:
-    # 타입 힌트 전용 — 런타임 import 는 project_doctor 명령이 lazy 로 수행.
+    # 타입 힌트 전용 — 런타임 import 는 각 명령이 lazy 로 수행.
     from anvyc.core.project_doctor import ProjectDoctorReport
+    from anvyc.core.project_roots_edit import ProjectsEditResult
 
 app = typer.Typer(
     name="anvyc",
@@ -1738,18 +1739,18 @@ def projects_list(
         console.print(f"  [red]-[/] {escape(e.path):28} {mark} [dim](exclude)[/]", soft_wrap=True)
 
 
-def _print_projects_result(res: object, target: Path) -> None:
+def _print_projects_result(res: ProjectsEditResult, target: Path) -> None:
     from rich.markup import escape
 
-    for w in res.warnings:  # type: ignore[attr-defined]
+    for w in res.warnings:
         console.print(f"[yellow]warning[/] {escape(w)}")
-    for p in res.added:  # type: ignore[attr-defined]
+    for p in res.added:
         console.print(f"[green]added[/] {escape(p)}")
-    for p in res.removed:  # type: ignore[attr-defined]
+    for p in res.removed:
         console.print(f"[green]removed[/] {escape(p)}")
-    for p in res.skipped:  # type: ignore[attr-defined]
+    for p in res.skipped:
         console.print(f"[dim]skip[/] {escape(p)}")
-    if res.written:  # type: ignore[attr-defined]
+    if res.written:
         console.print(f"[dim]→ {escape(str(target))}[/]")
     else:
         console.print("[dim]변경 없음[/]")
