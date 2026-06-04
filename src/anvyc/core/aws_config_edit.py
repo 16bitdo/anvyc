@@ -268,9 +268,13 @@ def remove_profile(
     lead = start
     while lead > 0 and _is_comment(lines[lead - 1]):
         lead -= 1
-    body_end = start + 1
-    while body_end < end and lines[body_end].strip() != "":
-        body_end += 1
+    # 본문 끝 = next 섹션 헤더에서 역방향으로 그 섹션의 leading 주석 + separator 빈 줄을 제외한 위치.
+    # (본문 내부 빈 줄이 있어도 본문 전체를 올바르게 포함 — 첫 빈 줄에서 끊지 않음.)
+    body_end = end
+    while body_end > start + 1 and _is_comment(lines[body_end - 1]):
+        body_end -= 1
+    while body_end > start + 1 and lines[body_end - 1].strip() == "":
+        body_end -= 1
     head = lines[:lead]
     tail = lines[body_end:]
     while tail and tail[0].strip() == "":  # seam 빈 줄 제거(아래서 필요 시 1개만 재삽입)

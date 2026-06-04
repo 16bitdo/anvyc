@@ -171,6 +171,23 @@ def test_remove_missing_profile_errors(tmp_path: Path) -> None:
         remove_profile(cfg, "ghost")
 
 
+def test_remove_profile_with_internal_blank_body(tmp_path: Path) -> None:
+    cfg = _cfg(
+        tmp_path,
+        "[profile keep]\nregion = a\n\n"
+        "[profile gone]\nregion = b\n\noutput = json\n\n"
+        "[profile keep2]\nregion = c\n",
+    )
+    res = remove_profile(cfg, "gone")
+    text = cfg.read_text(encoding="utf-8")
+    assert res.written is True
+    assert "[profile gone]" not in text
+    assert "output = json" not in text   # 본문 내부 빈 줄 뒤 키도 함께 제거
+    assert "[profile keep]" in text and "[profile keep2]" in text
+    from anvyc.utils.aws_config import load_aws_profile_names
+    assert load_aws_profile_names(cfg) == {"keep", "keep2"}
+
+
 def test_remove_absorbs_own_comment_preserves_next(tmp_path: Path) -> None:
     cfg = _cfg(
         tmp_path,
