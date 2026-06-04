@@ -3,6 +3,9 @@
 모든 "프로젝트 디렉터리 스캔" 소비처가 공유할 후보 iterator. marker(파일 또는
 디렉터리) 보유 디렉터리를 수집한다. walk 원시(`_walk_markers`)는 project_discovery
 가 위임해 단일화한다.
+
+Public API:
+    iter_project_dirs — 컨테이너(project_roots) walk ∪ 개별(projects) − excludes
 """
 from __future__ import annotations
 
@@ -12,6 +15,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from anvyc.core.config import AnvycConfig
+
+__all__ = ["iter_project_dirs"]
 
 
 def _has_any_marker(path: Path, markers: tuple[str, ...]) -> bool:
