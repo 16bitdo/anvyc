@@ -5,7 +5,7 @@ import textwrap
 from pathlib import Path
 
 from anvyc.core.project_info import _derive_gh_account, gh_config_dir_for_account
-from anvyc.core.project_init import write_envrc_gh_routing
+from anvyc.core.project_init import ensure_gitignore_entry, write_envrc_gh_routing
 
 
 def test_gh_config_dir_for_account() -> None:
@@ -51,3 +51,28 @@ def test_write_envrc_adds_to_existing_preserving_others(tmp_path: Path) -> None:
     body = envrc.read_text()
     assert 'export AWS_PROFILE="dev"' in body
     assert 'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"' in body
+
+
+# ---------------------------------------------------------------------------
+# Task 4: ensure_gitignore_entry
+# ---------------------------------------------------------------------------
+
+
+def test_gitignore_created_when_absent(tmp_path: Path) -> None:
+    gi = tmp_path / ".gitignore"
+    assert ensure_gitignore_entry(gi, ".envrc") is True
+    assert gi.read_text() == ".envrc\n"
+
+
+def test_gitignore_appends_when_missing_entry(tmp_path: Path) -> None:
+    gi = tmp_path / ".gitignore"
+    gi.write_text("node_modules/\n")
+    assert ensure_gitignore_entry(gi, ".envrc") is True
+    assert gi.read_text() == "node_modules/\n.envrc\n"
+
+
+def test_gitignore_noop_when_present(tmp_path: Path) -> None:
+    gi = tmp_path / ".gitignore"
+    gi.write_text(".env\n.envrc\n")
+    assert ensure_gitignore_entry(gi, ".envrc") is False
+    assert gi.read_text() == ".env\n.envrc\n"

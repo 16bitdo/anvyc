@@ -36,3 +36,19 @@ def write_envrc_gh_routing(envrc: Path, account: str) -> str:
     sep = "" if text == "" or text.endswith("\n") else "\n"
     envrc.write_text(text + sep + line + "\n", encoding="utf-8")
     return "added"
+
+
+def ensure_gitignore_entry(gitignore: Path, entry: str) -> bool:
+    """`.gitignore` 에 `entry` 줄이 없으면 추가. 변경 시 True, 이미 있으면 False.
+
+    `.gitignore` 부재 시 생성. 비교는 줄 단위 strip 일치.
+    """
+    if gitignore.exists():
+        text = gitignore.read_text(encoding="utf-8")
+        if entry in (ln.strip() for ln in text.splitlines()):
+            return False
+        sep = "" if text == "" or text.endswith("\n") else "\n"
+        gitignore.write_text(text + sep + entry + "\n", encoding="utf-8")
+        return True
+    gitignore.write_text(entry + "\n", encoding="utf-8")
+    return True
