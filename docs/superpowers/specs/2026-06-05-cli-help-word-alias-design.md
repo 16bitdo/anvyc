@@ -51,19 +51,22 @@ Usage: anvyc aws profile [OPTIONS] COMMAND [ARGS]...
 
 신규 컴포넌트 **1개**(클래스) + 헬퍼 **1개**(팩토리), 모두 `src/anvyc/cli.py` 내부.
 
+> **구현 노트 (as-built)**: Typer 0.26.2 는 Click 을 `typer._click` 로 vendoring 하며 `TyperGroup.get_command` 의 부모 시그니처가 `typer._click.core.Context`/`Command` 를 사용한다. 따라서 mypy override 호환을 위해 `import click` 이 아니라 **`import typer._click as click`** 를 쓰고 시그니처에 그 타입을 명시한다(그러면 `# type: ignore[override]` 불필요). 또한 shell completion(`resilient_parsing=True`) 중 별칭 발동을 막기 위해 `and not ctx.resilient_parsing` 가드를 추가한다. 최종 구현:
+
 ```python
-import click
+import typer._click as click  # vendored Click — TyperGroup.get_command 시그니처가 typer._click 타입 (mypy override 호환)
 from typer.core import TyperGroup
 
 class HelpAliasGroup(TyperGroup):
     """그룹 경로 끝의 'help' 토큰을 --help 와 동일하게 처리한다.
 
     실제 동명 명령이 있으면 그쪽이 우선(super 먼저). 그 외 미존재 명령은
-    기존 'No such command' 에러를 유지한다.
+    기존 'No such command' 에러를 유지한다. 리프 Command 는 비대상.
     """
-    def get_command(self, ctx, name):  # type: ignore[override]
-        cmd = super().get_command(ctx, name)
-        if cmd is None and name == "help":
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        cmd = super().get_command(ctx, cmd_name)
+        # resilient_parsing(shell completion) 중에는 발동 금지 — 완성 후보 오염 방지.
+        if cmd is None and cmd_name == "help" and not ctx.resilient_parsing:
             click.echo(ctx.get_help())
             ctx.exit()
         return cmd
