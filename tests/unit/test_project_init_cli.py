@@ -47,9 +47,29 @@ def test_init_no_git_errors_without_writing(tmp_path: Path) -> None:
     assert not (tmp_path / ".envrc").exists()
 
 
-def test_init_yes_undederivable_errors(tmp_path: Path) -> None:
+def test_init_yes_underivable_errors(tmp_path: Path) -> None:
     repo = _repo_with_origin(tmp_path, "https://github.com/acme/x.git")
     result = runner.invoke(
         app, ["project", "init", "--path", str(repo), "--yes", "--no-allow"]
     )
     assert result.exit_code == 1
+
+
+def test_init_direnv_failure_reports_honestly(tmp_path: Path, monkeypatch) -> None:
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    from anvyc import cli
+
+    repo = _repo_with_origin(tmp_path, "git@github.com-16bitdo:16bitdo/x.git")
+    monkeypatch.setattr(_shutil, "which", lambda _name: "/usr/bin/direnv")
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *a, **k: _subprocess.CompletedProcess(a[0] if a else [], 1),
+    )
+    # no --no-allow: exercises the direnv branch
+    result = runner.invoke(app, ["project", "init", "--path", str(repo), "--yes"])
+    assert result.exit_code == 0, result.stdout
+    assert (repo / ".envrc").exists()          # 비-치명적: 파일은 작성됨
+    assert "direnv allow 실패" in result.stdout  # 정직한 실패 보고

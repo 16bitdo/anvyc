@@ -2335,18 +2335,23 @@ def project_init(
     gi_changed = ensure_gitignore_entry(root / ".gitignore", ".envrc")
 
     if no_allow:
-        allow_msg = "direnv allow skip (--no-allow) — 수동: direnv allow"
+        allow_msg, allow_ok = "direnv allow skip (--no-allow) — 수동: direnv allow", True
     elif shutil.which("direnv"):
-        subprocess.run(["direnv", "allow", str(root)])
-        allow_msg = "direnv allow 완료"
+        rc = subprocess.run(["direnv", "allow", str(root)]).returncode
+        allow_ok = rc == 0
+        allow_msg = (
+            "direnv allow 완료"
+            if allow_ok
+            else f"direnv allow 실패 (exit {rc}) — 수동: direnv allow"
+        )
     else:
-        allow_msg = "direnv 미설치 — 설치 후 `direnv allow` 필요"
+        allow_msg, allow_ok = "direnv 미설치 — 설치 후 `direnv allow` 필요", False
 
     console.print(f"[green]✓[/] .envrc GH_CONFIG_DIR → gh-{acct} ({envrc_status})")
     console.print(
         f"[green]✓[/] .gitignore .envrc 등록 ({'추가' if gi_changed else '이미 있음'})"
     )
-    console.print(f"[green]✓[/] {allow_msg}")
+    console.print(f"{'[green]✓[/]' if allow_ok else '[yellow]![/]'} {allow_msg}")
     console.print(
         f"[dim]statusline 은 해당 디렉터리에서 다음 Claude Code 재시작 후 🔑 {acct} 로 전환[/]"
     )
