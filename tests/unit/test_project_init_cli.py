@@ -4,6 +4,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from anvyc.cli import app
@@ -55,17 +56,16 @@ def test_init_yes_underivable_errors(tmp_path: Path) -> None:
     assert result.exit_code == 1
 
 
-def test_init_direnv_failure_reports_honestly(tmp_path: Path, monkeypatch) -> None:
+def test_init_direnv_failure_reports_honestly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import shutil as _shutil
     import subprocess as _subprocess
-
-    from anvyc import cli
 
     repo = _repo_with_origin(tmp_path, "git@github.com-16bitdo:16bitdo/x.git")
     monkeypatch.setattr(_shutil, "which", lambda _name: "/usr/bin/direnv")
     monkeypatch.setattr(
-        cli.subprocess,
-        "run",
+        "anvyc.cli.subprocess.run",
         lambda *a, **k: _subprocess.CompletedProcess(a[0] if a else [], 1),
     )
     # no --no-allow: exercises the direnv branch
