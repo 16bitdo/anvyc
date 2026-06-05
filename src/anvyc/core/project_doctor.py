@@ -23,7 +23,12 @@ from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.aws_profile_state import evaluate_profile_state, state_to_result
-from anvyc.core.project_info import ProjectInfo, collect_project_info, expand_envrc_path
+from anvyc.core.project_info import (
+    ProjectInfo,
+    collect_project_info,
+    expand_envrc_path,
+    gh_config_dir_for_account,
+)
 from anvyc.security.patterns import OP_REFERENCE_RE, PATTERNS
 from anvyc.utils.aws_config import load_aws_profile_names
 from anvyc.utils.pulumi_project import normalize_backend_url
@@ -132,7 +137,7 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
                     f".envrc 에 GH_CONFIG_DIR 라우팅 선언 없음"
                 ),
                 suggestion=(
-                    f'.envrc 에 export GH_CONFIG_DIR="$HOME/.config/gh-{alias}" '
+                    f'.envrc 에 export GH_CONFIG_DIR="{gh_config_dir_for_account(alias)}" '
                     f"추가 후 direnv allow"
                 ),
             )
@@ -147,7 +152,7 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
                     f"GitHub origin ssh alias '{alias}' 와 불일치"
                 ),
                 suggestion=(
-                    f'export GH_CONFIG_DIR="$HOME/.config/gh-{alias}" 로 수정 '
+                    f'export GH_CONFIG_DIR="{gh_config_dir_for_account(alias)}" 로 수정 '
                     f"(ssh alias 와 일치)"
                 ),
             )
