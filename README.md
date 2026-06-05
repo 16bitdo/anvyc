@@ -352,6 +352,8 @@ anvyc sops {encrypt|decrypt|rotate-keys}
 ```
 
 > 팁: 어느 그룹 레벨에서든 경로 끝에 `help` 단어를 붙이면 `--help` 와 동일하게 동작합니다 — 예: `anvyc aws profile help` = `anvyc aws profile --help`. (리프 명령은 `--help` 만 지원)
+>
+> 팁: 그룹을 인자 없이 호출해도(`anvyc aws`, `anvyc config`, `anvyc aws profile` …) 루트(`anvyc`)와 동일하게 해당 그룹의 도움말을 출력합니다.
 
 ---
 
