@@ -73,3 +73,12 @@ def resolve_routing_account(
                 return (mapped, "mapping")
             break
     return (None, "unknown")
+
+
+def gh_account_logged_in(account: str, config_home: Path | None = None) -> bool:
+    """`<config_home>/gh-<account>/hosts.yml` 존재 여부 (= 해당 계정 로그인됨).
+
+    `config_home` 기본 `$HOME/.config`. **내용은 보지 않고 존재만 stat** (토큰 미접근).
+    """
+    base = config_home or (Path.home() / ".config")
+    return (base / f"gh-{account}" / "hosts.yml").is_file()

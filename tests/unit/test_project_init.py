@@ -7,6 +7,7 @@ from pathlib import Path
 from anvyc.core.project_info import _derive_gh_account, gh_config_dir_for_account
 from anvyc.core.project_init import (
     ensure_gitignore_entry,
+    gh_account_logged_in,
     resolve_routing_account,
     write_envrc_gh_routing,
 )
@@ -116,3 +117,18 @@ def test_resolve_account_unknown_when_no_remote(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "config").write_text("")
     assert resolve_routing_account(tmp_path, {}) == (None, "unknown")
+
+
+# ---------------------------------------------------------------------------
+# Task 6: gh_account_logged_in
+# ---------------------------------------------------------------------------
+
+
+def test_logged_in_true_when_hosts_yml_exists(tmp_path: Path) -> None:
+    (tmp_path / "gh-16bitdo").mkdir()
+    (tmp_path / "gh-16bitdo" / "hosts.yml").write_text("github.com: {}\n")
+    assert gh_account_logged_in("16bitdo", config_home=tmp_path) is True
+
+
+def test_logged_in_false_when_absent(tmp_path: Path) -> None:
+    assert gh_account_logged_in("none", config_home=tmp_path) is False
