@@ -52,3 +52,24 @@ def ensure_gitignore_entry(gitignore: Path, entry: str) -> bool:
         return True
     gitignore.write_text(entry + "\n", encoding="utf-8")
     return True
+
+
+def resolve_routing_account(
+    path: Path, owner_accounts: dict[str, str]
+) -> tuple[str | None, str]:
+    """origin 으로부터 gh account 도출.
+
+    1. origin ssh alias 있음 → (alias, "alias")  — `gh_route.resolve_account` 재사용
+    2. alias 없음(plain host) → origin owner → `owner_accounts` 조회 → (account, "mapping")
+    3. 도출 불가(remote 없음 / 매핑 없음) → (None, "unknown")
+    """
+    alias = gh_route.resolve_account(path)
+    if alias:
+        return (alias, "alias")
+    for remote in parse_git_config(Path(path) / ".git"):
+        if remote.name == "origin":
+            mapped = owner_accounts.get(remote.owner)
+            if mapped:
+                return (mapped, "mapping")
+            break
+    return (None, "unknown")

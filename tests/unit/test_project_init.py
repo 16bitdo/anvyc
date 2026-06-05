@@ -5,7 +5,11 @@ import textwrap
 from pathlib import Path
 
 from anvyc.core.project_info import _derive_gh_account, gh_config_dir_for_account
-from anvyc.core.project_init import ensure_gitignore_entry, write_envrc_gh_routing
+from anvyc.core.project_init import (
+    ensure_gitignore_entry,
+    resolve_routing_account,
+    write_envrc_gh_routing,
+)
 
 
 def test_gh_config_dir_for_account() -> None:
@@ -76,3 +80,39 @@ def test_gitignore_noop_when_present(tmp_path: Path) -> None:
     gi.write_text(".env\n.envrc\n")
     assert ensure_gitignore_entry(gi, ".envrc") is False
     assert gi.read_text() == ".env\n.envrc\n"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: resolve_routing_account
+# ---------------------------------------------------------------------------
+
+
+def _repo(tmp_path: Path, url: str) -> Path:
+    g = tmp_path / ".git"
+    g.mkdir(parents=True, exist_ok=True)
+    (g / "config").write_text(textwrap.dedent(f"""\
+        [remote "origin"]
+            url = {url}
+    """))
+    return tmp_path
+
+
+def test_resolve_account_from_alias(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "git@github.com-16bitdo:16bitdo/x.git")
+    assert resolve_routing_account(repo, {}) == ("16bitdo", "alias")
+
+
+def test_resolve_account_from_mapping_when_plain_host(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "https://github.com/whatap/x.git")
+    assert resolve_routing_account(repo, {"whatap": "heisgone"}) == ("heisgone", "mapping")
+
+
+def test_resolve_account_unknown_plain_host_no_mapping(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "https://github.com/acme/x.git")
+    assert resolve_routing_account(repo, {"whatap": "heisgone"}) == (None, "unknown")
+
+
+def test_resolve_account_unknown_when_no_remote(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("")
+    assert resolve_routing_account(tmp_path, {}) == (None, "unknown")
