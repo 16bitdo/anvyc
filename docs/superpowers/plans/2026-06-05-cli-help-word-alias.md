@@ -174,8 +174,8 @@ grep -c "_typer(" src/anvyc/cli.py        # 기대: 21 (호출 20 + def 1)
 
 - [ ] **Step 6: import 정렬 + 포맷 (ruff)**
 
-Run: `ruff check --fix src/anvyc/cli.py && ruff format src/anvyc/cli.py && ruff check src/anvyc/cli.py tests/unit/test_help_alias.py`
-Expected: `All checks passed!` (import 순서 자동 정렬 포함).
+Run: `ruff check --fix src/anvyc/cli.py tests/unit/test_help_alias.py && ruff format src/anvyc/cli.py tests/unit/test_help_alias.py && ruff check src/ tests/`
+Expected: `All checks passed!` (import 순서 자동 정렬 포함). 마지막 `ruff check src/ tests/` 는 CI(`.github/workflows/ci.yml`)와 동일 범위 — 푸시 전 동일 게이트.
 
 - [ ] **Step 7: 신규 테스트 실행 → 통과 확인**
 
@@ -187,10 +187,12 @@ Expected: 6개 테스트 모두 **PASS**.
 Run: `pytest tests/unit/test_cli_help_panels.py tests/unit/test_aws_profile_cli.py -v`
 Expected: 모두 **PASS** (루트 panel·aws profile 동작 무회귀).
 
-- [ ] **Step 9: 타입 체크**
+- [ ] **Step 9: 타입 체크 (CI 와 동일 범위)**
 
-Run: `mypy src/anvyc/cli.py`
-Expected: 신규 코드 관련 에러 0 (`Success` 또는 기존과 동일한 결과 — 신규 라인발 에러 없음).
+Run: `mypy src/anvyc/ tests/`
+Expected: `Success: no issues found ...` — 신규 코드/테스트 모두 에러 0.
+
+> ⚠️ CI(`.github/workflows/ci.yml`)는 `mypy src/anvyc/ tests/` 로 **tests/ 포함** 검사한다. 소스만(`mypy src/anvyc/cli.py`) 돌리면 신규 테스트 파일의 타입 에러를 놓쳐 CI 에서야 빨개진다(예: `typer.main.get_command()` 의 정적 반환형은 `Command` 라 `.get_command()` 호출이 `[attr-defined]` — `isinstance(root, HelpAliasGroup)` 로 좁혀 해결). 로컬 검증은 항상 **CI 와 동일한 명령**을 쓴다.
 
 - [ ] **Step 10: 커밋**
 
