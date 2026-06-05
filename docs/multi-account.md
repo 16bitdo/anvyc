@@ -279,3 +279,16 @@ aws:company-dev gh:16bitdo claude:edward
 설정된 필드만 공백 구분 `key:value` 로 출력하고 없으면 빈 출력이다. starship
 custom command / powerlevel10k 세그먼트 연동 방법은
 [shell-prompt.md](./shell-prompt.md) 참고.
+
+## 신규 프로젝트 gh 라우팅 셋업
+
+owner 가 16bitdo/whatap 인 repo 를 새로 clone 하면 per-project `.envrc` 라우팅을 1회 명령으로 만든다:
+
+```bash
+cd ~/dev/<new-repo>
+anvyc project init        # origin alias 에서 계정 도출 → 확인(Enter) → .envrc + .gitignore + direnv allow
+```
+
+- origin SSH alias(`github.com-<account>`)가 있으면 계정 자동 도출, 없으면 입력 요청.
+- `--account <name>` 으로 직접 지정, `--yes` 로 비대화, `--no-allow` 로 direnv allow skip.
+- `anvyc project doctor` 의 `gh_account_routing` check 가 누락을 감지하면 이 명령으로 교정한다.

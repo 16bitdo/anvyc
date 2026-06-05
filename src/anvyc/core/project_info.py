@@ -55,6 +55,16 @@ def _derive_gh_account(gh_config_dir: str | None) -> str | None:
     return account or None
 
 
+def gh_config_dir_for_account(account: str) -> str:
+    """gh account 이름 → `.envrc` 에 쓸 GH_CONFIG_DIR 리터럴 값.
+
+    convention: `<account>` → `$HOME/.config/gh-<account>` (`_derive_gh_account` 의 역함수).
+    `$HOME` 는 **리터럴로 보존** — direnv 가 확장하고, statusline grep / `_parse_envrc` 는
+    basename(`gh-<account>`)만 보므로 portable 해야 한다.
+    """
+    return f"$HOME/.config/gh-{account}"
+
+
 def _derive_claude_account(claude_config_dir: str | None) -> str | None:
     """`CLAUDE_CONFIG_DIR` 경로 값 → Claude Code 계정 이름.
 

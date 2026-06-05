@@ -2274,6 +2274,89 @@ def project_list(
     console.print(table)
 
 
+@project_app.command("init")
+def project_init(
+    path: Path = typer.Option(Path.cwd(), "--path", help="대상 project root (default: cwd)."),
+    account: str | None = typer.Option(
+        None, "--account", "-a", help="gh account 직접 지정 (프롬프트 skip)."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="비대화 — 도출값/기본 동작 자동 수락."
+    ),
+    no_allow: bool = typer.Option(False, "--no-allow", help="direnv allow 실행 안 함."),
+    config: Path | None = typer.Option(
+        None, "--config", help="anvyc.yaml 경로 (owner→account 매핑)."
+    ),
+) -> None:
+    """origin 기준 gh 계정 라우팅 `.envrc` 스캐폴딩 (project doctor #3 의 교정 측면)."""
+    import shutil
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.project_init import (
+        ensure_gitignore_entry,
+        gh_account_logged_in,
+        resolve_routing_account,
+        write_envrc_gh_routing,
+    )
+
+    root = path.resolve()
+    if not (root / ".git").exists():
+        console.print(f"[red]error[/] git repo 아님 (.git 없음): {root}")
+        raise typer.Exit(code=1)
+
+    acct: str
+    if account:
+        acct = account
+    else:
+        owner_accounts = load_anvyc_config(config).doctor.gh_owner_accounts
+        derived, _source = resolve_routing_account(root, owner_accounts)
+        if yes:
+            if not derived:
+                console.print(
+                    "[red]error[/] origin 에서 gh 계정 도출 불가 — --account 로 지정하세요."
+                )
+                raise typer.Exit(code=1)
+            acct = derived
+        elif derived:
+            acct = typer.prompt("gh account", default=derived)
+        else:
+            acct = typer.prompt("gh account (예: 16bitdo)")
+
+    if not gh_account_logged_in(acct):
+        console.print(
+            f"[yellow]warning[/] 계정 '{acct}' 미인증 "
+            f"(~/.config/gh-{acct}/hosts.yml 없음). "
+            f"`GH_CONFIG_DIR=~/.config/gh-{acct} gh auth login -h github.com` 로 로그인 권장."
+        )
+        if not yes and not _confirm("그래도 .envrc 를 작성할까요?", default=True):
+            raise typer.Exit(code=0)
+
+    envrc_status = write_envrc_gh_routing(root / ".envrc", acct)
+    gi_changed = ensure_gitignore_entry(root / ".gitignore", ".envrc")
+
+    if no_allow:
+        allow_msg, allow_ok = "direnv allow skip (--no-allow) — 수동: direnv allow", True
+    elif shutil.which("direnv"):
+        rc = subprocess.run(["direnv", "allow", str(root)]).returncode
+        allow_ok = rc == 0
+        allow_msg = (
+            "direnv allow 완료"
+            if allow_ok
+            else f"direnv allow 실패 (exit {rc}) — 수동: direnv allow"
+        )
+    else:
+        allow_msg, allow_ok = "direnv 미설치 — 설치 후 `direnv allow` 필요", False
+
+    console.print(f"[green]✓[/] .envrc GH_CONFIG_DIR → gh-{acct} ({envrc_status})")
+    console.print(
+        f"[green]✓[/] .gitignore .envrc 등록 ({'추가' if gi_changed else '이미 있음'})"
+    )
+    console.print(f"{'[green]✓[/]' if allow_ok else '[yellow]![/]'} {allow_msg}")
+    console.print(
+        f"[dim]statusline 은 해당 디렉터리에서 다음 Claude Code 재시작 후 🔑 {acct} 로 전환[/]"
+    )
+
+
 @app.command(rich_help_panel=PANEL_CONTROL)
 def activity(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
