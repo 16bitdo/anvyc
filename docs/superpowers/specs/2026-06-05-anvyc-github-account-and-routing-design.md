@@ -1,7 +1,7 @@
 # `anvyc github` — GitHub 계정 통합 뷰 + 라우팅 관리 설계
 
 - **날짜**: 2026-06-05
-- **상태**: 초안 — 검토 대기
+- **상태**: 승인됨 (구현 대기) — §12 세 결정 확정(2026-06-05)
 - **프로젝트**: anvyc (L2-environment)
 - **관련**: `utils/gh_hosts.py`(`GhAccount`·`parse_hosts_yml`·`discover_gh_accounts`·`select_config_dir_for_user`), `core/creds.py:375`(`detect_github` — GitHub PAT/OAuth 만료), `core/gh_route.py`(`resolve_account`/`run_gh` — `anvyc gh` passthrough), `core/project_init.py`(`write_envrc_gh_routing`·`resolve_routing_account`·`gh_account_logged_in`), `core/project_doctor.py:106`(`_check_gh_account_routing`), `core/config.py:117`(`DoctorConfig.gh_owner_accounts`), `core/cost/adapters/github.py`(`discover_gh_accounts` 소비처), `docs/superpowers/specs/2026-06-02-anvyc-gh-routing-design.md`(`anvyc gh` 선행), `docs/superpowers/specs/2026-06-04-aws-profile-and-sso-status-design.md`(대칭 선례)
 
@@ -50,7 +50,7 @@
 | 토큰 불가침 | 뷰는 `hosts.yml` 의 **host/user 만** 파싱(`parse_hosts_yml` — `oauth_token` 라인 미접근), 로그인 여부는 **stat**(`gh_account_logged_in`) | aws `~/.aws/credentials` "존재만 확인, 값 미독" 선례와 동형 |
 | liveness | **오프라인 기본 + opt-in `--probe`**(`detect_github(probe_expiry=True)`) | doctor offline 원칙. 만료 헤더(`X-GitHub-Token-Expiration`)는 식별자급, 토큰 아님 |
 | 라우팅 매핑 쓰기 | `anvyc.yaml doctor.gh_owner_accounts` **surgical 안전쓰기**(dry-run·`.bak`·재검증·롤백) | `core/project_roots_edit.py`+`core/yaml_io.py` 이식. 비밀 아님 |
-| 라우팅 매핑 위치 | `anvyc github route <list|set|rm>` (그룹 응집) — **대안**: `anvyc config gh-routes`(config 도메인) | §12 미해결. 기본은 `github` 응집(발견성). config 측 대칭도 일리 |
+| 라우팅 매핑 위치 | **`anvyc github route <list|set|rm>`** (그룹 응집) | 발견성 — gh 관리 표면을 `github` 한 그룹에 응집. `config gh-routes` 대안은 폐기(§12 확정) |
 | 만료/회전 관계 | **역할 분리** — `github account` 는 인벤토리+로그인+만료 *표시*. escalation/회전은 `creds` 유지 | blast radius 최소화(gate/scheduler 의존), 메시지 축 상이 |
 | 단계 | **Phase 1 통합 뷰(읽기, `--probe`) → Phase 2 라우팅 CRUD(+`use`)** 별도 PR | Phase 1 이 사용자 핵심(통합 뷰)을 저 blast radius 로 충족, Phase 2 가 위에 구축 — aws profile Phase 분리 답습 |
 
@@ -194,8 +194,8 @@ discover_gh_accounts(home)                      → 머신의 (config_dir, host,
 - `DESIGN.md`: 신규 `github` 명령군, secret 경계(토큰 불가침) 명문화.
 - `CONTEXT.md` / `RELEASE_NOTES.md`: 진행/릴리스 반영.
 
-## 12. 미해결 질문
+## 12. 결정된 질문 (2026-06-05)
 
-1. **명령 그룹 네이밍** — `anvyc github`(관리) vs `anvyc gh`(exec) 이원화가 충분히 명확한가, 아니면 `anvyc ghacct`/`gh-account` 등 더 분명한 이름이 나은가? (`gh` passthrough 와의 시각적 인접성 우려.)
-2. **라우팅 매핑 위치** — `github route`(그룹 응집) vs `config gh-routes`(`config roots`/`config projects` 와 도메인 대칭). 둘 다 정당 — 발견성 vs 설정-CRUD 일관성 trade-off.
-3. **`github use` 포함 여부** — Phase 2 에 넣을지, `aws profile use` 와 함께 별건으로 뺄지(대칭 유지 차원).
+1. **명령 그룹 네이밍** → **`anvyc github`** 확정. exec=`anvyc gh`(passthrough), 관리=`anvyc github` 이원화.
+2. **라우팅 매핑 위치** → **`anvyc github route <list|set|rm>`** 확정(그룹 응집). `config gh-routes` 대안 폐기.
+3. **`github use` 포함 시점** → **Phase 2 포함** 확정(`route` CRUD 와 동반).
