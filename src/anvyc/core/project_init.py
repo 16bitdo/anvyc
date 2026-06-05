@@ -31,7 +31,10 @@ def write_envrc_gh_routing(envrc: Path, account: str) -> str:
     if m:
         if m.group(0).strip() == line:
             return "unchanged"
-        envrc.write_text(_GH_LINE_RE.sub(line, text, count=1), encoding="utf-8")
+        new_text = _GH_LINE_RE.sub(line, text, count=1)
+        if not new_text.endswith("\n"):
+            new_text += "\n"
+        envrc.write_text(new_text, encoding="utf-8")
         return "replaced"
     sep = "" if text == "" or text.endswith("\n") else "\n"
     envrc.write_text(text + sep + line + "\n", encoding="utf-8")
@@ -62,11 +65,13 @@ def resolve_routing_account(
     1. origin ssh alias 있음 → (alias, "alias")  — `gh_route.resolve_account` 재사용
     2. alias 없음(plain host) → origin owner → `owner_accounts` 조회 → (account, "mapping")
     3. 도출 불가(remote 없음 / 매핑 없음) → (None, "unknown")
+
+    `path` 는 repo 루트여야 한다 (호출부 cli `project init` 가 `path/.git` 존재 확인 후 호출).
     """
     alias = gh_route.resolve_account(path)
     if alias:
         return (alias, "alias")
-    for remote in parse_git_config(Path(path) / ".git"):
+    for remote in parse_git_config(path / ".git"):
         if remote.name == "origin":
             mapped = owner_accounts.get(remote.owner)
             if mapped:

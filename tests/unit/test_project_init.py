@@ -48,6 +48,28 @@ def test_write_envrc_unchanged_when_same(tmp_path: Path) -> None:
     assert write_envrc_gh_routing(envrc, "16bitdo") == "unchanged"
 
 
+def test_write_envrc_replaced_preserves_surrounding_and_midfile(tmp_path: Path) -> None:
+    envrc = tmp_path / ".envrc"
+    envrc.write_text(
+        'export AWS_PROFILE="dev"\n'
+        'export GH_CONFIG_DIR="$HOME/.config/gh-old"\n'
+        'export FOO=bar\n'
+    )
+    assert write_envrc_gh_routing(envrc, "16bitdo") == "replaced"
+    assert envrc.read_text() == (
+        'export AWS_PROFILE="dev"\n'
+        'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n'
+        'export FOO=bar\n'
+    )
+
+
+def test_write_envrc_replaced_normalizes_trailing_newline(tmp_path: Path) -> None:
+    envrc = tmp_path / ".envrc"
+    envrc.write_text('export GH_CONFIG_DIR="$HOME/.config/gh-old"')  # no trailing newline
+    assert write_envrc_gh_routing(envrc, "16bitdo") == "replaced"
+    assert envrc.read_text() == 'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n'
+
+
 def test_write_envrc_adds_to_existing_preserving_others(tmp_path: Path) -> None:
     envrc = tmp_path / ".envrc"
     envrc.write_text('export AWS_PROFILE="dev"\n')
