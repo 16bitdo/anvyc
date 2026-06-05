@@ -469,6 +469,7 @@ tools:
 ```
 
 - **`HelpAliasGroup` / `_typer()`** (`cli.py`): 모든 Typer 그룹의 기본 클래스를 `HelpAliasGroup` 로 강제하는 팩토리. 그룹 경로 끝의 `help` 단어를 `--help` 와 동일 처리(전역 help 단어 별칭). 리프 Command 는 비대상, 동명 실제 명령은 우선, shell completion(resilient_parsing) 중에는 비활성.
+  - **no-args 도움말 일관화** (#175 후속): 팩토리가 `no_args_is_help=True` 를 모든 그룹의 기본값으로 주입한다. 인자 없이 그룹을 호출하면(`anvyc aws`, `anvyc config` …) 루트(`anvyc`)와 동일하게 도움말을 출력한다 — 이전에는 서브그룹만 `Missing command` 에러(exit 2)를 내던 불일치가 있었다. 개별 호출이 명시로 끄려면 `no_args_is_help=False` 를 넘기면 `setdefault` 가 존중한다.
 
 ---
 
