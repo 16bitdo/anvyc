@@ -474,6 +474,21 @@ anvyc aws profile rm ws-dev                                                     
 `~/.aws/config` 만 수정하며(주석 보존), `~/.aws/credentials`(정적 키)는 건드리지 않는다.
 변경 전 unified diff 미리보기 + `--dry-run` + `.bak` 백업 + 재파싱 검증을 거친다.
 
+### GitHub 계정 통합 뷰 (`anvyc github account`)
+
+머신의 gh 계정 인벤토리 + 로그인 + (opt-in) 토큰 만료 + **현재 프로젝트 라우팅**을
+한 명령으로 본다 — `aws profile` 의 GitHub 대응물(읽기 전용). `anvyc gh` 는
+passthrough 실행이므로, 조회/관리는 별도 `anvyc github` 그룹이다.
+
+```bash
+anvyc github account list                # 계정 + 로그인 + 라우팅(owners / ✓cwd)
+anvyc github account show 16bitdo        # 단일 계정 상세 (--json 지원)
+anvyc github account list --probe        # 토큰 만료까지 (gh api, opt-in 네트워크)
+```
+
+계정 인증(login/refresh/토큰)은 `gh auth` / 1Password 가 관리한다 — anvyc 는 토큰을
+읽거나 저장/출력하지 않고 `hosts.yml` 의 host/user 와 만료 헤더만 본다(secret-hostile).
+
 ---
 
 ## 12. 호스트별 overlay (v0.6.4+)

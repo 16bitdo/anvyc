@@ -191,6 +191,27 @@ anvyc project doctor              # cwd 에 gh_account_routing 포함 9 check
 machine-readable 하게 확인할 수 있다 (DESIGN §32.4a). 계정 인증 자체는 `gh`
 가 관리하며, anvyc 는 정적 설정 동기화 + 검증 역할.
 
+### 2.1 계정 통합 뷰 (`anvyc github account`, Phase 1)
+
+`aws profile list/show` 의 GitHub 대응물. 머신의 gh 계정 인벤토리 + 로그인 +
+(opt-in) 토큰 만료 + 현재 프로젝트 라우팅을 한 명령으로 본다. `anvyc gh` 는
+passthrough 실행이므로 조회/관리는 별도 `anvyc github` 그룹이다(읽기 전용).
+
+```bash
+anvyc github account list            # 계정 + 로그인 + 라우팅(owners / ✓cwd)
+anvyc github account show 16bitdo    # 단일 계정 상세 (--json)
+anvyc github account list --probe    # 토큰 만료 (gh api, opt-in 네트워크)
+```
+
+| 필드 | 의미 |
+|---|---|
+| `logged_in` | `~/.config/gh-<account>/hosts.yml` 존재 (stat; 토큰 미독) |
+| `expiry_status` | `--probe` 시 `gh api` 만료 헤더 — valid/expiring/expired/unknown |
+| `routed_owners` / `cwd_routed` | `doctor.gh_owner_accounts` 매핑 + cwd origin alias 일치 |
+
+**Secret 경계**: 토큰을 읽거나 저장·출력하지 않는다(hosts.yml 의 host/user +
+만료 헤더만). 계정 생성·로그인·회전은 `gh auth` / 1Password 위임.
+
 ## 3. Claude Code 계정 라우팅 (v0.12.0+)
 
 Claude Code 도 단일 계정 config 를 쓰므로, 개인 / 업무 계정을 오가면 잘못된
