@@ -118,15 +118,21 @@ class HelpAliasGroup(TyperGroup):
 
 
 def _typer(**kwargs: Any) -> typer.Typer:
-    """anvyc 표준 Typer 앱 — HelpAliasGroup 을 기본 그룹 클래스로 강제."""
+    """anvyc 표준 Typer 앱 — HelpAliasGroup + no-args 도움말을 기본 강제.
+
+    `no_args_is_help=True` 를 모든 그룹의 기본값으로 주입해, 인자 없이 그룹을
+    호출했을 때 루트(`anvyc`)와 동일하게 도움말을 출력한다(서브그룹이 `Missing
+    command` 에러를 내던 불일치 해소; #175 help 단어 별칭의 후속). 개별 호출이
+    명시로 끄려면 `no_args_is_help=False` 를 넘기면 setdefault 가 존중한다.
+    """
     kwargs.setdefault("cls", HelpAliasGroup)
+    kwargs.setdefault("no_args_is_help", True)
     return typer.Typer(**kwargs)
 
 
 app = _typer(
     name="anvyc",
     help="여러 장치에서 개발 도구 설정을 안전하게 백업/비교/복원/동기화한다.",
-    no_args_is_help=True,
 )
 
 # --- panel 그룹 상수 (v0.16.0+) ---
