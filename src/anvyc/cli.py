@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import typer
+import typer._click as click  # vendored Click — TyperGroup.get_command 시그니처가 typer._click 타입 (mypy override 호환)
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
+from typer.core import TyperGroup
 
 from anvyc import __version__
 from anvyc.checks.base import CheckResult, Severity
@@ -97,7 +99,31 @@ if TYPE_CHECKING:
     from anvyc.core.project_doctor import ProjectDoctorReport
     from anvyc.core.project_roots_edit import ProjectsEditResult
 
-app = typer.Typer(
+
+class HelpAliasGroup(TyperGroup):
+    """그룹 경로 끝의 `help` 토큰을 `--help` 와 동일하게 처리한다.
+
+    동명의 실제 명령이 있으면 그쪽이 우선(super 먼저). 그 외 미존재 명령은
+    기존 'No such command' 에러를 유지한다. 리프 Command 는 비대상.
+    """
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        cmd = super().get_command(ctx, cmd_name)
+        # `help` 단어를 --help 로 처리. resilient_parsing(shell completion) 중에는
+        # 발동 금지 — 완성 후보 스트림에 help 텍스트가 섞이는 것을 막는다.
+        if cmd is None and cmd_name == "help" and not ctx.resilient_parsing:
+            click.echo(ctx.get_help())
+            ctx.exit()
+        return cmd
+
+
+def _typer(**kwargs: Any) -> typer.Typer:
+    """anvyc 표준 Typer 앱 — HelpAliasGroup 을 기본 그룹 클래스로 강제."""
+    kwargs.setdefault("cls", HelpAliasGroup)
+    return typer.Typer(**kwargs)
+
+
+app = _typer(
     name="anvyc",
     help="여러 장치에서 개발 도구 설정을 안전하게 백업/비교/복원/동기화한다.",
     no_args_is_help=True,
@@ -110,88 +136,92 @@ PANEL_CONTROL = "Control plane (audit / snapshot / creds / sync / workctx / cost
 PANEL_MCP = "MCP / serve"
 PANEL_EXTERNAL = "External tools"
 
-git_app = typer.Typer(name="git", help=".anvyc 영역에 대한 Git 작업 wrapper.")
+git_app = _typer(name="git", help=".anvyc 영역에 대한 Git 작업 wrapper.")
 app.add_typer(git_app, name="git", rich_help_panel=PANEL_EXTERNAL)
 
-sops_app = typer.Typer(name="sops", help="SOPS 단독 명령 (encrypt/decrypt/rotate-keys).")
+sops_app = _typer(name="sops", help="SOPS 단독 명령 (encrypt/decrypt/rotate-keys).")
 app.add_typer(sops_app, name="sops", rich_help_panel=PANEL_EXTERNAL)
 
-config_app = typer.Typer(name="config", help="anvyc.yaml 편집/조회.")
+config_app = _typer(name="config", help="anvyc.yaml 편집/조회.")
 app.add_typer(config_app, name="config", rich_help_panel=PANEL_PROJECT)
 
-roots_app = typer.Typer(name="roots", help="프로젝트 컨테이너 root 조회/관리 (anvyc.yaml project_roots).")
+roots_app = _typer(
+    name="roots", help="프로젝트 컨테이너 root 조회/관리 (anvyc.yaml project_roots)."
+)
 config_app.add_typer(roots_app, name="roots")
 
-projects_app = typer.Typer(name="projects", help="개별 프로젝트 포함/제외 관리 (anvyc.yaml projects/exclude_projects).")
+projects_app = _typer(
+    name="projects", help="개별 프로젝트 포함/제외 관리 (anvyc.yaml projects/exclude_projects)."
+)
 config_app.add_typer(projects_app, name="projects")
 
-tools_app = typer.Typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
+tools_app = _typer(name="tools", help="anvyc 가 관리하는 도구 조회/관리.")
 app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 
-project_app = typer.Typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
+project_app = _typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
 app.add_typer(project_app, name="project", rich_help_panel=PANEL_PROJECT)
 
-aws_app = typer.Typer(name="aws", help="AWS profile 조회/관리 (~/.aws/config).")
+aws_app = _typer(name="aws", help="AWS profile 조회/관리 (~/.aws/config).")
 app.add_typer(aws_app, name="aws", rich_help_panel=PANEL_PROJECT)
 
-aws_profile_app = typer.Typer(name="profile", help="AWS profile 조회/관리 (인증 방식·연결 상태).")
+aws_profile_app = _typer(name="profile", help="AWS profile 조회/관리 (인증 방식·연결 상태).")
 aws_app.add_typer(aws_profile_app, name="profile")
 
-snapshot_app = typer.Typer(
+snapshot_app = _typer(
     name="snapshot",
     help="작업 회복 — git stash + meta 묶음 snapshot (v0.14.0+).",
 )
 app.add_typer(snapshot_app, name="snapshot", rich_help_panel=PANEL_CONTROL)
 
-creds_app = typer.Typer(
+creds_app = _typer(
     name="creds",
     help="자격 lifecycle — AWS SSO / GitHub / Claude OAuth 만료 상태 (v0.14.0+).",
 )
 app.add_typer(creds_app, name="creds", rich_help_panel=PANEL_CONTROL)
 
-sync_app = typer.Typer(
+sync_app = _typer(
     name="sync",
     help="cross-machine state sync — control plane 자산 (health / snapshot meta) 머신 간 동기화 (v0.14.x+).",
 )
 app.add_typer(sync_app, name="sync", rich_help_panel=PANEL_CONTROL)
 
-sync_conflict_app = typer.Typer(
+sync_conflict_app = _typer(
     name="conflict",
     help="conflict resolution — sha256 불일치 entry 의 수동 해결.",
 )
 sync_app.add_typer(sync_conflict_app, name="conflict")
 
-workctx_app = typer.Typer(
+workctx_app = _typer(
     name="workctx",
     help="work-cwd context — explicit override (Bash cd 불가 시) + statusline / cache 컨텍스트 전환 (v0.15.0+).",
 )
 app.add_typer(workctx_app, name="workctx", rich_help_panel=PANEL_CONTROL)
 
-cost_app = typer.Typer(
+cost_app = _typer(
     name="cost",
     help="cost observability — Anthropic / AWS Cost Explorer / GitHub Billing 통합 합산 (v0.16.0+).",
 )
 app.add_typer(cost_app, name="cost", rich_help_panel=PANEL_CONTROL)
 
-runs_app = typer.Typer(
+runs_app = _typer(
     name="runs",
     help="run ledger — anvyx (L4) 실행 엔진 run-record 집계/조회 (read-only, CP-14).",
 )
 app.add_typer(runs_app, name="runs", rich_help_panel=PANEL_CONTROL)
 
-secret_app = typer.Typer(
+secret_app = _typer(
     name="secret",
     help="secret broker — reference 레지스트리 조회/검증 (값 미보유, CP-15 Phase 1).",
 )
 app.add_typer(secret_app, name="secret", rich_help_panel=PANEL_CONTROL)
 
-mcp_app = typer.Typer(
+mcp_app = _typer(
     name="mcp",
     help="MCP server 설정 자동 등록 — Claude Code / Cursor 의 mcp.json 편집을 대신 (v0.16.0+).",
 )
 app.add_typer(mcp_app, name="mcp", rich_help_panel=PANEL_MCP)
 
-guard_app = typer.Typer(
+guard_app = _typer(
     name="guard",
     help="~/dev 프로젝트 branch 정책 강제 — 로컬 pre-push hook 설치 / 서버 ruleset 적용.",
 )
@@ -676,7 +706,9 @@ def _render_project_doctor(report: ProjectDoctorReport) -> None:
     통과 check 도 INFO result 로 발행되므로 '정보' 섹션에 확인으로 표시된다.
     """
     if not report.results:
-        console.print(f"[bold]project doctor[/]  [dim]{escape(str(report.path))}[/]", soft_wrap=True)
+        console.print(
+            f"[bold]project doctor[/]  [dim]{escape(str(report.path))}[/]", soft_wrap=True
+        )
         console.print(
             "  [dim]적용 가능한 check 없음 — .envrc / .git / Pulumi.yaml / tool_versions 부재[/]"
         )
@@ -734,9 +766,7 @@ def extras(
     if json_out:
         typer.echo(jsonlib.dumps(rows, ensure_ascii=False, indent=2))
     else:
-        table = Table(
-            title="동반 도구 (companion tools)", show_header=True, header_style="bold"
-        )
+        table = Table(title="동반 도구 (companion tools)", show_header=True, header_style="bold")
         table.add_column("도구")
         table.add_column("종류")
         table.add_column("설치", justify="center")
@@ -1625,12 +1655,13 @@ def roots_list(
         }
         typer.echo(_json.dumps(payload, ensure_ascii=False))
         return
-    console.print(f"[dim]config: {escape(str(target))} ({'explicit' if model.explicit else 'default'})[/]")
+    console.print(
+        f"[dim]config: {escape(str(target))} ({'explicit' if model.explicit else 'default'})[/]"
+    )
     for e in model.entries:
         mark = "✓" if e.exists else "✗"
         console.print(
-            f"  {escape(e.path):24} [dim]({e.source})[/]  {mark}  "
-            f"[dim]{e.projects} projects[/]",
+            f"  {escape(e.path):24} [dim]({e.source})[/]  {mark}  [dim]{e.projects} projects[/]",
             soft_wrap=True,
         )
 
@@ -1729,9 +1760,7 @@ def projects_list(
                 {"path": e.path, "exists": e.exists, "has_marker": e.has_marker}
                 for e in model.includes
             ],
-            "excludes": [
-                {"path": e.path, "exists": e.exists} for e in model.excludes
-            ],
+            "excludes": [{"path": e.path, "exists": e.exists} for e in model.excludes],
         }
         typer.echo(_json.dumps(payload, ensure_ascii=False))
         return
@@ -1984,9 +2013,7 @@ def tools_configure(
         after = "[green]on[/]" if ch.after else "[red]off[/]"
         console.print(f"  • {ch.name}: {before} → {after}")
 
-    if not yes and not _confirm(
-        f"\n{yaml_path} 에 저장할까요? (원본은 .bak 백업)", default=True
-    ):
+    if not yes and not _confirm(f"\n{yaml_path} 에 저장할까요? (원본은 .bak 백업)", default=True):
         console.print("[yellow]aborted — nothing written[/]")
         raise typer.Exit(code=0)
 
@@ -2350,9 +2377,7 @@ def snapshot_create(
     """
     anvyc_dir = anvyc_root or (repo / ".anvyc")
     try:
-        meta = create_snapshot(
-            repo, anvyc_dir, label=label, session_id=session_id
-        )
+        meta = create_snapshot(repo, anvyc_dir, label=label, session_id=session_id)
     except ValueError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -2534,9 +2559,7 @@ def snapshot_restore(
         raise typer.Exit(code=2) from exc
 
     if not result.applied:
-        console.print(
-            f"[dim]no-op — target snapshot {result.target_id} 은 clean marker.[/]"
-        )
+        console.print(f"[dim]no-op — target snapshot {result.target_id} 은 clean marker.[/]")
         return
 
     console.print(f"\n[bold green]restored[/]  target={result.target_id}")
@@ -2767,12 +2790,22 @@ def secret_list(
 def secret_add(
     name: str = typer.Argument(..., help="레지스트리 논리 이름 (고유)."),
     backend: str = typer.Option(..., "--backend", "-b", help="op | sops | keychain | aws-vault."),
-    generate: bool = typer.Option(False, "--generate", help="op: 난수 password 생성 위임 (op item create --generate-password)."),
-    ref: str | None = typer.Option(None, "--ref", help="op: 기존 op://<vault>/<item>/<field> 등록."),
+    generate: bool = typer.Option(
+        False,
+        "--generate",
+        help="op: 난수 password 생성 위임 (op item create --generate-password).",
+    ),
+    ref: str | None = typer.Option(
+        None, "--ref", help="op: 기존 op://<vault>/<item>/<field> 등록."
+    ),
     vault: str | None = typer.Option(None, "--vault", help="op --generate 시 대상 vault."),
-    title: str | None = typer.Option(None, "--title", help="op --generate 시 item title (기본 name)."),
+    title: str | None = typer.Option(
+        None, "--title", help="op --generate 시 item title (기본 name)."
+    ),
     file: Path | None = typer.Option(None, "--file", help="sops: SOPS 파일 경로."),
-    key: str | None = typer.Option(None, "--key", help="sops: inplace dotted key (binary 면 생략)."),
+    key: str | None = typer.Option(
+        None, "--key", help="sops: inplace dotted key (binary 면 생략)."
+    ),
     service: str | None = typer.Option(None, "--service", help="keychain: service 이름."),
     account: str | None = typer.Option(None, "--account", help="keychain: account 이름."),
     profile: str | None = typer.Option(None, "--profile", help="aws-vault: profile 이름."),
@@ -2799,10 +2832,17 @@ def secret_add(
 
     try:
         plan = plan_add(
-            name, backend,
-            generate=generate, ref=ref, vault=vault, title=title,
-            file=str(file) if file else None, key=key,
-            service=service, account=account, profile=profile,
+            name,
+            backend,
+            generate=generate,
+            ref=ref,
+            vault=vault,
+            title=title,
+            file=str(file) if file else None,
+            key=key,
+            service=service,
+            account=account,
+            profile=profile,
         )
     except SecretAddError as exc:
         print_error(str(exc))
@@ -2877,7 +2917,9 @@ def secret_get(
 
     if reveal:
         if not _sys.stdout.isatty():
-            print_error("--reveal 은 TTY 에서만 허용 (파이프/CI 노출 방지). 기본 클립보드 모드를 쓰세요.")
+            print_error(
+                "--reveal 은 TTY 에서만 허용 (파이프/CI 노출 방지). 기본 클립보드 모드를 쓰세요."
+            )
             raise typer.Exit(code=2)
         console.print(f"[yellow]⚠ revealing secret '{name}' to terminal[/]")
         rc = _sp.run(cmd, check=False).returncode  # 값은 stdout→터미널 직접 (anvyc 미캡처)
@@ -2887,7 +2929,9 @@ def secret_get(
         return
 
     if not is_available("pbcopy"):
-        print_error("pbcopy 없음 (macOS 전용) — `--reveal`(TTY) 사용. Linux clipboard 는 polish 대기.")
+        print_error(
+            "pbcopy 없음 (macOS 전용) — `--reveal`(TTY) 사용. Linux clipboard 는 polish 대기."
+        )
         raise typer.Exit(code=2)
     clear_s = int(cfg.secrets.clipboard_clear_seconds)
     # resolve stdout → pbcopy stdin 직접 파이프 (anvyc Python 미캡처)
@@ -2913,7 +2957,9 @@ def secret_inject_wire(
     name: str = typer.Argument(..., help="레지스트리 name."),
     target: Path = typer.Option(..., "--target", help="주입 대상 파일 (예: ~/project/.envrc)."),
     env_var: str | None = typer.Option(None, "--env-var", help="export 환경변수 이름 (기본 name)."),
-    apply_changes: bool = typer.Option(False, "--apply", help="실제 추가 (기본 dry-run — 라인만 출력)."),
+    apply_changes: bool = typer.Option(
+        False, "--apply", help="실제 추가 (기본 dry-run — 라인만 출력)."
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="--apply 시 confirm prompt 자동 수락."),
     config: Path | None = typer.Option(None, "--config", help="anvyc.yaml 위치."),
 ) -> None:
@@ -3015,7 +3061,9 @@ def sync_status(
         return
 
     if remote is None:
-        console.print(f"  [yellow]remote manifest 부재[/] — 모든 {s[STATUS_LOCAL_ONLY]} local item 이 push 후보 (CP-6 2/3).")
+        console.print(
+            f"  [yellow]remote manifest 부재[/] — 모든 {s[STATUS_LOCAL_ONLY]} local item 이 push 후보 (CP-6 2/3)."
+        )
 
     console.print(
         f"  summary:         same={s[STATUS_SAME]}  local_only={s[STATUS_LOCAL_ONLY]}  "
@@ -3192,7 +3240,9 @@ def sync_pull(
         raise typer.Exit(code=0)
 
     try:
-        result = pull_to_local(target, home=h, dev_root=dev_root, machine_id=machine_id, force=force)
+        result = pull_to_local(
+            target, home=h, dev_root=dev_root, machine_id=machine_id, force=force
+        )
     except SyncError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
@@ -3319,8 +3369,7 @@ def sync_conflict_resolve(
         raise typer.Exit(code=2) from exc
 
     typer.secho(
-        f"\nresolved — operation={result.operation} "
-        f"manifest_written={result.manifest_written}",
+        f"\nresolved — operation={result.operation} manifest_written={result.manifest_written}",
         fg=typer.colors.GREEN,
         bold=True,
     )
@@ -3468,21 +3517,15 @@ def cost_collect(
         "-p",
         help="mtd | YYYY-MM (default: mtd, UTC store).",
     ),
-    json_out: bool = typer.Option(
-        False, "--json", help="기계 가독 JSON 출력."
-    ),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """어댑터 직접 호출 + 캐시 저장 + 합산 출력 (refresh)."""
     from anvyc.core.cost.api import summary_json, summary_text
 
     if json_out:
-        console.print(
-            summary_json(source=source, period_spec=period, refresh=True)
-        )
+        console.print(summary_json(source=source, period_spec=period, refresh=True))
     else:
-        console.print(
-            summary_text(source=source, period_spec=period, refresh=True)
-        )
+        console.print(summary_text(source=source, period_spec=period, refresh=True))
 
 
 @runs_app.command("summary")
@@ -3539,9 +3582,7 @@ def runs_list(
 
     runs = list(reversed(collect_runs(agent=agent)))[:limit]
     if json_out:
-        typer.echo(
-            jsonlib.dumps([r.to_dict() for r in runs], ensure_ascii=False, indent=2)
-        )
+        typer.echo(jsonlib.dumps([r.to_dict() for r in runs], ensure_ascii=False, indent=2))
         return
     if not runs:
         console.print("[dim]no anvyx run-record under ~/.config/anvyx/runs/[/]")
@@ -3579,9 +3620,7 @@ def cost_summary(
         help="source 필터: anthropic | aws | github (미지정 시 전체). "
         "aws/github 는 cost-aws/cost-github extra 필요.",
     ),
-    period: str = typer.Option(
-        "mtd", "--period", "-p", help="mtd | YYYY-MM."
-    ),
+    period: str = typer.Option("mtd", "--period", "-p", help="mtd | YYYY-MM."),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
 ) -> None:
     """캐시 read + 합산 (캐시 비어있으면 즉시 collect)."""
@@ -3602,9 +3641,7 @@ def cost_ledger(
         help="source 필터: anthropic | aws | github (미지정 시 전체). "
         "aws/github 는 cost-aws/cost-github extra 필요.",
     ),
-    account: str | None = typer.Option(
-        None, "--account", "-a", help="account 필터."
-    ),
+    account: str | None = typer.Option(None, "--account", "-a", help="account 필터."),
     period: str | None = typer.Option(
         None,
         "--period",
@@ -3655,9 +3692,7 @@ def cost_ledger(
             str(r["account"]),
             f"${r['amount_usd']:.4f}",
             str(r["model_breakdown_count"]),
-            str(r["pricing_version"])
-            if r["pricing_version"] is not None
-            else "-",
+            str(r["pricing_version"]) if r["pricing_version"] is not None else "-",
         ]
         if include_meta:
             row_vals += [
@@ -3695,12 +3730,9 @@ def cost_cleanup(
         return
 
     if result["dry_run"]:
-        console.print(
-            "[yellow]dry-run[/yellow] — --apply 로 실 삭제. 아래는 예정 동작."
-        )
+        console.print("[yellow]dry-run[/yellow] — --apply 로 실 삭제. 아래는 예정 동작.")
     console.print(
-        f"today: {result['today']}, cutoff: {result['cutoff']} "
-        f"(keep {result['keep_days']}d)"
+        f"today: {result['today']}, cutoff: {result['cutoff']} (keep {result['keep_days']}d)"
     )
     action = "would remove" if result["dry_run"] else "removed"
     console.print(
@@ -3767,8 +3799,11 @@ def _print_install_plans(plans: list[Any], *, action: str) -> None:
             row.append(_short_home(plan.backup_path) if plan.backup_path else "—")
         else:
             row.append(", ".join(plan.remaining_servers) or "—")
-        row.append(", ".join(plan.existing_servers) if action == "install"
-                   else ", ".join(plan.remaining_servers))
+        row.append(
+            ", ".join(plan.existing_servers)
+            if action == "install"
+            else ", ".join(plan.remaining_servers)
+        )
         # `other servers` 컬럼이 install 의 existing_servers / uninstall 의 remaining_servers
         # 와 의미 중복이지만 표 친화 위해 동일 처리.
         table.add_row(*row[: len(table.columns)])
@@ -3793,9 +3828,7 @@ def mcp_install(
         "--apply",
         help="기본 dry-run. --apply 시 atomic write 로 실제 mcp.json 작성.",
     ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="--apply 시의 confirm prompt 자동 수락."
-    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="--apply 시의 confirm prompt 자동 수락."),
     absolute_path: bool = typer.Option(
         False,
         "--absolute-path",
@@ -3889,8 +3922,7 @@ def mcp_install(
             else ""
         )
         console.print(
-            f"[green]wrote[/green] {r.plan.ide}: "
-            f"{_short_home(r.plan.target_path)}{backup_msg}"
+            f"[green]wrote[/green] {r.plan.ide}: {_short_home(r.plan.target_path)}{backup_msg}"
         )
 
     console.print(
@@ -3949,18 +3981,12 @@ def mcp_uninstall(
     for r in results:
         if not r.removed:
             console.print(
-                f"[dim]skip[/dim] {r.plan.ide}: anvyc 등록 없음 "
-                f"({_short_home(r.plan.target_path)})"
+                f"[dim]skip[/dim] {r.plan.ide}: anvyc 등록 없음 ({_short_home(r.plan.target_path)})"
             )
             continue
-        console.print(
-            f"[green]removed[/green] {r.plan.ide}: "
-            f"{_short_home(r.plan.target_path)}"
-        )
+        console.print(f"[green]removed[/green] {r.plan.ide}: {_short_home(r.plan.target_path)}")
 
-    console.print(
-        "\n[bold]next[/bold] IDE 재시작 시점에 anvyc tool 이 사라집니다."
-    )
+    console.print("\n[bold]next[/bold] IDE 재시작 시점에 anvyc tool 이 사라집니다.")
 
 
 @mcp_app.command("status")
@@ -4003,7 +4029,8 @@ def mcp_status(
 
     for r in rows:
         anvyc_cell = (
-            "[green]✓ yes[/green]" if r.has_anvyc
+            "[green]✓ yes[/green]"
+            if r.has_anvyc
             else ("[dim]— no[/dim]" if r.exists else "[dim]missing[/dim]")
         )
         command_cell = r.anvyc_command or "—"
@@ -4018,8 +4045,12 @@ def guard_install(
     project: list[Path] | None = typer.Option(
         None, "--project", help="대상 repo 경로 (반복 가능). 생략 시 등록된 roots 전체."
     ),
-    root: Path | None = typer.Option(None, "--root", help="스캔할 상위 디렉터리 (기본: 등록 roots)."),
-    force: bool = typer.Option(False, "--force", help="기존 비-anvyc pre-push 를 백업하고 덮어쓴다."),
+    root: Path | None = typer.Option(
+        None, "--root", help="스캔할 상위 디렉터리 (기본: 등록 roots)."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="기존 비-anvyc pre-push 를 백업하고 덮어쓴다."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="설치하지 않고 대상/정책만 출력."),
 ) -> None:
     """대상 repo 에 pre-push 가드(보호 브랜치 직접 push 차단)를 설치한다."""
@@ -4048,7 +4079,9 @@ def guard_install(
 
 @guard_app.command("protect")
 def guard_protect(
-    project: list[Path] | None = typer.Option(None, "--project", help="대상 repo 경로 (반복 가능)."),
+    project: list[Path] | None = typer.Option(
+        None, "--project", help="대상 repo 경로 (반복 가능)."
+    ),
     root: Path | None = typer.Option(None, "--root", help="스캔 상위 디렉터리."),
     apply: bool = typer.Option(False, "--apply", help="실제 적용 (기본: dry-run)."),
 ) -> None:
@@ -4076,9 +4109,12 @@ def guard_protect(
         if not repo_admin(owner, name):
             console.print(f"[dim]skip[/] {owner}/{name} (admin 권한 없음 — enforce 불가)")
             continue
-        res = apply_ruleset(owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply)
-        color = {"created": "green", "updated": "green", "exists": "dim",
-                 "no-access": "dim"}.get(res.action, "yellow")
+        res = apply_ruleset(
+            owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply
+        )
+        color = {"created": "green", "updated": "green", "exists": "dim", "no-access": "dim"}.get(
+            res.action, "yellow"
+        )
         console.print(f"[{color}]{res.action}[/] {owner}/{name} {res.detail}")
 
 
@@ -4086,7 +4122,9 @@ def guard_protect(
 def aws_profile_list(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     status: bool = typer.Option(True, "--status/--no-status", help="연결 상태 판정(오프라인)."),
-    probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
+    probe: bool = typer.Option(
+        False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."
+    ),
 ) -> None:
     """~/.aws/config 의 profile 목록 + 인증 방식 + (기본) 오프라인 연결 상태."""
     import json as _json
@@ -4144,7 +4182,9 @@ def aws_profile_list(
 def aws_profile_show(
     name: str = typer.Argument(..., help="profile 이름."),
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
-    probe: bool = typer.Option(False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."),
+    probe: bool = typer.Option(
+        False, "--probe", help="네트워크 liveness (aws sts get-caller-identity)."
+    ),
 ) -> None:
     """단일 profile 의 해석 키 + 인증 방식 + 연결 상태 (+--probe 시 라이브 verdict)."""
     import json as _json
@@ -4186,7 +4226,12 @@ def aws_profile_show(
         console.print(escape(f"  {k} = {v}"), soft_wrap=True)
     pr_out = out["probe"]
     if isinstance(pr_out, dict):
-        console.print(escape(f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"), soft_wrap=True)
+        console.print(
+            escape(
+                f"  probe: {'ok ' + str(pr_out['account']) if pr_out['ok'] else 'fail ' + str(pr_out['error'])}"
+            ),
+            soft_wrap=True,
+        )
 
 
 def _apply_aws_edit(
@@ -4219,7 +4264,9 @@ def _apply_aws_edit(
 def aws_profile_create(
     name: str = typer.Argument(..., help="profile 이름."),
     sso_session: str | None = typer.Option(None, "--sso-session", help="SSO 세션 이름."),
-    start_url: str | None = typer.Option(None, "--start-url", help="신규 sso-session 의 start URL."),
+    start_url: str | None = typer.Option(
+        None, "--start-url", help="신규 sso-session 의 start URL."
+    ),
     sso_region: str | None = typer.Option(None, "--sso-region", help="신규 sso-session 의 region."),
     account_id: str | None = typer.Option(None, "--account-id", help="sso_account_id."),
     role_name: str | None = typer.Option(None, "--role-name", help="sso_role_name."),
@@ -4236,19 +4283,35 @@ def aws_profile_create(
     config_path = Path.home() / ".aws" / "config"
     try:
         preview = create_profile(
-            config_path, name, write=False,
-            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
-            account_id=account_id, role_name=role_name, region=region, output=output,
+            config_path,
+            name,
+            write=False,
+            sso_session=sso_session,
+            start_url=start_url,
+            sso_region=sso_region,
+            account_id=account_id,
+            role_name=role_name,
+            region=region,
+            output=output,
         )
     except AwsConfigEditError as e:
         console.print(escape(f"오류: {e}"), soft_wrap=True)
         raise typer.Exit(code=1) from None
     _apply_aws_edit(
-        preview, dry_run=dry_run, yes=yes,
+        preview,
+        dry_run=dry_run,
+        yes=yes,
         commit_fn=lambda: create_profile(
-            config_path, name, write=True,
-            sso_session=sso_session, start_url=start_url, sso_region=sso_region,
-            account_id=account_id, role_name=role_name, region=region, output=output,
+            config_path,
+            name,
+            write=True,
+            sso_session=sso_session,
+            start_url=start_url,
+            sso_region=sso_region,
+            account_id=account_id,
+            role_name=role_name,
+            region=region,
+            output=output,
         ),
     )
 
@@ -4273,7 +4336,9 @@ def aws_profile_edit(
     sets: dict[str, str] = {}
     for item in set_ or []:
         if "=" not in item:
-            console.print(escape(f"오류: --set 는 key=value 형식이어야 합니다: {item}"), soft_wrap=True)
+            console.print(
+                escape(f"오류: --set 는 key=value 형식이어야 합니다: {item}"), soft_wrap=True
+            )
             raise typer.Exit(code=1) from None
         k, v = item.split("=", 1)
         sets[k.strip()] = v.strip()
@@ -4285,7 +4350,9 @@ def aws_profile_edit(
     if sso_session is not None:
         sets["sso_session"] = sso_session
     if not sets:
-        console.print("수정할 키가 없습니다 (--set / --region / --output / --sso-session).", soft_wrap=True)
+        console.print(
+            "수정할 키가 없습니다 (--set / --region / --output / --sso-session).", soft_wrap=True
+        )
         raise typer.Exit(code=1) from None
 
     config_path = Path.home() / ".aws" / "config"
@@ -4295,7 +4362,9 @@ def aws_profile_edit(
         console.print(escape(f"오류: {e}"), soft_wrap=True)
         raise typer.Exit(code=1) from None
     _apply_aws_edit(
-        preview, dry_run=dry_run, yes=yes,
+        preview,
+        dry_run=dry_run,
+        yes=yes,
         commit_fn=lambda: edit_profile(config_path, name, sets=sets, write=True),
     )
 
@@ -4318,7 +4387,9 @@ def aws_profile_rm(
         console.print(escape(f"오류: {e}"), soft_wrap=True)
         raise typer.Exit(code=1) from None
     _apply_aws_edit(
-        preview, dry_run=dry_run, yes=yes,
+        preview,
+        dry_run=dry_run,
+        yes=yes,
         commit_fn=lambda: remove_profile(config_path, name, write=True),
     )
 
