@@ -351,6 +351,8 @@ anvyc git {init|status|commit|push}
 anvyc sops {encrypt|decrypt|rotate-keys}
 ```
 
+> 팁: 어느 그룹 레벨에서든 경로 끝에 `help` 단어를 붙이면 `--help` 와 동일하게 동작합니다 — 예: `anvyc aws profile help` = `anvyc aws profile --help`. (리프 명령은 `--help` 만 지원)
+
 ---
 
 ## 9. 보안 정책 요약

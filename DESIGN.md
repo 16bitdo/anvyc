@@ -468,6 +468,8 @@ tools:
 └──────────────┘ └──────────┘ └──────────────┘
 ```
 
+- **`HelpAliasGroup` / `_typer()`** (`cli.py`): 모든 Typer 그룹의 기본 클래스를 `HelpAliasGroup` 로 강제하는 팩토리. 그룹 경로 끝의 `help` 단어를 `--help` 와 동일 처리(전역 help 단어 별칭). 리프 Command 는 비대상, 동명 실제 명령은 우선, shell completion(resilient_parsing) 중에는 비활성.
+
 ---
 
 ## 11. Adapter 인터페이스
