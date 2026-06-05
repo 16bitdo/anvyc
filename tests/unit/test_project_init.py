@@ -1,8 +1,6 @@
 """anvyc project_init 순수 로직 단위 테스트."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from anvyc.core.project_info import _derive_gh_account, gh_config_dir_for_account
 
 
