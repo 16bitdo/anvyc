@@ -84,7 +84,11 @@ def test_help_word_inert_during_completion() -> None:
     import typer
     import typer._click as click
 
+    from anvyc.cli import HelpAliasGroup
+
     root = typer.main.get_command(app)
+    # Command -> HelpAliasGroup 으로 좁힌다 (get_command 는 Group 계열에만 존재; mypy).
+    assert isinstance(root, HelpAliasGroup)
     ctx = click.Context(root, info_name="anvyc", resilient_parsing=True)
     # 미존재 'help' 토큰: 정상 모드면 echo+exit 하지만 completion 모드면 None 반환.
     assert root.get_command(ctx, "help") is None
