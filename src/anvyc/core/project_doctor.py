@@ -138,7 +138,7 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
                 ),
                 suggestion=(
                     f'.envrc 에 export GH_CONFIG_DIR="{gh_config_dir_for_account(alias)}" '
-                    f"추가 후 direnv allow"
+                    f"추가 후 direnv allow (또는 `anvyc project init`)"
                 ),
             )
         ]
