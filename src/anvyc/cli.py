@@ -2292,7 +2292,9 @@ def project_init(
     account: str | None = typer.Option(
         None, "--account", "-a", help="gh account 직접 지정 (프롬프트 skip)."
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="비대화 — 도출값/기본 동작 자동 수락."),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="비대화 — 도출값/기본 동작 자동 수락."
+    ),
     no_allow: bool = typer.Option(False, "--no-allow", help="direnv allow 실행 안 함."),
     config: Path | None = typer.Option(
         None, "--config", help="anvyc.yaml 경로 (owner→account 매핑)."
@@ -2358,7 +2360,9 @@ def project_init(
         allow_msg, allow_ok = "direnv 미설치 — 설치 후 `direnv allow` 필요", False
 
     console.print(f"[green]✓[/] .envrc GH_CONFIG_DIR → gh-{acct} ({envrc_status})")
-    console.print(f"[green]✓[/] .gitignore .envrc 등록 ({'추가' if gi_changed else '이미 있음'})")
+    console.print(
+        f"[green]✓[/] .gitignore .envrc 등록 ({'추가' if gi_changed else '이미 있음'})"
+    )
     console.print(f"{'[green]✓[/]' if allow_ok else '[yellow]![/]'} {allow_msg}")
     console.print(
         f"[dim]statusline 은 해당 디렉터리에서 다음 Claude Code 재시작 후 🔑 {acct} 로 전환[/]"
@@ -4576,6 +4580,79 @@ def github_account_list(
         )
 
     console.print(table)
+
+
+@github_account_app.command("show")
+def github_account_show(
+    account: str = typer.Argument(..., help="GitHub 계정 이름."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+    probe: bool = typer.Option(
+        False, "--probe", help="네트워크 liveness (gh api — 토큰 만료 헤더 조회)."
+    ),
+) -> None:
+    """단일 GitHub 계정 상세 뷰 (로그인·만료·라우팅)."""
+    import dataclasses
+    import json as _json
+    from pathlib import Path
+
+    from rich.markup import escape
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.gh_account_view import collect_accounts
+
+    config_home = Path.home() / ".config"
+    cwd = Path.cwd()
+    owner_accounts = load_anvyc_config(None).doctor.gh_owner_accounts
+
+    if probe:
+        from anvyc.core.gh_probe import GhProbeResult, probe_token_expiry
+
+        views_offline = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+        probe_results: dict[tuple[str, str], GhProbeResult] = {}
+        for v in views_offline:
+            if v.account == account and v.logged_in and v.config_dir is not None:
+                probe_results[(v.host, v.account)] = probe_token_expiry(
+                    Path(v.config_dir), v.host, v.account
+                )
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=probe_results,
+        )
+    else:
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+
+    matched = next((v for v in views if v.account == account), None)
+    if matched is None:
+        typer.echo(f"account '{account}' 가 발견되지 않았습니다.")
+        raise typer.Exit(code=1)
+
+    if json_out:
+        typer.echo(_json.dumps(dataclasses.asdict(matched), ensure_ascii=False))
+        return
+
+    console.print(escape(f"account:     {matched.account}"), soft_wrap=True)
+    console.print(escape(f"host:        {matched.host}"), soft_wrap=True)
+    console.print(escape(f"config_dir:  {matched.config_dir}"), soft_wrap=True)
+    console.print(escape(f"logged_in:   {'✓' if matched.logged_in else '✗'}"), soft_wrap=True)
+    expiry_str = matched.expiry_status if matched.expiry_status != "unknown" else "—"
+    console.print(escape(f"expiry:      {expiry_str}"), soft_wrap=True)
+    if matched.expires_at:
+        console.print(escape(f"expires_at:  {matched.expires_at}"), soft_wrap=True)
+    routed_str = ", ".join(matched.routed_owners) if matched.routed_owners else "(없음)"
+    console.print(escape(f"routed_owners: {routed_str}"), soft_wrap=True)
+    console.print(escape(f"cwd_routed:  {'✓' if matched.cwd_routed else '✗'}"), soft_wrap=True)
 
 
 if __name__ == "__main__":

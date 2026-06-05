@@ -129,3 +129,79 @@ def test_list_no_probe_not_called(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     result = runner.invoke(app, ["github", "account", "list"])
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# github account show
+# ---------------------------------------------------------------------------
+
+
+def test_show_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """known account 를 show 하면 exit 0."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["github", "account", "show", "16bitdo"])
+    assert result.exit_code == 0, result.output
+    assert "16bitdo" in result.output
+
+
+def test_show_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--json 단일 객체 반환."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["github", "account", "show", "16bitdo", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["account"] == "16bitdo"
+    assert data["expiry_status"] == "unknown"
+
+
+def test_show_not_found_exit_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """없는 account 는 exit 1."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["github", "account", "show", "ghost"])
+    assert result.exit_code == 1
+
+
+def test_show_no_token_leak(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """show 출력에 토큰 값이 노출되지 않는다."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+    result = runner.invoke(app, ["github", "account", "show", "16bitdo", "--json"])
+    assert "ghp_X" not in result.output
+
+
+def test_show_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """show --probe 시 해당 계정에 대해 probe 가 호출된다."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+
+    from anvyc.core import gh_probe as _gh_probe_mod
+
+    probed: list[str] = []
+
+    def fake_probe(
+        config_dir: Path, host: str, user: str, **_k: object
+    ) -> _gh_probe_mod.GhProbeResult:
+        probed.append(user)
+        return _gh_probe_mod.GhProbeResult(status="expiring", expires_at="2026-07-01T00:00:00Z")
+
+    monkeypatch.setattr(_gh_probe_mod, "probe_token_expiry", fake_probe)
+
+    result = runner.invoke(app, ["github", "account", "show", "16bitdo", "--probe", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["expiry_status"] == "expiring"
+    # 대상 계정만 probe (필터 회귀 가드 — heisgone 은 probe 안 함)
+    assert probed == ["16bitdo"], f"expected only target probed, got: {probed}"
+
+
+def test_show_no_probe_not_called(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--probe 없으면 show 도 probe_token_expiry 를 호출하지 않는다 (list 와 대칭)."""
+    monkeypatch.setenv("HOME", str(_home(tmp_path)))
+
+    from anvyc.core import gh_probe as _gh_probe_mod
+
+    def _should_not_be_called(*_a: object, **_kw: object) -> None:
+        raise AssertionError("probe_token_expiry should NOT be called without --probe")
+
+    monkeypatch.setattr(_gh_probe_mod, "probe_token_expiry", _should_not_be_called)
+
+    result = runner.invoke(app, ["github", "account", "show", "16bitdo"])
+    assert result.exit_code == 0, result.output
