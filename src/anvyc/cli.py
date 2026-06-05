@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import typer
-import typer._click as click
+import typer._click as click  # vendored Click — TyperGroup.get_command 시그니처가 typer._click 타입 (mypy override 호환)
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -109,7 +109,9 @@ class HelpAliasGroup(TyperGroup):
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         cmd = super().get_command(ctx, cmd_name)
-        if cmd is None and cmd_name == "help":
+        # `help` 단어를 --help 로 처리. resilient_parsing(shell completion) 중에는
+        # 발동 금지 — 완성 후보 스트림에 help 텍스트가 섞이는 것을 막는다.
+        if cmd is None and cmd_name == "help" and not ctx.resilient_parsing:
             click.echo(ctx.get_help())
             ctx.exit()
         return cmd

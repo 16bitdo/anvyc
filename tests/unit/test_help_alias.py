@@ -74,3 +74,17 @@ def test_leaf_command_help_is_argument_not_alias() -> None:
     code, out = _run(["aws", "profile", "show", "help"])
     assert code != 0
     assert "Usage: anvyc aws profile [OPTIONS] COMMAND" not in out
+
+
+def test_help_word_inert_during_completion() -> None:
+    """shell completion(resilient_parsing) 중에는 help 별칭이 발동하지 않는다.
+
+    완성 후보 스트림에 도움말 텍스트가 섞이는 회귀 방지 — echo/exit 금지.
+    """
+    import typer
+    import typer._click as click
+
+    root = typer.main.get_command(app)
+    ctx = click.Context(root, info_name="anvyc", resilient_parsing=True)
+    # 미존재 'help' 토큰: 정상 모드면 echo+exit 하지만 completion 모드면 None 반환.
+    assert root.get_command(ctx, "help") is None
