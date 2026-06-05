@@ -216,6 +216,7 @@ anvyc git push
 | `list` | 보관 중인 backup 목록 표시 |
 | `scan-secrets` | backup 대상/현재 target에 secret이 있는지 스캔 |
 | `git *` | `.anvyc/` 영역에 대한 Git 작업 wrapper |
+| `github account *` | gh 계정 통합 뷰 — 인벤토리·로그인·만료·라우팅(읽기 전용; 인증은 `gh auth` 위임, 토큰 미접근) |
 
 ---
 

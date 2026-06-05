@@ -173,6 +173,12 @@ app.add_typer(aws_app, name="aws", rich_help_panel=PANEL_PROJECT)
 aws_profile_app = _typer(name="profile", help="AWS profile 조회/관리 (인증 방식·연결 상태).")
 aws_app.add_typer(aws_profile_app, name="profile")
 
+github_app = _typer(name="github", help="GitHub 계정 통합 뷰/라우팅 (~/.config/gh*).")
+app.add_typer(github_app, name="github", rich_help_panel=PANEL_PROJECT)
+
+github_account_app = _typer(name="account", help="GitHub 계정 조회 (인벤토리·로그인·만료·라우팅).")
+github_app.add_typer(github_account_app, name="account")
+
 snapshot_app = _typer(
     name="snapshot",
     help="작업 회복 — git stash + meta 묶음 snapshot (v0.14.0+).",
@@ -4481,6 +4487,172 @@ def aws_profile_rm(
         yes=yes,
         commit_fn=lambda: remove_profile(config_path, name, write=True),
     )
+
+
+@github_account_app.command("list")
+def github_account_list(
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+    probe: bool = typer.Option(
+        False, "--probe", help="네트워크 liveness (gh api — 토큰 만료 헤더 조회)."
+    ),
+) -> None:
+    """~/.config/gh* 의 GitHub 계정 목록 + 로그인·만료·라우팅 상태."""
+    import dataclasses
+    import json as _json
+    from pathlib import Path
+
+    from rich.markup import escape
+    from rich.table import Table
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.gh_account_view import collect_accounts
+
+    # HOME-isolation: Path.home() 를 호출 시점에 평가 (import 시점 고정 우회)
+    config_home = Path.home() / ".config"
+    cwd = Path.cwd()
+    owner_accounts = load_anvyc_config(None).doctor.gh_owner_accounts
+
+    if probe:
+        from anvyc.core.gh_probe import GhProbeResult, probe_token_expiry
+
+        # 1단계: 오프라인 뷰 조립 → 로그인 계정 목록 확보
+        views_offline = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+        # 2단계: 로그인 계정만 probe
+        probe_results: dict[tuple[str, str], GhProbeResult] = {}
+        for v in views_offline:
+            if v.logged_in and v.config_dir is not None:
+                probe_results[(v.host, v.account)] = probe_token_expiry(
+                    Path(v.config_dir), v.host, v.account
+                )
+        # 3단계: probe_results 반영해 재조립
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=probe_results,
+        )
+    else:
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+
+    if json_out:
+        typer.echo(
+            _json.dumps(
+                {"accounts": [dataclasses.asdict(v) for v in views]},
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if not views:
+        typer.echo("발견된 gh 계정 없음 — `gh auth login` 으로 추가")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("account")
+    table.add_column("host")
+    table.add_column("logged_in")
+    table.add_column("expiry")
+    table.add_column("routed")
+
+    for v in views:
+        logged_str = "✓" if v.logged_in else "✗"
+        expiry_str = escape(v.expiry_status) if v.expiry_status != "unknown" else "—"
+        routed_parts = [escape(o) for o in v.routed_owners]
+        if v.cwd_routed:
+            routed_parts.append("✓cwd")
+        routed_str = " ".join(routed_parts) if routed_parts else ""
+        table.add_row(
+            escape(v.account),
+            escape(v.host),
+            logged_str,
+            expiry_str,
+            routed_str,
+        )
+
+    console.print(table)
+
+
+@github_account_app.command("show")
+def github_account_show(
+    account: str = typer.Argument(..., help="GitHub 계정 이름."),
+    json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
+    probe: bool = typer.Option(
+        False, "--probe", help="네트워크 liveness (gh api — 토큰 만료 헤더 조회)."
+    ),
+) -> None:
+    """단일 GitHub 계정 상세 뷰 (로그인·만료·라우팅)."""
+    import dataclasses
+    import json as _json
+    from pathlib import Path
+
+    from rich.markup import escape
+
+    from anvyc.core.config import load_anvyc_config
+    from anvyc.core.gh_account_view import collect_accounts
+
+    config_home = Path.home() / ".config"
+    cwd = Path.cwd()
+    owner_accounts = load_anvyc_config(None).doctor.gh_owner_accounts
+
+    if probe:
+        from anvyc.core.gh_probe import GhProbeResult, probe_token_expiry
+
+        views_offline = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+        probe_results: dict[tuple[str, str], GhProbeResult] = {}
+        for v in views_offline:
+            if v.account == account and v.logged_in and v.config_dir is not None:
+                probe_results[(v.host, v.account)] = probe_token_expiry(
+                    Path(v.config_dir), v.host, v.account
+                )
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=probe_results,
+        )
+    else:
+        views = collect_accounts(
+            config_home=config_home,
+            owner_accounts=owner_accounts,
+            cwd=cwd,
+            probe_results=None,
+        )
+
+    matched = next((v for v in views if v.account == account), None)
+    if matched is None:
+        typer.echo(f"account '{account}' 가 발견되지 않았습니다.")
+        raise typer.Exit(code=1)
+
+    if json_out:
+        typer.echo(_json.dumps(dataclasses.asdict(matched), ensure_ascii=False))
+        return
+
+    console.print(escape(f"account:     {matched.account}"), soft_wrap=True)
+    console.print(escape(f"host:        {matched.host}"), soft_wrap=True)
+    console.print(escape(f"config_dir:  {matched.config_dir}"), soft_wrap=True)
+    console.print(escape(f"logged_in:   {'✓' if matched.logged_in else '✗'}"), soft_wrap=True)
+    expiry_str = matched.expiry_status if matched.expiry_status != "unknown" else "—"
+    console.print(escape(f"expiry:      {expiry_str}"), soft_wrap=True)
+    if matched.expires_at:
+        console.print(escape(f"expires_at:  {matched.expires_at}"), soft_wrap=True)
+    routed_str = ", ".join(matched.routed_owners) if matched.routed_owners else "(없음)"
+    console.print(escape(f"routed_owners: {routed_str}"), soft_wrap=True)
+    console.print(escape(f"cwd_routed:  {'✓' if matched.cwd_routed else '✗'}"), soft_wrap=True)
 
 
 if __name__ == "__main__":
