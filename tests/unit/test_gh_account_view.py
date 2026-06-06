@@ -1,9 +1,9 @@
 """core/gh_account_view — 오프라인 계정 뷰 조립(네트워크 0)."""
 
 from pathlib import Path
-from types import SimpleNamespace
 
 from anvyc.core.gh_account_view import collect_accounts
+from anvyc.core.gh_probe import GhProbeResult
 
 
 def _mk_gh(config_home: Path, dirname: str, host: str, user: str) -> None:
@@ -53,9 +53,7 @@ def test_probe_results_merged(tmp_path: Path) -> None:
     ch = tmp_path / ".config"
     _mk_gh(ch, "gh-16bitdo", "github.com", "16bitdo")
     probe = {
-        ("github.com", "16bitdo"): SimpleNamespace(
-            status="valid", expires_at="2026-12-31T00:00:00Z"
-        )
+        ("github.com", "16bitdo"): GhProbeResult(status="valid", expires_at="2026-12-31T00:00:00Z")
     }
     views = collect_accounts(config_home=ch, owner_accounts={}, cwd=tmp_path, probe_results=probe)
     assert views[0].expiry_status == "valid"
