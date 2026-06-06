@@ -27,6 +27,7 @@ from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.checks.project_claude_account import ProjectClaudeAccountMappingCheck
 from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
+from anvyc.checks.ruleset_deploy_drift import RulesetDeployDriftCheck
 from anvyc.checks.secret_registry import SecretRegistryValidCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.tui_extra import TuiExtraImportableCheck
@@ -105,6 +106,7 @@ _REGISTRY: dict[str, Check] = {
     "cost-aws-explorer-iam": CostAwsExplorerIamCheck(),
     "cost-github-pat-scope": CostGithubPatScopeCheck(),
     "hook-integrity-risk-gate": HookIntegrityRiskGateCheck(),
+    "ruleset-deploy-drift": RulesetDeployDriftCheck(),
     "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
     "project-branch-protection": ProjectBranchProtectionCheck(),
     "container-runtime-health": ContainerRuntimeHealthCheck(),
