@@ -33,6 +33,9 @@ htmlcov/
 CLAUDE.md
 .claude/
 
+# Serena IDE/agent toolkit artifact — 로컬 캐시·메모리, public repo 미포함
+.serena/
+
 # 내부 작업 문서 — 결정 로그/진행 상태, 로컬 전용 (공개 저장소 미포함)
 CONTEXT.md
 
