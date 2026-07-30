@@ -54,7 +54,11 @@ encryption = [
   "cryptography>=42.0"
 ]
 mcp = [
-  "mcp>=1.0"
+  # 상한 고정 — mcp 2.0.0 은 breaking change(Tool.inputSchema→input_schema,
+  # Server.list_tools 제거)를 포함한 major 이고, 상한 없는 `>=1.0` 이 이를
+  # 자동 수용해 CI 만 red 가 됐다(로컬 1.27.1 / CI 2.0.0 → 재현 불가).
+  # 2.x 마이그레이션은 별도 계획으로 진행한다.
+  "mcp>=1.0,<2"
 ]
 cost-aws = [
   "boto3>=1.34"
