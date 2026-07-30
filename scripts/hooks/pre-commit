@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# pre-commit hook: personal-config-guard
+# 개인화 파일/시크릿이 staging 에 있으면 commit 차단.
+# 예외는 repo 루트의 .personal-config-source 마커 파일로 opt-in.
+# 정책 SoT: role-based-ruleset/common/skills/personal-config-guard/SKILL.md
+
+set -euo pipefail
+
+# 차단 패턴 (정규식, 한 줄)
+BLOCKED_REGEX='^(\.cursor/|\.cursorindexingignore$|\.claude(-[^/]+)?/|CLAUDE\.md$|CONTEXT\.md$|\.env(\.[^.]+)?$|\.envrc(\.[^/]+)?$|\.direnv/|\.vscode/|\.idea/|\.ssh/|.*\.(pem|key|p12)$|kubeconfig.*|credentials.*)'
+
+# 차단 예외 (정규식): .env.example, .env.sample 은 통과
+ALLOWED_REGEX='\.env\.(example|sample)$'
+
+MARKER_FILE=".personal-config-source"
+SKILL_REF="role-based-ruleset/common/skills/personal-config-guard/SKILL.md"
+
+STAGED=$(git diff --cached --name-only --diff-filter=d)   # 삭제(untrack: git rm --cached)은 guard 대상 제외(#3b)
+[[ -z "$STAGED" ]] && exit 0
+
+# 차단 후보 추출
+CANDIDATES=$(echo "$STAGED" | grep -E "$BLOCKED_REGEX" | grep -vE "$ALLOWED_REGEX" || true)
+[[ -z "$CANDIDATES" ]] && exit 0
+
+# 마커 기반 opt-in 체크
+if [[ -f "$MARKER_FILE" ]]; then
+  ALLOWED_PATTERNS=$(grep -v '^#' "$MARKER_FILE" | grep -v '^[[:space:]]*$' || true)
+  REMAINING=""
+  while IFS= read -r path; do
+    matched=0
+    while IFS= read -r pattern; do
+      [[ -z "$pattern" ]] && continue
+      # 패턴 끝이 / 면 디렉터리 prefix, 아니면 파일명 일치
+      if [[ "$pattern" == */ ]]; then
+        [[ "$path" == "$pattern"* ]] && matched=1 && break
+      else
+        [[ "$path" == "$pattern" ]] && matched=1 && break
+      fi
+    done <<< "$ALLOWED_PATTERNS"
+    [[ $matched -eq 0 ]] && REMAINING+="$path"$'\n'
+  done <<< "$CANDIDATES"
+  CANDIDATES="${REMAINING%$'\n'}"
+fi
+
+[[ -z "$CANDIDATES" ]] && exit 0
+
+# 차단 — heredoc 밖에서 prefix 처리 (SC2001 회피, bash 3.2 호환)
+NL=$'\n'
+PREFIXED="  - ${CANDIDATES//$NL/$NL  - }"
+FIRST="${CANDIDATES%%"$NL"*}"
+
+cat >&2 <<EOF
+❌ personal-config-guard: 개인화/로컬 파일이 staging 에 있습니다.
+
+차단된 경로:
+$PREFIXED
+
+이 경로들은 default-deny 정책으로 commit·push 가 금지됩니다.
+정책 SoT: $SKILL_REF
+
+조치 옵션:
+  1) 잘못 staging 했다면 즉시 제외:
+     git restore --staged $FIRST
+
+  2) .gitignore 에 추가:
+     echo '<path>' >> .gitignore
+     git restore --staged <path>
+
+  3) 이미 추적 중이면:
+     git rm --cached <path>
+     # 이미 push 되었다면 history rewrite 필요 (skill personal-config-guard Phase 0~10 참고)
+
+  4) 의도된 SoT 저장소라면 (cursor-ide 등):
+     - 루트에 .personal-config-source 마커 추가
+     - 마커에 추적 허용 경로 명시 (gitignore 문법)
+     - 마커에는 절대 시크릿/개인키 포함 금지
+
+  5) 본 hook 우회 (사유 명백한 경우만):
+     git commit --no-verify
+EOF
+
+exit 1
