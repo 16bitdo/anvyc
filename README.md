@@ -541,6 +541,67 @@ anvyc tools list                 # overlay 반영된 enabled/files count
 
 overlay 미존재 시 base 동작 그대로 — backward compatible.
 
+### ⚠️ 도구는 opt-out — 안 적으면 켜진 채로 남는다
+
+`ToolConfig.enabled` 의 기본값은 **`True`** 다(`core/config.py`). 따라서 config 에 **적지 않은
+도구는 비활성이 아니라 활성**이다. "3개만 적었으니 3개만 대상"이라는 직관이 틀리는 지점이다.
+
+```yaml
+# 이 config 의 백업 대상은 shell 하나가 아니다.
+# 언급되지 않은 aws/gh/cursor/claude/pulumi/dev_env/... 가 전부 enabled 로 남는다.
+tools:
+  shell:
+    enabled: true
+```
+
+특히 `dev_env` 는 프로젝트 디렉터리의 `.envrc` 를 인벤토리에 넣는다. 의도한 범위 밖의 파일이
+섞이면 `security.secret_scan` 이 `backup` 자체를 차단할 수 있다 — 그게 정상 동작이지만,
+차단 메시지의 경로가 작업과 무관해 보여 원인을 오해하기 쉽다.
+
+**스코프를 좁히는 두 방법** — 함께 쓰기를 권장한다.
+
+```yaml
+# ① config 가 스코프를 정직하게 선언하게 한다 (권장 — 파일만 봐도 대상이 명확)
+tools:
+  shell:        { enabled: true }
+  shell_prompt: { enabled: true }
+  git:          { enabled: true }
+  aws:          { enabled: false }
+  gh:           { enabled: false }
+  cursor:       { enabled: false }
+  claude:       { enabled: false }
+  iterm2:       { enabled: false }
+  pulumi:       { enabled: false }
+  dev_env:      { enabled: false }
+```
+
+```bash
+# ② 명령 단위로 한정 (config 를 못 고치는 상황이나 방어 계층으로)
+anvyc backup --only shell --only shell_prompt --only git
+```
+
+`anvyc tools list [--config <file>]` 로 **실제 활성 목록을 먼저 확인**하는 습관이 안전하다.
+
+### `--config` 는 배타적이다 (병합 아님)
+
+`--config <file>` 로 명시한 파일은 후보 경로의 **맨 앞**에 오고, `load_anvyc_config` 는 처음
+발견한 파일 하나만 읽는다(`core/config.py:_candidate_paths`). 즉 `~/.anvyc/anvyc.yaml` 과
+**병합되지 않는다**.
+
+| 순위 | 경로 |
+|---|---|
+| 1 | `--config <file>` (지정 시) |
+| 2 | `$PWD/anvyc.yaml` |
+| 3 | `$PWD/.anvyc/anvyc.yaml` |
+| 4 | `~/.anvyc/anvyc.yaml` |
+
+단 **선택된 파일과 같은 디렉터리의 `anvyc.<hostname>.yaml` overlay 만** deep-merge 된다(위 참조).
+다른 순위의 config 는 관여하지 않는다.
+
+> 이 두 성질이 겹치면 오해하기 쉽다 — *"`--config` 로 3개만 켰는데 왜 10개가 잡히지?"* 의 답은
+> **머신 로컬 config 가 병합돼서가 아니라, 나머지 7개가 기본값 `enabled: true` 라서**다.
+> `--config` 에 `enabled: false` 를 명시했을 때 해당 도구가 실제로 꺼지는지로 두 원인을 구분할 수 있다.
+
 ---
 
 ## 13. AI agent control-plane (v0.14.0+)
