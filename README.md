@@ -321,6 +321,7 @@ anvyc tools configure [--yes]  # 도구 enable/disable 대화형 선택 → anvy
 
 anvyc project show [--path P] [--json] [--reveal-secrets]
                                # cwd 의 AWS/GitHub/Pulumi/dev_env 통합 view (v0.8.0+)
+                               # 사람용 출력은 manifest 선언 ownership 도 병기 (gh_account 라벨과 구분)
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]

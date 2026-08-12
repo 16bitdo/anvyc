@@ -2078,6 +2078,25 @@ def project_show(
     console.print(f"[bold]path[/] {payload['path']}")
     console.print(f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}")
     console.print(f"[bold]gh_account[/] {payload['gh_account'] or '[dim](unset)[/]'}")
+    # ownership — manifest 선언(L1 account-routing.yaml). gh_account 는 .envrc 라벨이라
+    # 실체(정책상 이 저장소를 실제로 소유하는 계정)와 다를 수 있다 — 이 줄이 정책 SoT.
+    # _origin_repo_slug 는 project_doctor 의 동일 로직을 그대로 재사용한다(worktree 등
+    # caveat 를 문서 한 곳에서만 관리하기 위해 재구현하지 않음). cli.py 는 이미
+    # `project doctor` 커맨드에서 project_doctor 를 지연 import 하므로 신규 계층 의존이
+    # 아니고, private helper 재사용도 checks/account_identity.py 에 이미 전례가 있다.
+    # 실체 조회(identity_probe)는 절대 호출하지 않는다 — project show 는 오프라인이어야
+    # 한다(네트워크 대조는 project doctor 의 몫).
+    from anvyc.core import account_manifest
+    from anvyc.core.project_doctor import _origin_repo_slug
+
+    _repo_slug = _origin_repo_slug(info)
+    _resolved = account_manifest.resolve(_repo_slug) if _repo_slug else None
+    if _resolved is not None:
+        console.print(f"[bold]ownership[/] {_resolved.ownership_id}")
+        if _resolved.commit_email:
+            console.print(f"  • commit_email: {_resolved.commit_email}")
+    elif _repo_slug:
+        console.print(f"[bold]ownership[/] [yellow](미선언)[/] — {_repo_slug}")
     console.print(f"[bold]claude_account[/] {payload['claude_account'] or '[dim](unset)[/]'}")
     gh = payload.get("github") or []
     if gh:

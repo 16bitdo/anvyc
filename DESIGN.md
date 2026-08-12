@@ -1763,6 +1763,16 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
 | `tool_versions` | object | no | python/node/asdf 종합 — 빈 객체 가능 |
 
+> **ownership 은 이 schema 에 없다(의도적).** 사람용 출력(`--json` 없이)은
+> `gh_account` 줄 바로 아래에 account-routing manifest(L1)가 선언한 `ownership`
+> 을 병기한다 — `gh_account` 는 `.envrc` 라벨 파생값이라 실체(정책상 소유자)와
+> 다를 수 있어, 어느 쪽이 정책 SoT 인지 드러내기 위해서다(미선언 저장소는
+> `(미선언)` 으로 명시). `account_manifest.resolve()` 조회만 하며 실체
+> 조회(identity_probe)는 절대 하지 않는다 — `project show` 는 오프라인 유지가
+> 원칙이라 §32.7 의 public JSON API 확장 대상에 넣지 않았다. 기계가독으로
+> manifest 파생값이 필요하면 `project doctor --json` 의
+> `expected_gh_user`/`expected_commit_email` 필드를 쓴다.
+
 ### 32.3 github 항목 (array of object)
 
 | key | type | 설명 |
