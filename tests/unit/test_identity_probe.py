@@ -28,6 +28,8 @@ def test_gh_login_returns_actual_account(monkeypatch: pytest.MonkeyPatch) -> Non
     assert identity_probe.gh_login("~/.config/gh-16bitdo") == "heisgone"
     assert captured["cmd"][:3] == ["gh", "api", "user"]
     assert captured["env"]["GH_CONFIG_DIR"].endswith("/.config/gh-16bitdo")
+    assert "~" not in captured["env"]["GH_CONFIG_DIR"]
+    assert Path(captured["env"]["GH_CONFIG_DIR"]).is_absolute()
 
 
 def test_gh_login_returns_none_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -67,16 +69,3 @@ def test_commit_email_extracts_from_ident(monkeypatch: pytest.MonkeyPatch) -> No
 def test_commit_email_none_when_identity_unresolved(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc(returncode=128, stderr="Author identity unknown"))
     assert identity_probe.commit_email(Path("/tmp/repo")) is None
-
-
-def test_aws_account_extracts_account_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        subprocess, "run",
-        lambda *a, **k: _Proc(stdout='{"Account": "592247757306", "Arn": "arn:aws:iam::592247757306:user/x"}'),
-    )
-    assert identity_probe.aws_account("whatap-dev") == "592247757306"
-
-
-def test_aws_account_none_on_bad_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc(stdout="not json"))
-    assert identity_probe.aws_account("whatap-dev") is None

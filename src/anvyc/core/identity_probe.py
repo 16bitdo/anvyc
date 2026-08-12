@@ -5,7 +5,10 @@
 않는다(2026-08-12 사고 ③ — .envrc·gh auth status·project show 셋 다 '16bitdo'
 라고 답했고 셋 다 틀렸다).
 
-본 모듈은 그 한 단계를 담당한다. anvyc 에서 **외부 CLI 를 호출하는 유일한 지점**이며,
+본 모듈은 선언이 아니라 실체를 반환하는 조회를 모아 둔다. GitHub/SSH/Git 신원은
+이 모듈이 담당하고, AWS 실체 조회는 core/aws_probe.probe_caller_identity() 가
+담당하며 doctor 의 offline 보장을 위해 본 모듈에 두지 않는다.
+
 어떤 자격도 변경하지 않는다(read-only 불변식).
 
 모든 함수는 실패 시 None 을 반환한다 — 네트워크·미설치·타임아웃은 "모름"이지
@@ -13,7 +16,6 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -78,23 +80,3 @@ def commit_email(repo_dir: str | Path) -> str | None:
     if not m:
         return None
     return m.group(1) or None
-
-
-def aws_account(profile: str) -> str | None:
-    """`aws sts get-caller-identity` — 프로필이 실제로 붙는 계정 ID."""
-    try:
-        proc = subprocess.run(
-            ["aws", "sts", "get-caller-identity", "--profile", profile, "--output", "json"],
-            capture_output=True, text=True, check=False, timeout=_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    try:
-        data = json.loads(proc.stdout)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data.get("Account") or None
