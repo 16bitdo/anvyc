@@ -1,7 +1,7 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-10 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+11 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
@@ -14,6 +14,7 @@ Check list (D14):
 6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
 7. dev_env_secret_safety      .envrc 안 raw secret without op://
 8. tool_versions_installed    python/node binary 의 PATH 존재
+9. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원(GIT_AUTHOR_IDENT) 대조
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity
-from anvyc.core import identity_cache, identity_probe
+from anvyc.core import account_manifest, identity_cache, identity_probe
 from anvyc.core.aws_profile_state import evaluate_profile_state, state_to_result
 from anvyc.core.project_info import (
     ProjectInfo,
@@ -479,11 +480,81 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
     ]
 
 
+def _origin_repo_slug(info: ProjectInfo) -> str | None:
+    """origin remote 에서 `owner/repo` 추출. 프로젝트 식별은 cwd 가 아니라 remote 로 한다.
+
+    worktree·심볼릭 링크·중첩 저장소에서 어긋나지 않고, 판정 기준을 "어디에 있는가"가
+    아니라 "어디로 나가는가"에 둔다 — includeIf 를 hasconfig:remote 로 잡은 것과 같다.
+    """
+    for remote in info.github or []:
+        if remote.get("name") != "origin":
+            continue
+        owner, repo = remote.get("owner"), remote.get("repo")
+        if owner and repo:
+            return f"{owner}/{repo}"
+    return None
+
+
+def _check_commit_identity_actual(info: ProjectInfo, path: Path) -> list[CheckResult]:
+    """manifest 가 선언한 ownership 커밋 이메일과 **실제로 커밋될 신원** 대조.
+
+    - 저장소 미선언 / 바인딩에 commit_email 없음 → 검증 대상 X (silent)
+    - 신원 미해결 → WARNING (fail-closed 라 커밋 자체가 안 되는 상태)
+    - 일치 → INFO · 불일치 → CRITICAL
+    """
+    slug = _origin_repo_slug(info)
+    if not slug:
+        return []
+    resolved = account_manifest.resolve(slug)
+    if resolved is None or not resolved.commit_email:
+        return []
+    actual = identity_probe.commit_email(path)
+    if actual is None:
+        return [
+            CheckResult(
+                check_name="commit_identity_actual",
+                severity=Severity.WARNING,
+                message=(
+                    f"{slug}: 커밋 신원 미해결 (fail-closed) — "
+                    f"선언 '{resolved.commit_email}' 이나 이 저장소에서 커밋이 거부된다"
+                ),
+                location=path,
+                suggestion=(
+                    "~/.gitconfig 의 includeIf 가 이 저장소의 remote 를 커버하는지 확인 "
+                    "(git config --show-origin --get user.email)"
+                ),
+            )
+        ]
+    if actual == resolved.commit_email:
+        return [
+            CheckResult(
+                check_name="commit_identity_actual",
+                severity=Severity.INFO,
+                message=f"{slug}: 커밋 신원 일치 ({actual}, ownership '{resolved.ownership_id}')",
+            )
+        ]
+    return [
+        CheckResult(
+            check_name="commit_identity_actual",
+            severity=Severity.CRITICAL,
+            message=(
+                f"{slug}: 커밋 신원 불일치 — 선언 '{resolved.commit_email}' "
+                f"(ownership '{resolved.ownership_id}') 이나 실제 '{actual}'"
+            ),
+            location=path,
+            suggestion=(
+                "커밋 전 git config --show-origin --get user.email 로 출처를 확인하세요. "
+                "잘못된 신원으로 커밋하면 히스토리 정정 비용이 큽니다."
+            ),
+        )
+    ]
+
+
 # ---------- orchestrator ----------------------------------------------------
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """10 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """11 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
@@ -496,7 +567,15 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
+    report.results.extend(_check_commit_identity_actual(info, path))
     # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
     report.expected_gh_user = info.gh_account
     report.expected_aws_profile = info.aws_profile
+    slug = _origin_repo_slug(info)
+    resolved = account_manifest.resolve(slug) if slug else None
+    if resolved is not None:
+        report.expected_commit_email = resolved.commit_email
+        # manifest ownership 이 있으면 .envrc 라벨보다 우선한다 (L1 이 SoT).
+        if resolved.github_login:
+            report.expected_gh_user = resolved.github_login
     return report
