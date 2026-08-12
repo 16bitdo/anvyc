@@ -33,15 +33,33 @@ accounts:
     commit_email: 16bitdo@gmail.com
     gh_config_dir: ~/.config/gh-16bitdo
 """
+# "부분 결과" 시나리오용 — manifest 는 personal-16bitdo 를 선언하지만 이 머신
+# bindings 에는 그 계정이 없다(다른 계정만 있음). account_manifest.resolve() 의
+# 문서화된 계약: ownership_id 만 채운 ResolvedAccount 를 반환(다른 필드는 None).
+_BINDINGS_MISSING_ACCOUNT = """
+version: 1
+machine: test-machine
+accounts:
+  work-heisgone:
+    github_login: heisgone
+    commit_email: jklee@whatap.io
+    gh_config_dir: ~/.config/gh-heisgone
+"""
 
 
-def _setup_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """account-routing manifest + 이 머신 bindings 를 tmp_path 에 만들고 env 로 주입."""
+def _setup_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, bindings_yaml: str = _BINDINGS
+) -> None:
+    """account-routing manifest + 이 머신 bindings 를 tmp_path 에 만들고 env 로 주입.
+
+    bindings_yaml 을 바꿔 넣으면 "선언은 있으나 이 머신 바인딩 없음"(부분 결과)
+    같은 시나리오도 동일 헬퍼로 구성할 수 있다.
+    """
     m = tmp_path / "account-routing.yaml"
     m.write_text(_PROJECTS, encoding="utf-8")
     b = tmp_path / "binds"
     b.mkdir()
-    (b / "bindings.test-machine.yaml").write_text(_BINDINGS, encoding="utf-8")
+    (b / "bindings.test-machine.yaml").write_text(bindings_yaml, encoding="utf-8")
     monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
     monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
     monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
@@ -64,6 +82,26 @@ def test_show_reports_ownership(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert "personal-16bitdo" in result.stdout
     assert "ownership" in result.stdout
     assert "16bitdo@gmail.com" in result.stdout
+
+
+def test_show_reports_partial_resolution_without_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """manifest 선언은 있으나 이 머신 bindings 에 해당 계정이 없는 "부분 결과" 케이스.
+
+    account_manifest.resolve() 는 이때 ownership_id 만 채운 ResolvedAccount 를
+    돌려준다(commit_email 등 나머지 필드는 전부 None) — "미선언"과는 구분되는
+    상태다. 출력이 깨지지 않고 ownership_id 는 보이되 commit_email 줄은 조용히
+    생략돼야 한다(리뷰 I1 — mutation 으로 `if _resolved.commit_email:` guard 를
+    제거해도 통과하던 공백을 메운다).
+    """
+    _setup_manifest(tmp_path, monkeypatch, bindings_yaml=_BINDINGS_MISSING_ACCOUNT)
+    proj = _repo_with_origin(tmp_path, "analysis", "git@github.com:16bitdo/analysis.git")
+
+    result = CliRunner().invoke(app, ["project", "show", "--path", str(proj)])
+    assert result.exit_code == 0
+    assert "ownership personal-16bitdo" in result.stdout
+    assert "commit_email" not in result.stdout
 
 
 def test_show_reports_undeclared(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
