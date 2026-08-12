@@ -61,6 +61,64 @@ def test_source_mtime_change_invalidates(cache_dir: Path, tmp_path: Path) -> Non
     assert identity_cache.probe_cached("k", src, probe) == "acct2"
 
 
+def test_multiple_sources_unchanged_stays_cached(cache_dir: Path, tmp_path: Path) -> None:
+    src_a = tmp_path / "a"
+    src_b = tmp_path / "b"
+    src_a.mkdir()
+    src_b.mkdir()
+    calls: list[int] = []
+
+    def probe() -> str | None:
+        calls.append(1)
+        return f"acct{len(calls)}"
+
+    assert identity_cache.probe_cached("k", [src_a, src_b], probe) == "acct1"
+    assert identity_cache.probe_cached("k", [src_a, src_b], probe) == "acct1"
+    assert len(calls) == 1
+
+
+def test_multiple_sources_any_change_invalidates(cache_dir: Path, tmp_path: Path) -> None:
+    """여러 source 중 하나만 바뀌어도 전체가 무효화된다 (OR 시맨틱).
+
+    2026-08-12 실측 회귀 대응 — gh 프로필들이 GH_CONFIG_DIR 로 라벨만 분리하고
+    OS 키체인의 토큰은 공유한다. 자기 자신의 hosts.yml 이 아니라 형제 프로필의
+    hosts.yml 이 바뀌어도 실체가 함께 바뀔 수 있다 — 단일 source 만 보는 캐시는
+    이 변화를 놓친다. 여기서는 두 번째 source(src_b) 만 바꿔서, 첫 번째가 아닌
+    쪽의 변화도 잡히는지 확인한다.
+    """
+    src_a = tmp_path / "a"
+    src_b = tmp_path / "b"
+    src_a.mkdir()
+    src_b.mkdir()
+    calls: list[int] = []
+
+    def probe() -> str | None:
+        calls.append(1)
+        return f"acct{len(calls)}"
+
+    assert identity_cache.probe_cached("k", [src_a, src_b], probe) == "acct1"
+    os.utime(src_b, (2_000_000, 2_000_000))  # src_a 는 그대로, src_b 만 변경
+    assert identity_cache.probe_cached("k", [src_a, src_b], probe) == "acct2"
+    assert len(calls) == 2
+
+
+def test_source_order_does_not_affect_signature(cache_dir: Path, tmp_path: Path) -> None:
+    """호출자가 다른 순서로 넘겨도 같은 source 집합이면 같은 서명 — 불필요한 재조회 없음."""
+    src_a = tmp_path / "a"
+    src_b = tmp_path / "b"
+    src_a.mkdir()
+    src_b.mkdir()
+    calls: list[int] = []
+
+    def probe() -> str | None:
+        calls.append(1)
+        return f"acct{len(calls)}"
+
+    assert identity_cache.probe_cached("k", [src_a, src_b], probe) == "acct1"
+    assert identity_cache.probe_cached("k", [src_b, src_a], probe) == "acct1"
+    assert len(calls) == 1
+
+
 def test_none_result_is_not_cached(cache_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """조회 실패는 캐시하지 않는다 — 일시적 장애를 8시간 고정하지 않기 위해."""
     calls: list[int] = []

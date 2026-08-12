@@ -188,6 +188,26 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
     ]
 
 
+def _gh_profile_hosts_files(expanded_dir: Path) -> tuple[Path, ...]:
+    """`expanded_dir` 와 형제 gh 프로필 전체의 `hosts.yml` 경로 집합 (무효화 트리거 후보).
+
+    gh CLI 는 `GH_CONFIG_DIR` 로 라벨(어느 계정으로 표시할지)만 프로필별로 나누고,
+    실제 토큰은 OS 키체인에 저장해 **모든 프로필이 공유**한다(2026-08-12 재실측 —
+    `gh-heisgone` 프로필에서 재로그인하면 `gh-16bitdo` 프로필의 `gh api user` 응답도
+    함께 `heisgone` 으로 바뀐다; `hosts.yml` 자체에는 토큰이 없고 `users:`/`user:`
+    라벨만 있다). 즉 "이 프로필의 `hosts.yml` 만" 봐서는 형제 프로필에서의 재인증으로
+    이 프로필의 실체가 바뀐 것을 못 본다.
+
+    부모 디렉터리 한 단계만 얕게 glob(`gh*/hosts.yml`) — 홈 디렉터리 전체를 훑지
+    않는다. 프로필이 하나도 인증 안 됐으면(파일 없음) 빈 tuple.
+    """
+    parent = expanded_dir.parent
+    try:
+        return tuple(sorted(parent.glob("gh*/hosts.yml")))
+    except OSError:
+        return ()
+
+
 def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
     """선언된 gh 계정과 그 프로필 토큰의 **실체**가 일치하는지.
 
@@ -214,9 +234,16 @@ def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
     # 반응하지 않는다(실측 확인). gh 가 in-place 로 쓰면 재인증 직후에도 캐시가
     # 최대 TTL 동안 옛 신원을 유지한다 — 무효화가 가장 필요한 순간에 실패한다.
     # 파일 mtime 은 in-place 쓰기와 atomic replace 양쪽 모두에서 갱신된다.
+    #
+    # 그런데 "이 프로필의 hosts.yml 만" 도 한 겹 얕았다(2026-08-12 재실측) — gh 는
+    # 토큰을 OS 키체인에 저장해 모든 gh-* 프로필이 공유한다. 다른 프로필에서
+    # 재인증해도 이 프로필의 hosts.yml 은 안 바뀌는데 실체(API 응답)는 함께
+    # 바뀐다 — 하필 이 check 가 잡아야 하는 바로 그 순간(자격이 막 바뀐 직후)에
+    # 무효화가 실패한다. 그래서 이 프로필 하나가 아니라 형제 프로필 전체의
+    # hosts.yml 을 source 로 넘긴다(OR 무효화 — identity_cache.probe_cached 참고).
     actual = identity_cache.probe_cached(
         key=f"gh:{info.gh_account}",
-        source=expanded_dir / "hosts.yml",
+        source=_gh_profile_hosts_files(expanded_dir),
         probe=lambda: identity_probe.gh_login(expanded_dir),
     )
     if actual is None:
