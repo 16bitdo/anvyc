@@ -1,13 +1,14 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-9 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+10 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
 1b. aws_account_status        인증 방식별 연결 상태 (SSO 토큰/static/assume-role/process)
 2. github_remote_parseable    origin URL parse 가능 여부
 3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
+3b. gh_identity_actual        gh 프로필 토큰의 실체(API 역조회) ↔ 선언 계정 대조
 4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
 5. pulumi_stacks_valid        stack 이름 영숫자/하이픈 (특수문자 X)
 6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
@@ -455,7 +456,7 @@ def _check_tool_versions_installed(info: ProjectInfo) -> list[CheckResult]:
 
 
 def run_project_doctor(path: Path) -> ProjectDoctorReport:
-    """9 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
+    """10 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
     report.results.extend(_check_aws_profile_defined(info))
