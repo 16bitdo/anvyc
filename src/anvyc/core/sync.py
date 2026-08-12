@@ -465,6 +465,44 @@ def _atomic_write_manifest(target: Path, manifest: SyncTargetManifest) -> None:
         raise
 
 
+def _contained_local_path(root: Path, candidate: Path) -> Path | None:
+    """`candidate` 가 `root` 하위로 resolve 되는지 확인 — 실패하면 None.
+
+    `_resolve_local_path_from_relative()` 의 각 kind 분기가 반환 직전에 호출한다.
+    remote manifest 의 `relative_path` 는 신뢰할 수 없는 입력이다(원격 target 은
+    다른 머신이 쓴 파일이거나 손상·변조됐을 수 있음). prefix 검사(`startswith`)
+    만으로는 못 막는 우회가 최소 두 가지 있다:
+
+    1. **이중 슬래시 절대경로화** — prefix 바로 다음이 `/` 로 시작하면 나머지가
+       절대경로가 되고, `PurePath.__truediv__` 는 절대경로 segment 를 만나면
+       그 앞의 모든 segment 를 버린다: `root / "/etc/passwd"` == `Path("/etc/passwd")`.
+       예: `"anvyc/accounts//etc/passwd"` → prefix 제거 후 `"/etc/passwd"`.
+    2. **`../` 상위 이동** — snapshot_meta 의 workspace 캡처 그룹처럼 `/` 나
+       `..` 를 배제하지 않는 정규식/슬라이싱을 거치면 그대로 상위 디렉터리로
+       빠져나간다.
+
+    `Path.resolve()` 는 기본 `strict=False` 라 아직 존재하지 않는 경로(pull 로
+    새로 만드는 파일)에도 안전하게 쓸 수 있고, 존재하는 조상 디렉터리는 심볼릭
+    링크까지 따라가 정규화하므로 심볼릭 링크를 통한 우회도 함께 막는다.
+
+    통과하면(=root 하위로 resolve 됨) 원래 `candidate`(비-resolve, `..` 등을
+    문자 그대로 담을 수 있는 형태)를 그대로 반환한다 — 이 검사 도입 전의 정상
+    케이스 반환값과 동일하게 유지하기 위해서다. 실 파일 I/O(`_atomic_copy`)
+    시점에는 OS 가 그 `..` 를 다시 정규화하지만, 이미 root 내부로 확인된
+    뒤이므로 안전하다.
+    """
+    try:
+        resolved_root = root.resolve()
+        resolved_candidate = candidate.resolve()
+    except OSError:
+        return None
+    try:
+        resolved_candidate.relative_to(resolved_root)
+    except ValueError:
+        return None
+    return candidate
+
+
 def _resolve_local_path_from_relative(home: Path, relative: str, kind: str, dev_root: Path | None = None) -> Path | None:
     """relative_path 역매핑 — pull 시 사용.
 
@@ -475,14 +513,16 @@ def _resolve_local_path_from_relative(home: Path, relative: str, kind: str, dev_
     account_bindings: `anvyc/accounts/bindings.<hostname>.yaml`
       → `<home>/.config/anvyc/accounts/bindings.<hostname>.yaml`
 
-    역매핑 실패 / kind 알 수 없음 → None.
+    역매핑 실패 / kind 알 수 없음 / **kind 별 root 밖으로 벗어나는 경로
+    (`_contained_local_path` 실패 — traversal 의심)** → None.
     """
     if kind == KIND_ACCOUNT_BINDINGS:
         prefix = "anvyc/accounts/"
         if not relative.startswith(prefix):
             return None
         filename = relative[len(prefix):]
-        return home / ".config" / "anvyc" / "accounts" / filename
+        root = home / ".config" / "anvyc" / "accounts"
+        return _contained_local_path(root, root / filename)
 
     if kind == KIND_SNAPSHOT_META:
         prefix = "anvyc/snapshots/"
@@ -498,14 +538,15 @@ def _resolve_local_path_from_relative(home: Path, relative: str, kind: str, dev_
             return None
         workspace, snap_id = m.group(1), m.group(2)
         dev = dev_root or (home / "dev")
-        return dev / workspace / ".anvyc" / "snapshots" / snap_id / "meta.json"
+        return _contained_local_path(dev, dev / workspace / ".anvyc" / "snapshots" / snap_id / "meta.json")
 
     if kind == KIND_HEALTH_JSON:
         prefix = "cc-inspect/health/"
         if not relative.startswith(prefix):
             return None
         filename = relative[len(prefix):]
-        return home / ".config" / "cc-inspect" / "health" / filename
+        root = home / ".config" / "cc-inspect" / "health"
+        return _contained_local_path(root, root / filename)
 
     return None
 

@@ -76,8 +76,11 @@ local + remote manifest 를 `relative_path` key 로 dict 변환 후 set 연산:
 
 workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
 `account_bindings` 는 파일명 자체가 `bindings.<hostname>.yaml` 로 머신마다 달라
-같은 이유로 충돌하지 않는다 (rule 27 §2). rule `27-cross-machine-sync-policy`
-paired — 자세한 정책 근거는 §8 참조.
+**관례상 사실상 충돌이 발생하지 않으며, hostname 이 우연히 겹치거나 다른 머신의
+바인딩 파일을 수동으로 같은 디렉터리에 복사해 넣는 등의 예외적 경우에도 기존
+conflict 절차(§10, `sync conflict {list,resolve}`)로 처리된다** — "구조적으로
+불가능"은 아니다(rule 27 §2). rule `27-cross-machine-sync-policy` paired —
+자세한 정책 근거는 §8 참조.
 
 ## 6. Remote target layout
 
@@ -117,6 +120,25 @@ paired — 자세한 정책 근거는 §8 참조.
 - snapshot meta 의 `claude_session_id` 는 식별자라 본문 아님 — sync 안전.
 - remote_target 은 사용자 책임 — Dropbox 같은 cloud sync 는 cloud 운영사
   policy 준수.
+- **path containment (전체 kind 공통, `_resolve_local_path_from_relative` /
+  `_contained_local_path`)** — remote manifest 의 `relative_path` 는 신뢰할
+  수 없는 입력이다(원격 target 이 손상됐거나 변조됐을 수 있음). prefix 검사
+  (`startswith`)만으로는 두 가지 우회를 못 막는다:
+  1. **이중 슬래시 절대경로화** — prefix 를 벗겨낸 나머지가 `/` 로 시작하면
+     그 자체로 절대경로가 되고, `PurePath.__truediv__` 는 절대경로 segment 를
+     만나면 그 앞의 모든 segment 를 버린다(`root / "/etc/passwd"` ==
+     `Path("/etc/passwd")`).
+  2. **`../` 상위 이동** — `snapshot_meta` 의 workspace 캡처 정규식(`(.+?)`)처럼
+     `/`·`..` 를 배제하지 않는 파싱을 거치면 그대로 상위 디렉터리로 빠져나간다.
+
+  `snapshot_meta` / `health_json` / `account_bindings` 3개 kind 모두 이 결함을
+  공유했다(하나의 역매핑 함수를 같이 쓰기 때문). `_resolve_local_path_from_relative()`
+  가 반환 직전 `_contained_local_path()` 로 resolve 후 root 하위인지 확인 —
+  아니면 `None`. 도달 경로는 `pull_to_local()` 과 `resolve_conflict(keep="remote")`
+  둘 다이며, 두 호출부 모두 `None` 을 이미 실패(`items_failed`/`SyncConflictError`)로
+  집계하고 있었으므로 이 확인만 추가하면 됐다. 회귀 테스트:
+  `tests/unit/test_sync_path_containment.py` (3 kind × [정상/`../`/이중슬래시] +
+  `pull_to_local`·`resolve_conflict` end-to-end 2건).
 
 ## 9. Push/Pull 안전 절차 ([CP-4 §7](./cp-04-snapshot.md) 패턴 미러)
 
