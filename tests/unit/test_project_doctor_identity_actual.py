@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from anvyc.core import project_doctor
 from anvyc.checks.base import Severity
+from anvyc.core import project_doctor
 
 
 def _project(tmp_path: Path, account: str) -> Path:
