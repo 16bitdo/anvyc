@@ -485,6 +485,15 @@ def _origin_repo_slug(info: ProjectInfo) -> str | None:
 
     worktree·심볼릭 링크·중첩 저장소에서 어긋나지 않고, 판정 기준을 "어디에 있는가"가
     아니라 "어디로 나가는가"에 둔다 — includeIf 를 hasconfig:remote 로 잡은 것과 같다.
+
+    [worktree caveat — Task 14 에서 해소 예정, 해소되면 이 문단째 삭제] 위 "worktree
+    에서 어긋나지 않는다"는 실측(2026-08-12)으로는 아직 검증되지 않는다: git
+    worktree 는 `.git` 이 디렉터리가 아니라 `gitdir: ...` 포인터 파일이라
+    `project_info.collect_project_info()` 가 `git_dir.is_dir()` 판정에서 걸러져
+    remote 를 아예 못 읽는다 — 그 결과 `info.github` 가 `None` 이 되고, 이 함수
+    이전 단계에서 이미 정보가 없어 판정 자체가 스킵된다. 틀린 판정(거짓
+    CRITICAL/INFO)을 내지는 않지만, "remote 기반이라 worktree 에서도 올바르게
+    식별한다"는 뜻은 아니다 — silent 인 것과 correct 한 것은 다르다.
     """
     for remote in info.github or []:
         if remote.get("name") != "origin":

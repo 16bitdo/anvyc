@@ -57,6 +57,12 @@ def test_expected_commit_email_from_manifest(repo: Path, monkeypatch: pytest.Mon
     report = project_doctor.run_project_doctor(repo)
     assert report.expected_commit_email == "16bitdo@gmail.com"
     assert report.to_payload()["expected_commit_email"] == "16bitdo@gmail.com"
+    # 리뷰 I2 — 일치(INFO) 분기 자체가 이전엔 미검증이었다: Severity.INFO 를
+    # Severity.WARNING 으로 바꿔도 이 테스트를 포함한 5개가 전부 GREEN 이었다.
+    # WARNING 은 is_blocking=True 라 CLI "조치 필요" 섹션에 잘못 올라간다 —
+    # 정상 상태인데 조치가 필요한 것처럼 보이는, 사용자에게 실제로 보이는 회귀다.
+    res = _result(report, "commit_identity_actual")
+    assert res is not None and res.severity is Severity.INFO
 
 
 def test_commit_identity_mismatch_is_critical(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,4 +134,34 @@ def test_commit_email_receives_repo_path_not_process_cwd(
     passed = Path(str(received[0]))
     assert passed.resolve() == repo.resolve(), (
         f"commit_email 에 잘못된 경로 전달: {passed!r} (기대: {repo!r})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 리뷰 I1 — manifest 우선 로직(`if resolved.github_login: report.expected_gh_user =
+# resolved.github_login`)이 무방비였다: 그 대입문을 통째로 지워도 기존 9개 테스트
+# (본 파일 5개 + test_project_doctor_expected.py 4개) + 전체 unit 스위트 1194개가
+# 전부 GREEN 이었다. 브리프가 명시한 핵심 설계 결정("manifest ownership 이 .envrc
+# 라벨보다 우선한다 — L1 이 SoT")에 회귀 테스트가 하나도 없었다는 뜻이다. `.envrc`
+# 와 manifest 가 서로 다른 gh 계정을 선언하는 충돌을 직접 구성해 검증한다.
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_gh_user_overrides_envrc_label(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """manifest ownership 선언이 있으면 `.envrc` GH_CONFIG_DIR 라벨보다 우선한다 (L1 이 SoT).
+
+    `.envrc` 는 'someoneelse' 계정을 가리키고 manifest(바인딩)는 '16bitdo' 를
+    선언하는 충돌 상황을 구성한다. `.envrc` 라벨만 봤다면 `expected_gh_user` 는
+    'someoneelse' 여야 하지만, manifest 선언이 있으면 그쪽이 이겨야 한다.
+    """
+    (repo / ".envrc").write_text(
+        'export GH_CONFIG_DIR="$HOME/.config/gh-someoneelse"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    report = project_doctor.run_project_doctor(repo)
+    assert report.expected_gh_user == "16bitdo", (
+        f"manifest 선언(16bitdo)이 .envrc 라벨(someoneelse)을 이겨야 하는데: "
+        f"{report.expected_gh_user!r}"
     )
