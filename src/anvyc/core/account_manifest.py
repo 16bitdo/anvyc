@@ -71,8 +71,11 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 def load_projects() -> dict[str, ProjectAccount]:
     """`owner/repo` -> ProjectAccount. manifest 부재·파손 시 빈 dict."""
     data = _read_yaml(manifest_path())
+    projects = data.get("projects")
+    if not isinstance(projects, list):
+        return {}
     out: dict[str, ProjectAccount] = {}
-    for p in data.get("projects") or []:
+    for p in projects:
         if not isinstance(p, dict):
             continue
         repo, ownership = p.get("repo"), p.get("ownership")
