@@ -4,8 +4,10 @@
 실체 조회가 매번 네트워크를 타면 명령당 수백 ms 가 붙는다. 토큰 오염은 며칠 단위로
 지속되는 상태이지 초 단위로 변하지 않으므로, TTL + 원본 mtime 무효화로 충분하다.
 
-Atomic write (tempfile + os.replace) — 동시에 여러 명령이 서로 다른 key 로 캐시에
-접근할 때 last-write-wins 에서 일부 항목이 손실되는 것을 방지한다 (CP-4 snapshot 패턴 미러).
+Atomic write (tempfile + os.replace) — 동시 쓰기 중에도 파일이 손상되지 않으므로
+_load() 가 반쪽짜리 JSON 을 읽지 않는다 (CP-4 snapshot 패턴 미러). 서로 다른 key
+간 lost update(A 의 조회 후 B 가 쓰기 → A 가 쓰기하면 B 값이 소실)는 락이 없어
+방지되지 않으나, 다음 조회에서 자동 재probe 되므로 허용 가능하다.
 
 source 는 무효화 트리거(config hosts.yml 등 실제 파일). 파일 mtime 은 in-place 수정·
 tmp+os.replace 양쪽에서 갱신되므로 소스 변경을 확실히 감지할 수 있다. (디렉터리 mtime 은
@@ -53,10 +55,10 @@ def _save(data: dict[str, dict]) -> None:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             os.replace(tmp, p)
             p.chmod(0o600)
-        except OSError:
+        except Exception:
             Path(tmp).unlink(missing_ok=True)
             raise
-    except OSError:
+    except Exception:
         return  # 캐시 실패는 기능 실패가 아니다
 
 

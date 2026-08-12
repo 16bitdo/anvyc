@@ -1,6 +1,7 @@
 """실체 조회 캐시 — TTL 만료·원본 mtime 변화 시 재조회."""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -110,3 +111,30 @@ def test_save_failure_is_tolerated(cache_dir: Path, monkeypatch: pytest.MonkeyPa
     # 두 번째 호출: 캐시가 없으므로(쓰기 실패) 재호출
     result2 = identity_cache.probe_cached("k", None, probe)
     assert result2 == "result"
+
+
+def test_non_oserror_exception_is_tolerated(cache_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """json.dump TypeError 같은 다른 예외도 cleanup되고 조용히 넘어간다."""
+    def probe() -> str | None:
+        return "result"
+
+    # json.dump()를 TypeError 발생하도록 monkeypatch
+    # (직렬화 불가능한 객체를 넘겨야 하지만, 테스트에선 직접 json.dump를 mock)
+    original_dump = json.dump
+
+    def failing_dump(obj, fp, **kwargs):
+        raise TypeError("Object of type object is not JSON serializable")
+
+    monkeypatch.setattr("json.dump", failing_dump)
+
+    # 호출: TypeError가 아니라 조용히 None(또는 정상 동작)
+    # 실제로는 _save() 내에서 cleanup되고 조용히 넘어감
+    result = identity_cache.probe_cached("k", None, probe)
+    assert result == "result"  # 성공적으로 값 반환 (TypeError 미전파)
+
+    # tempfile이 cleanup되었는지 확인 (temp 파일이 남아있지 않음)
+    cache_dir_path = Path(cache_dir)
+    temp_files = list(cache_dir_path.glob("*.json.tmp")) if cache_dir_path.exists() else []
+    assert len(temp_files) == 0, "tempfile이 cleanup되지 않았음"
+
+    json.dump = original_dump
