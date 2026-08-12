@@ -45,9 +45,29 @@ _TOOL_BINARIES = {
 class ProjectDoctorReport:
     path: Path
     results: list[CheckResult] = field(default_factory=list)
+    # 훅(account-routing-mismatch.sh)이 소비하는 C2 계약 필드.
+    # 값이 없으면 payload 에서 생략한다 — 훅의 "미특정 → allow" 정책을 깨지 않기 위해.
+    expected_gh_user: str | None = None
+    expected_aws_profile: str | None = None
+    expected_commit_email: str | None = None
 
     def has_blocking(self) -> bool:
         return any(r.severity.is_blocking for r in self.results)
+
+    def to_payload(self) -> dict[str, object]:
+        """`--json` 과 MCP 가 공유하는 단일 payload 생성자.
+
+        두 곳에서 각각 조립하면 필드 추가 시 갈린다. 훅은 이 형식을 계약으로 삼는다.
+        """
+        payload: dict[str, object] = {
+            "path": str(self.path),
+            "results": [r.to_dict() for r in self.results],
+        }
+        for key in ("expected_gh_user", "expected_aws_profile", "expected_commit_email"):
+            value = getattr(self, key)
+            if value:
+                payload[key] = value
+        return payload
 
 
 # ---------- individual checks -----------------------------------------------
@@ -380,4 +400,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
+    # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
+    report.expected_gh_user = info.gh_account
+    report.expected_aws_profile = info.aws_profile
     return report

@@ -2201,11 +2201,7 @@ def project_doctor(
     report = run_project_doctor(path)
 
     if json_out:
-        payload = {
-            "path": str(report.path),
-            "results": [r.to_dict() for r in report.results],
-        }
-        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        typer.echo(jsonlib.dumps(report.to_payload(), ensure_ascii=False, indent=2))
     else:
         _render_project_doctor(report)
 

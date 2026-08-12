@@ -281,10 +281,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
 
         p = Path(args.get("path") or ".")
         report = run_project_doctor(p)
-        return {
-            "path": str(report.path),
-            "results": [r.to_dict() for r in report.results],
-        }
+        return report.to_payload()
 
     if name == "doctor":
         from anvyc.core.doctor import run_doctor
