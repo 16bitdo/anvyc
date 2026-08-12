@@ -245,6 +245,7 @@ anvyc/
 │       │   ├── project_doctor.py  # §33 per-cwd doctor
 │       │   ├── project_discovery.py
 │       │   ├── project_roots.py   # §27.8 프로젝트 루트 SoT
+│       │   ├── account_manifest.py  # 계정 라우팅 L1 프로젝트맵(role-based-ruleset) + L2 머신 바인딩 2층 조인 (read-only)
 │       │   └── doctor.py
 │       ├── adapters/
 │       │   ├── __init__.py
