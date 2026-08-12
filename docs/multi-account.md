@@ -175,10 +175,15 @@ active account** 만 가지므로, 여러 계정 (개인 / org 별 봇 계정 �
 
 ```bash
 # 1) 계정별 gh config 디렉터리 준비 (convention: ~/.config/gh-<account>)
+#    두 로그인 다 필요하다 — 키체인에 계정별 토큰이 저장된다(아래 GH_TOKEN 의 전제).
 GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"  gh auth login   # 개인 계정
 GH_CONFIG_DIR="$HOME/.config/gh-secondary" gh auth login  # org 봇 계정
+#    ⚠️ 그러나 "활성" 계정은 마지막 로그인(여기선 secondary)으로 전역 고정된다.
+#    이후 GH_CONFIG_DIR 를 바꿔도 활성 계정은 따라오지 않는다(위 §2 경고 참고).
 
 # 2) 프로젝트 .envrc 에 라우팅 선언 (origin ssh alias 와 일치시킬 것)
+#    이 선언은 "의도"만 기록하고 config 파일(호스트 설정)을 분리할 뿐,
+#    활성 계정을 바꾸지는 않는다.
 cat >> ~/dev/my-personal-repo/.envrc <<'EOF'
 export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"
 EOF
@@ -187,8 +192,10 @@ EOF
 cd ~/dev/my-personal-repo
 direnv allow
 
-# 4) 이후 cd 시 gh 가 올바른 계정 자동 사용
-cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
+# 4) cd 만으로는 계정이 자동으로 갈리지 않는다 — GH_CONFIG_DIR 는 라우팅
+#    "의도"를 표시할 뿐이다. 실제로 그 계정을 쓰려면 호출마다 GH_TOKEN 을 명시:
+cd ~/dev/my-personal-repo
+GH_TOKEN=$(gh auth token --user 16bitdo) gh api user --jq .login   # → 16bitdo
 ```
 
 권장: `GH_CONFIG_DIR` 의 계정 이름을 git `origin` 의 ssh alias
@@ -226,7 +233,7 @@ anvyc github account list --probe    # 토큰 만료 (gh api, opt-in 네트워�
 |---|---|
 | `logged_in` | `~/.config/gh-<account>/hosts.yml` 존재 (stat; 토큰 미독) |
 | `expiry_status` | `--probe` 시 `gh api` 만료 헤더 — valid/expiring/expired/unknown |
-| `routed_owners` / `cwd_routed` | `doctor.gh_owner_accounts` 매핑 + cwd origin alias 일치 |
+| `routed_owners` / `cwd_routed` | `anvyc.yaml` `doctor.gh_owner_accounts` 매핑(설정 시에만 값 사용 — 기본값은 빈 dict, 이 경우 owner 라우팅 skip) + cwd origin alias 일치 |
 
 **Secret 경계**: 토큰을 읽거나 저장·출력하지 않는다(hosts.yml 의 host/user +
 만료 헤더만). 계정 생성·로그인·회전은 `gh auth` / 1Password 위임.
