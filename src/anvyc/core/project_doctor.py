@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anvyc.checks.base import CheckResult, Severity
+from anvyc.core import identity_cache, identity_probe
 from anvyc.core.aws_profile_state import evaluate_profile_state, state_to_result
 from anvyc.core.project_info import (
     ProjectInfo,
@@ -182,6 +183,65 @@ def _check_gh_account_routing(info: ProjectInfo) -> list[CheckResult]:
             check_name="gh_account_routing",
             severity=Severity.INFO,
             message=f"gh 계정 라우팅 OK (GH_CONFIG_DIR → '{info.gh_account}' == origin ssh alias)",
+        )
+    ]
+
+
+def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
+    """선언된 gh 계정과 그 프로필 토큰의 **실체**가 일치하는지.
+
+    `gh_account_routing` 은 .envrc ↔ ssh alias 라벨 정합만 본다. 라벨이 전부 맞아도
+    프로필 안의 토큰이 다른 계정일 수 있다(2026-08-12 사고 ③). 여기서만 사슬 밖으로
+    나가 "그 이름이 가리키는 것이 실제로 그것인가"를 묻는다.
+
+    - gh_account 미선언 → 검증 대상 X (silent)
+    - 조회 실패 → INFO (모름이지 불일치가 아니다)
+    - 일치 → INFO · 불일치 → CRITICAL (blocking)
+    """
+    if not info.gh_account:
+        return []
+    config_dir = gh_config_dir_for_account(info.gh_account)
+    # 무효화 기준을 디렉터리가 아니라 hosts.yml 파일로 잡는다. POSIX 에서 디렉터리
+    # mtime 은 엔트리 추가·삭제·rename 에만 갱신되고 기존 파일의 in-place 수정에는
+    # 반응하지 않는다(실측 확인). gh 가 in-place 로 쓰면 재인증 직후에도 캐시가
+    # 최대 TTL 동안 옛 신원을 유지한다 — 무효화가 가장 필요한 순간에 실패한다.
+    # 파일 mtime 은 in-place 쓰기와 atomic replace 양쪽 모두에서 갱신된다.
+    actual = identity_cache.probe_cached(
+        key=f"gh:{info.gh_account}",
+        source=Path(config_dir).expanduser() / "hosts.yml",
+        probe=lambda: identity_probe.gh_login(config_dir),
+    )
+    if actual is None:
+        return [
+            CheckResult(
+                check_name="gh_identity_actual",
+                severity=Severity.INFO,
+                message=(
+                    f"gh 계정 '{info.gh_account}' 실체 확인 불가 "
+                    "(gh 미설치·미인증·네트워크) — 미검증"
+                ),
+            )
+        ]
+    if actual == info.gh_account:
+        return [
+            CheckResult(
+                check_name="gh_identity_actual",
+                severity=Severity.INFO,
+                message=f"gh 계정 실체 일치: 선언·실체 모두 '{actual}'",
+            )
+        ]
+    return [
+        CheckResult(
+            check_name="gh_identity_actual",
+            severity=Severity.CRITICAL,
+            message=(
+                f"gh 프로필 'gh-{info.gh_account}' 의 토큰이 실제로는 '{actual}' 계정 — "
+                f"선언 '{info.gh_account}' 와 실체 '{actual}' 불일치"
+            ),
+            suggestion=(
+                f'GH_CONFIG_DIR="{config_dir}" gh auth login -h github.com -p ssh '
+                "로 재인증 (자격 작업이므로 사용자가 직접 실행)"
+            ),
         )
     ]
 
@@ -395,6 +455,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_aws_account_status(info))
     report.results.extend(_check_github_remote_parseable(info))
     report.results.extend(_check_gh_account_routing(info))
+    report.results.extend(_check_gh_identity_actual(info))
     report.results.extend(_check_claude_account_dir_exists(info))
     report.results.extend(_check_pulumi_stacks_valid(info))
     report.results.extend(_check_pulumi_backend_routing(info))
