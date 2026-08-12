@@ -76,6 +76,23 @@ def test_no_manifest_is_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert AccountIdentityActualCheck().run(CheckContext()) == []
 
 
+def test_probe_failure_is_silent(wired: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """조회 실패(gh_login 이 None)는 "모름"이지 "불일치"가 아니다 — 보고하지 않는다.
+
+    리뷰 I1 대응: global doctor 는 이 머신의 전 계정을 훑으므로, gh 일시
+    장애·미인증·네트워크 문제만으로 결과를 냈다간 그게 그대로 summary.critical 을
+    거쳐 anvyx C6 게이트의 오탐 차단(autopilot 전체 block)으로 이어진다 — "인프라
+    부재에 fail-closed 를 적용하지 않는다"는 identity_probe.py 자체의 불변식이기도
+    하다. 이 분기(run() 의 `if actual is None: continue`)를 지키는 회귀 테스트가
+    이전엔 없었다(mutation D — "None 도 INFO 로 보고"하도록 바꿔도 기존 7개 전부
+    통과했다).
+    """
+    import anvyc.checks.account_identity as mod
+
+    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: None)
+    assert AccountIdentityActualCheck().run(CheckContext()) == []
+
+
 def test_registered_in_doctor() -> None:
     """doctor._REGISTRY 등록 확인 — 기존 check 들(test_creds_expiry_check.py 등)과 동일 관례.
 
