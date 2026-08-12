@@ -149,11 +149,29 @@ anvyc aws profile rm ws-dev                               # 삭제 (확인 후 �
 
 ## 2. GitHub 계정 라우팅 (v0.11.0+)
 
+> ⚠️ **`GH_CONFIG_DIR` 은 config 파일만 격리하고 자격은 격리하지 않는다.**
+> gh 가 활성 토큰을 키체인에서 hostname 만으로 조회하기 때문이다
+> ([cli/cli#10136](https://github.com/cli/cli/issues/10136), gh 2.73.0 재현).
+> 아래 예시대로 두 계정을 각각 로그인하면 **나중 로그인이 앞의 것을 무력화**한다.
+>
+> `.envrc` 의 `GH_CONFIG_DIR` 은 여전히 유용하다 — config 파일(호스트 설정·기본 프로토콜)
+> 은 분리된다. 다만 **어느 계정으로 인증되는가는 결정하지 못한다.**
+>
+> 계정을 명시적으로 고르려면 `GH_TOKEN` 을 쓴다. 키체인의 계정별 토큰은 온전하다:
+>
+> ```bash
+> GH_TOKEN=$(gh auth token --user 16bitdo) gh pr create ...
+> ```
+
 AWS profile 과 같은 문제가 GitHub 계정에도 있다. `gh` CLI 는 **single global
 active account** 만 가지므로, 여러 계정 (개인 / org 별 봇 계정 등) 을 오가면
 잘못된 계정으로 동작하거나 false warning 이 발생한다. AWS 의 `.envrc` +
-`AWS_PROFILE` 패턴과 동일하게, project 별 `.envrc` 에 `GH_CONFIG_DIR` 을
-선언해 direnv 가 계정을 라우팅하게 한다.
+`AWS_PROFILE` 과 **형태는 같지만 격리 수준은 다르다** — AWS 는 profile 별
+자격이 실제로 격리되지만, gh 는 위 경고대로 config 파일만 격리되고 활성
+자격(토큰)은 격리되지 않는다. 그럼에도 project 별 `.envrc` 에 `GH_CONFIG_DIR`
+을 선언해두면 호스트 설정 분리와 함께 "이 프로젝트가 어느 계정으로 라우팅
+되어야 하는지" 를 direnv 로 명시할 수 있다 — 실제 계정 전환은 `GH_TOKEN` 이
+담당한다.
 
 ```bash
 # 1) 계정별 gh config 디렉터리 준비 (convention: ~/.config/gh-<account>)
@@ -181,6 +199,7 @@ cd ~/dev/my-personal-repo   # → gh 가 gh-16bitdo config 사용
 |---|---|---|
 | `project-gh-account-mapping` | `project_roots` 아래 `.envrc` 의 `GH_CONFIG_DIR` ↔ GitHub `origin` ssh alias 정합성 (global) | ✓ v0.11.0 |
 | `gh_account_routing` | cwd 의 `GH_CONFIG_DIR` ↔ origin ssh alias 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.11.0 |
+| `gh_identity_actual` | `gh api user` 로 **자격 실체**를 역참조해 선언과 대조 (라벨이 아님) | ✓ 신규 |
 
 ```bash
 anvyc doctor --only project-gh-account-mapping
@@ -218,6 +237,10 @@ Claude Code 도 단일 계정 config 를 쓰므로, 개인 / 업무 계정을 �
 계정으로 동작할 수 있다. `CLAUDE_CONFIG_DIR` 은 Claude Code 가 네이티브로 읽는
 env var (`GH_CONFIG_DIR` 의 직접 analog) 이므로, `.envrc` 에 선언하면 direnv 가
 project 별 계정 (config + auth 토큰) 을 라우팅한다.
+
+> ⚠️ 이 "analog" 는 env var 로 config 디렉터리를 지정하는 **형태**의 유사성이다.
+> §2 의 `GH_CONFIG_DIR` 자격 격리 결함이 `CLAUDE_CONFIG_DIR` 에도 동일하게
+> 적용되는지는 이번 조사에서 **검증하지 않았다**.
 
 ```bash
 # 1) 계정별 config 디렉터리 준비 (convention: ~/.claude-<account>)
