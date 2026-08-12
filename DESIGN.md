@@ -1228,6 +1228,12 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 | `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
 
+**계정 identity 실체 검증** (global — 바인딩 선언 vs 실제 토큰, `core/account_manifest.py`)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `account-identity-actual` | 이 머신의 `account_manifest` 바인딩이 선언한 `gh_config_dir` 프로필의 토큰이 실제로 `github_login` 계정에 귀속되는지 `gh api user` 역조회로 대조 — `project-gh-account-mapping` 의 라벨 정합과 달리 실체를 본다(path 무관, 바인딩된 논리 계정 전체 순회). 조회 실패는 미보고(모름≠불일치), 불일치만 CRITICAL. L4 anvyx C6 pre-run gate 가 `anvyc doctor --strict --json` 의 `summary.critical` 로 소비 — 이 check 만으로 anvyx 코드 변경 없이 autopilot 이 게이트된다 | v0.21.x |
+
 **multi-account 환경 진단**
 
 | check_name | 영역 | 추가 |

@@ -1,0 +1,208 @@
+"""global doctor account-identity-actual — anvyx C6 pre-run gate 가 소비한다."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from anvyc.checks.account_identity import AccountIdentityActualCheck
+from anvyc.checks.base import CheckContext, Severity
+from anvyc.core import account_manifest
+
+_PROJECTS = """
+version: 1
+projects:
+  - id: analysis
+    repo: 16bitdo/analysis
+    ownership: personal-16bitdo
+"""
+_BINDINGS = """
+version: 1
+machine: test-machine
+accounts:
+  personal-16bitdo:
+    github_login: 16bitdo
+    commit_email: 16bitdo@gmail.com
+    gh_config_dir: ~/.config/gh-16bitdo
+"""
+
+
+@pytest.fixture()
+def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(_BINDINGS, encoding="utf-8")
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    # 브리프 원안은 HOME 을 고정하지 않아 gh_config_dir(~/.config/gh-16bitdo) 확장이
+    # 실제 머신의 홈 디렉터리로 새서 진짜 ~/.config/gh-* 를 glob 하게 된다(비결정적 ·
+    # 테스트 격리 위반). test_project_doctor_identity_actual.py 의 기존 관례(HOME
+    # 격리)를 따라 고정한다.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+
+def test_mismatch_is_critical(wired: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-08-12 실측 회귀 케이스 — gh-16bitdo 프로필의 토큰이 heisgone 이었다."""
+    import anvyc.checks.account_identity as mod
+
+    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: "heisgone")
+    results = AccountIdentityActualCheck().run(CheckContext())
+    assert any(r.severity is Severity.CRITICAL for r in results)
+    crit = next(r for r in results if r.severity is Severity.CRITICAL)
+    assert "heisgone" in crit.message and "16bitdo" in crit.message
+    assert crit.location is not None
+    # suggestion 은 raw 바인딩 값이 아니라 확장된 절대경로를 써야 한다 — raw 값이
+    # `~` 로 시작하면 큰따옴표 안에서 셸이 확장하지 않아(bash/zsh 공통 동작) 복붙
+    # 실행 시 깨진다(브리프 Step 4 원안의 버그: f'GH_CONFIG_DIR="{gh_dir}" ...').
+    assert crit.suggestion is not None
+    assert "~" not in crit.suggestion, f"suggestion 에 미확장 '~' 잔존: {crit.suggestion!r}"
+
+
+def test_match_is_info(wired: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    import anvyc.checks.account_identity as mod
+
+    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: "16bitdo")
+    results = AccountIdentityActualCheck().run(CheckContext())
+    assert results and all(r.severity is Severity.INFO for r in results)
+
+
+def test_no_manifest_is_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(tmp_path / "nope.yaml"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(tmp_path / "nope"))
+    assert AccountIdentityActualCheck().run(CheckContext()) == []
+
+
+def test_registered_in_doctor() -> None:
+    """doctor._REGISTRY 등록 확인 — 기존 check 들(test_creds_expiry_check.py 등)과 동일 관례.
+
+    이 check 은 anvyx C6 gate 가 소비하는 것이 **global** `anvyc doctor` 이지
+    `anvyc project doctor` 가 아니라는 점이 핵심이라, 등록처가 doctor.py 의
+    _REGISTRY 인지를 직접 잠근다.
+    """
+    from anvyc.core.doctor import _REGISTRY
+
+    assert "account-identity-actual" in _REGISTRY
+    assert _REGISTRY["account-identity-actual"].name == "account-identity-actual"
+
+
+# ---------------------------------------------------------------------------
+# 위 4개는 gh_login 을 인자 무관 고정값으로 대체하는 mock 이라, "무엇이 실제로
+# gh_login/probe_cached 에 전달되는가"의 회귀는 못 잡는다
+# (test_project_doctor_identity_actual.py 의 리뷰 I1 실증과 동일 계열 — mutation 으로
+# expand_envrc_path 를 Path.expanduser() 로, source 를 단일 경로로 되돌려도 위
+# 4개는 전부 통과했을 것). 아래는 spy 로 실제 전달값을 기록해 그 회귀를 직접 잡는다.
+# ---------------------------------------------------------------------------
+
+
+def test_gh_login_receives_expanded_absolute_path(
+    wired: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gh_login 에 전달되는 인자가 raw 바인딩 값(`~/...`)이 아니라 확장된 절대경로여야 한다."""
+    import anvyc.checks.account_identity as mod
+
+    received: list[object] = []
+
+    def spy_gh_login(config_dir: object) -> str:
+        received.append(config_dir)
+        return "16bitdo"
+
+    monkeypatch.setattr(mod.identity_probe, "gh_login", spy_gh_login)
+    AccountIdentityActualCheck().run(CheckContext())
+
+    assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
+    passed = received[0]
+    assert "~" not in str(passed), f"'~' 리터럴이 미확장 상태로 전달됨: {passed!r}"
+    assert Path(str(passed)).is_absolute(), f"절대경로가 아님: {passed!r}"
+    assert Path(str(passed)) == Path.home() / ".config" / "gh-16bitdo"
+
+
+def test_gh_login_receives_expanded_path_for_dollar_home_style_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`$HOME/...` 표기 바인딩도 절대경로로 확장돼 전달돼야 한다 — `~` 전용 테스트로는 못 잡는 회귀.
+
+    `Path(gh_dir).expanduser()` 는 `~` 는 (우연히) 제대로 확장하지만 `$HOME` 리터럴은
+    그대로 둔다 — Task 4 에서 gh_identity_actual 이 이 정확한 조건으로 회귀해 probe 가
+    항상 실패했다(기능이 조용히 죽은 채 테스트만 통과). `~` 바인딩만 쓰는
+    `wired` fixture 로는 이 회귀를 재현할 수 없어 별도 바인딩으로 검증한다.
+    """
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        "    github_login: 16bitdo\n"
+        "    gh_config_dir: $HOME/.config/gh-16bitdo\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+    import anvyc.checks.account_identity as mod
+
+    received: list[object] = []
+
+    def spy_gh_login(config_dir: object) -> str:
+        received.append(config_dir)
+        return "16bitdo"
+
+    monkeypatch.setattr(mod.identity_probe, "gh_login", spy_gh_login)
+    AccountIdentityActualCheck().run(CheckContext())
+
+    assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
+    passed = received[0]
+    assert "$HOME" not in str(passed), f"'$HOME' 리터럴이 미확장 상태로 전달됨: {passed!r}"
+    assert Path(str(passed)) == fake_home / ".config" / "gh-16bitdo"
+
+
+def test_probe_cached_source_is_sibling_hosts_files_not_single_path(
+    wired: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`probe_cached` 의 `source` 가 이 프로필 하나가 아니라 형제 gh 프로필 전체의
+    `hosts.yml` 집합이어야 한다 (디렉터리 자체도 아니고, 자기 자신 하나도 아니다).
+
+    2026-08-12 실측 — gh CLI 는 GH_CONFIG_DIR 로 라벨(계정 표시)만 프로필별로
+    나누고 토큰은 OS 키체인에 저장해 모든 gh-* 프로필이 공유한다. `source` 를
+    단일 경로(gh_config_dir 자체 또는 자기 hosts.yml 하나)로 되돌리면 형제 프로필
+    재인증으로 실체가 바뀌어도 캐시가 무효화되지 않는다 — 이 테스트가 그 되돌림을
+    잡는다(project_doctor._gh_profile_hosts_files 재사용이 실제로 배선됐는지 확인).
+    """
+    import anvyc.checks.account_identity as mod
+
+    gh_root = Path.home() / ".config"
+    for account in ("16bitdo", "heisgone"):
+        d = gh_root / f"gh-{account}"
+        d.mkdir(parents=True)
+        (d / "hosts.yml").write_text("users: {}\n", encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    def spy_probe_cached(**kwargs: object) -> str | None:
+        captured.update(kwargs)
+        return "16bitdo"
+
+    monkeypatch.setattr(mod.identity_cache, "probe_cached", spy_probe_cached)
+    AccountIdentityActualCheck().run(CheckContext())
+
+    assert "source" in captured, "probe_cached 가 source kwarg 없이 호출됨"
+    sources = list(captured["source"])  # type: ignore[call-overload]
+    assert len(sources) == 2, f"형제 프로필을 전부 못 모음: {sources!r}"
+    names = sorted(Path(str(s)).name for s in sources)
+    assert names == ["hosts.yml", "hosts.yml"], f"디렉터리가 섞여 있음: {sources!r}"
+    parent_names = sorted(Path(str(s)).parent.name for s in sources)
+    assert parent_names == ["gh-16bitdo", "gh-heisgone"], (
+        f"자기 자신만 또는 다른 형제만 모음: {sources!r}"
+    )
