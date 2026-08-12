@@ -1,8 +1,11 @@
-"""Cross-machine state sync — CP-6 1/3.
+"""Cross-machine state sync — CP-6 1/3 (+ rule 27 계정 바인딩 편입).
 
 여러 머신 간 control plane mutable state (CP-3 health JSON + CP-4 snapshot
-meta) 동기화. 1/3 PR 은 schema v1 + `sync status` (read-only drift detection)
-만 — `sync push` / `pull` 은 2/3, conflict resolution 은 3/3.
+meta + 계정 바인딩) 동기화. 1/3 PR 은 schema v1 + `sync status` (read-only
+drift detection) 만 — `sync push` / `pull` 은 2/3, conflict resolution 은
+3/3. 계정 바인딩(`account_bindings`)은 그 이후 rule 27 대응으로 kind 목록에
+추가됐다 — `core/account_manifest.py` 의 `~/.config/anvyc/accounts/
+bindings.<hostname>.yaml` 이 source.
 
 L12 (cross-axis schema 일관성) 의 sync 단위 안정성 입증 시점 — 모든 mutable
 state 가 `schema_version: 1` 이라 sync target adapter 가 일반화 가능.
@@ -11,9 +14,9 @@ state 가 `schema_version: 1` 이라 sync target adapter 가 일반화 가능.
 - **단일 schema v1**: SyncTargetManifest (machine 별 항목 목록) — local /
   remote 양쪽 동일 형식. local 은 filesystem scan 으로 생성, remote 는
   파일 read.
-- **kind 별 adapter** (1/3 MVP): `snapshot_meta` + `health_json` 만 지원.
-  creds expiry timestamp 는 후속 polish (live computation 이라 파일 base 가
-  아님).
+- **kind 별 adapter**: `snapshot_meta` + `health_json` (1/3 MVP) +
+  `account_bindings` (rule 27 대응 추가). creds expiry timestamp 는 후속
+  polish (live computation 이라 파일 base 가 아님).
 - **Remote target = filesystem path** (1/3): local mount / git clone /
   sync 폴더 (Dropbox / iCloud). HTTPS / S3 backend 는 후속 polish.
 - **machine_id**: 사용자 명시 (`anvyc.yaml` 의 `sync.machine_id`) > env
@@ -27,7 +30,7 @@ Schema v1:
       "generated_at": "2026-05-25T10:00:00Z",
       "items": [
         {
-          "kind": "snapshot_meta" | "health_json",
+          "kind": "snapshot_meta" | "health_json" | "account_bindings",
           "relative_path": "anvyc/snapshots/<workspace>-<id>/meta.json",
           "size": 512,
           "sha256": "abc123...",
@@ -54,7 +57,8 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 KIND_SNAPSHOT_META = "snapshot_meta"
 KIND_HEALTH_JSON = "health_json"
-ALL_KINDS = (KIND_SNAPSHOT_META, KIND_HEALTH_JSON)
+KIND_ACCOUNT_BINDINGS = "account_bindings"
+ALL_KINDS = (KIND_SNAPSHOT_META, KIND_HEALTH_JSON, KIND_ACCOUNT_BINDINGS)
 
 # remote manifest filename
 REMOTE_MANIFEST_NAME = "anvyc-sync-manifest.json"
@@ -232,6 +236,39 @@ def _scan_health_json(home: Path) -> list[SyncItem]:
     return out
 
 
+def _scan_account_bindings(home: Path) -> list[SyncItem]:
+    """scan `<home>/.config/anvyc/accounts/bindings.*.yaml` 으로 머신 계정 바인딩 발견.
+
+    바인딩 파일은 public identifier(로그인명·커밋 이메일·alias·경로)만 담는 것이
+    rule 27 §1 의 정책이다 — 이 스캔 함수는 그 정책을 강제하지 않는다. 파일이
+    거기 있으면 크기·sha256·mtime 만 계산해 항목화할 뿐, 내용을 열어 검증하지는
+    않는다 (내용 검증은 `anvyc scan-secrets` 의 책임).
+
+    파일명이 `bindings.<hostname>.yaml` 로 머신마다 달라 여러 머신의 바인딩이
+    같은 remote 경로에서 충돌하지 않는다 (rule 27 §2 전제).
+    """
+    root = home / ".config" / "anvyc" / "accounts"
+    if not root.is_dir():
+        return []
+    out: list[SyncItem] = []
+    for f in sorted(root.glob("bindings.*.yaml")):
+        if not f.is_file():
+            continue
+        try:
+            out.append(
+                SyncItem(
+                    kind=KIND_ACCOUNT_BINDINGS,
+                    relative_path=f"anvyc/accounts/{f.name}",
+                    size=f.stat().st_size,
+                    sha256=_sha256_of_file(f),
+                    mtime=_mtime_iso(f),
+                )
+            )
+        except OSError:
+            continue
+    return out
+
+
 def scan_local_manifest(
     *,
     home: Path | None = None,
@@ -258,6 +295,8 @@ def scan_local_manifest(
         items.extend(_scan_snapshot_meta(h, dev_root=dev_root))
     if KIND_HEALTH_JSON in selected:
         items.extend(_scan_health_json(h))
+    if KIND_ACCOUNT_BINDINGS in selected:
+        items.extend(_scan_account_bindings(h))
 
     return SyncTargetManifest(
         schema_version=SCHEMA_VERSION,
@@ -433,9 +472,18 @@ def _resolve_local_path_from_relative(home: Path, relative: str, kind: str, dev_
       → `<home>/dev/<workspace>/.anvyc/snapshots/<id>/meta.json`
     health_json: `cc-inspect/health/<date>.json`
       → `<home>/.config/cc-inspect/health/<date>.json`
+    account_bindings: `anvyc/accounts/bindings.<hostname>.yaml`
+      → `<home>/.config/anvyc/accounts/bindings.<hostname>.yaml`
 
     역매핑 실패 / kind 알 수 없음 → None.
     """
+    if kind == KIND_ACCOUNT_BINDINGS:
+        prefix = "anvyc/accounts/"
+        if not relative.startswith(prefix):
+            return None
+        filename = relative[len(prefix):]
+        return home / ".config" / "anvyc" / "accounts" / filename
+
     if kind == KIND_SNAPSHOT_META:
         prefix = "anvyc/snapshots/"
         if not relative.startswith(prefix) or not relative.endswith("/meta.json"):

@@ -2109,10 +2109,13 @@ Phase 2 에서 `anvyc aws profile create/edit/rm` (`~/.aws/config` profile CRUD,
 > 로 분리됐습니다.**
 
 Control Plane v3 의 첫 axis. 여러 머신 간 control plane mutable state
-(CP-4 snapshot meta + CP-3 health JSON + CP-5 creds expiry timestamp)
-동기화. `SyncTargetManifest schema v1` + `anvyc sync {status|push|pull}` +
+(CP-4 snapshot meta + CP-3 health JSON + 계정 바인딩; CP-5 creds expiry
+timestamp 는 live computation 이라 여전히 out-of-scope) 동기화.
+`SyncTargetManifest schema v1` + `anvyc sync {status|push|pull}` +
 `sync conflict {list|resolve}` (per-entry sha256 명시 해결). auto-policy /
-3-way merge 영구 out-of-scope — 사용자 prompt 가 권위.
+3-way merge 영구 out-of-scope — 사용자 prompt 가 권위. 계정 바인딩
+(`account_bindings` kind)은 rule 27 대응으로 후속 편입 — public
+identifier·경로만 담아 자격 본문 sync 금지(rule 27 §1)에 적격이다.
 
 상세 (schema v1 / diff 알고리즘 / remote target layout / push-pull 안전
 절차 / conflict resolution 정책) → [CP-6 본문](./docs/design-axes/cp-06-sync.md).

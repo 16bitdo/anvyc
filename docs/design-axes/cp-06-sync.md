@@ -15,8 +15,9 @@
 - **단일 schema v1 (local/remote 양쪽 동일)**: SyncTargetManifest 가 local
   filesystem scan 으로 생성되고, remote target 에 동일 format 으로 저장.
   diff 는 두 manifest 의 set 연산 + sha256 비교만으로 결정 — 단순성.
-- **kind 별 adapter** (1/3 MVP): `snapshot_meta` + `health_json` 만 지원.
-  creds expiry timestamp 는 live computation 이라 후속 polish.
+- **kind 별 adapter**: `snapshot_meta` + `health_json` (1/3 MVP) + `account_bindings`
+  (rule 27 대응으로 후속 추가 — `~/.config/anvyc/accounts/bindings.<hostname>.yaml`).
+  creds expiry timestamp 는 live computation 이라 후속 polish로 out-of-scope 유지.
 - **Remote target = filesystem path** (1/3): local mount (NFS/SMB) / git
   clone 디렉터리 / sync 폴더 (Dropbox / iCloud / Syncthing). HTTPS/S3
   backend abstraction 은 후속 polish — 본 axis 는 backend 결정 위임.
@@ -34,7 +35,7 @@
   "generated_at": "2026-05-25T10:00:00Z",
   "items": [
     {
-      "kind": "snapshot_meta" | "health_json",
+      "kind": "snapshot_meta" | "health_json" | "account_bindings",
       "relative_path": "anvyc/snapshots/foo-<id>/meta.json",
       "size": 512,
       "sha256": "abc123...",
@@ -71,8 +72,12 @@ local + remote manifest 를 `relative_path` key 로 dict 변환 후 set 연산:
 |---|---|---|
 | `snapshot_meta` | `<home>/dev/*/.anvyc/snapshots/<id>/meta.json` | `anvyc/snapshots/<workspace>-<id>/meta.json` |
 | `health_json` | `<home>/.config/cc-inspect/health/*.json` | `cc-inspect/health/<date>.json` |
+| `account_bindings` | `<home>/.config/anvyc/accounts/bindings.*.yaml` | `anvyc/accounts/bindings.<hostname>.yaml` |
 
 workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
+`account_bindings` 는 파일명 자체가 `bindings.<hostname>.yaml` 로 머신마다 달라
+같은 이유로 충돌하지 않는다 (rule 27 §2). rule `27-cross-machine-sync-policy`
+paired — 자세한 정책 근거는 §8 참조.
 
 ## 6. Remote target layout
 
@@ -80,6 +85,7 @@ workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
 <remote_target>/
 ├── anvyc-sync-manifest.json    # 단일 machine 의 manifest (1/3 MVP)
 ├── anvyc/snapshots/<workspace>-<id>/meta.json
+├── anvyc/accounts/bindings.<hostname>.yaml
 └── cc-inspect/health/<date>.json
 ```
 
@@ -102,6 +108,12 @@ workspace prefix (`<workspace>-<id>`) 는 cross-workspace collision 회피.
   로 remote 에 저장 (path 기반).
 - **token / secret 본문 sync 금지** — creds.json 같은 자격 본문은 sync
   대상 외 (rule 26-secrets-1password 준수).
+- `account_bindings` 가 담아도 되는 것은 rule 27 §1 정책상 public identifier
+  (로그인명·커밋 이메일·alias·경로)뿐이다 — 이 axis 의 스캔 코드
+  (`_scan_account_bindings`)는 그 정책을 전제할 뿐 파일을 열어 내용을
+  검증하지는 않는다. 내용 검증은 `anvyc scan-secrets`, 스키마 불변식은
+  `core/account_manifest.py` 의 `ResolvedAccount` 가 담당 (자격 필드 자체가
+  없음 — `tests/unit/test_bindings_sync_eligibility.py` 회귀 고정).
 - snapshot meta 의 `claude_session_id` 는 식별자라 본문 아님 — sync 안전.
 - remote_target 은 사용자 책임 — Dropbox 같은 cloud sync 는 cloud 운영사
   policy 준수.

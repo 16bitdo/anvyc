@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from anvyc.core.sync import (
+    KIND_ACCOUNT_BINDINGS,
     KIND_HEALTH_JSON,
     KIND_SNAPSHOT_META,
     REMOTE_MANIFEST_NAME,
@@ -50,6 +51,12 @@ def _write_snapshot_meta(home: Path, workspace: str, snap_id: str, content: str)
     d = home / "dev" / workspace / ".anvyc" / "snapshots" / snap_id
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(content, encoding="utf-8")
+
+
+def _write_account_bindings(home: Path, hostname: str, content: str) -> None:
+    d = home / ".config" / "anvyc" / "accounts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"bindings.{hostname}.yaml").write_text(content, encoding="utf-8")
 
 
 # ===== push =====
@@ -248,6 +255,57 @@ def test_pull_snapshot_meta_path_resolution(fake_home: Path, remote_target: Path
     # 역매핑된 local path 확인
     expected = fake_home / "dev/myws/.anvyc/snapshots/20260525T120000Z-deadbe/meta.json"
     assert expected.read_text() == '{"snap":1}'
+
+
+def test_pull_account_bindings_path_resolution(fake_home: Path, remote_target: Path, now_fixed: datetime) -> None:
+    """account_bindings 의 relative_path → local `.config/anvyc/accounts/bindings.<host>.yaml` 역매핑."""
+    remote_accounts = remote_target / "anvyc/accounts"
+    remote_accounts.mkdir(parents=True)
+    (remote_accounts / "bindings.other-host.yaml").write_text(
+        "version: 1\naccounts: {}\n", encoding="utf-8"
+    )
+    import hashlib
+    payload = b"version: 1\naccounts: {}\n"
+    manifest = SyncTargetManifest(
+        schema_version=1,
+        machine_id="other-m",
+        generated_at="x",
+        items=[
+            SyncItem(
+                kind=KIND_ACCOUNT_BINDINGS,
+                relative_path="anvyc/accounts/bindings.other-host.yaml",
+                size=len(payload),
+                sha256=hashlib.sha256(payload).hexdigest(),
+                mtime="x",
+            )
+        ],
+    )
+    (remote_target / REMOTE_MANIFEST_NAME).write_text(json.dumps(manifest.to_dict()), encoding="utf-8")
+
+    result = pull_to_local(remote_target, home=fake_home, now=now_fixed)
+    assert result.items_copied == 1
+    assert result.items_failed == 0
+    expected = fake_home / ".config/anvyc/accounts/bindings.other-host.yaml"
+    assert expected.read_text() == "version: 1\naccounts: {}\n"
+
+
+def test_push_account_bindings_copies_and_relative_path(
+    fake_home: Path, remote_target: Path, now_fixed: datetime
+) -> None:
+    """account_bindings 가 push 시 실제로 copy 되고 relative_path 가 registry 규칙을 따르는가."""
+    _write_account_bindings(fake_home, "my-host", "version: 1\naccounts: {}\n")
+    local = scan_local_manifest(home=fake_home, machine_id="src-m", now=now_fixed)
+
+    result = push_to_remote(local, remote_target, home=fake_home, now=now_fixed)
+    assert result.items_copied == 1
+    assert result.items_failed == 0
+    copied = remote_target / "anvyc/accounts/bindings.my-host.yaml"
+    assert copied.read_text() == "version: 1\naccounts: {}\n"
+
+    m = load_remote_manifest(remote_target)
+    assert m is not None
+    assert m.items[0].kind == KIND_ACCOUNT_BINDINGS
+    assert m.items[0].relative_path == "anvyc/accounts/bindings.my-host.yaml"
 
 
 def test_pull_same_skipped(fake_home: Path, remote_target: Path, now_fixed: datetime) -> None:
