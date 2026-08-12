@@ -200,7 +200,14 @@ def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
     """
     if not info.gh_account:
         return []
+    # gh_config_dir_for_account() 는 `.envrc`/suggestion 에 그대로 쓸 리터럴
+    # "$HOME/..." 문자열을 돌려준다(direnv 가 나중에 셸에서 확장하는 것을 전제).
+    # 여기서는 subprocess env·파일 mtime 조회처럼 실제 파일시스템 경로가 필요하므로
+    # expand_envrc_path() 로 직접 확장해야 한다 — Path.expanduser() 는 선행 `~` 만
+    # 확장하고 `$HOME` 리터럴은 그대로 두므로 대신 쓸 수 없다(실측 확인:
+    # Path("$HOME/x").expanduser() == Path("$HOME/x")).
     config_dir = gh_config_dir_for_account(info.gh_account)
+    expanded_dir = expand_envrc_path(config_dir)
     # 무효화 기준을 디렉터리가 아니라 hosts.yml 파일로 잡는다. POSIX 에서 디렉터리
     # mtime 은 엔트리 추가·삭제·rename 에만 갱신되고 기존 파일의 in-place 수정에는
     # 반응하지 않는다(실측 확인). gh 가 in-place 로 쓰면 재인증 직후에도 캐시가
@@ -208,8 +215,8 @@ def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
     # 파일 mtime 은 in-place 쓰기와 atomic replace 양쪽 모두에서 갱신된다.
     actual = identity_cache.probe_cached(
         key=f"gh:{info.gh_account}",
-        source=Path(config_dir).expanduser() / "hosts.yml",
-        probe=lambda: identity_probe.gh_login(config_dir),
+        source=expanded_dir / "hosts.yml",
+        probe=lambda: identity_probe.gh_login(expanded_dir),
     )
     if actual is None:
         return [
