@@ -209,12 +209,41 @@ def _gh_profile_hosts_files(expanded_dir: Path) -> tuple[Path, ...]:
         return ()
 
 
-def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
+def _expected_gh_login(
+    info: ProjectInfo, resolved: account_manifest.ResolvedAccount | None
+) -> tuple[str, str]:
+    """실체와 대조할 **기대값**과 그 출처 라벨.
+
+    판정 기준(SoT)은 L1 manifest 의 ownership 이다. `.envrc` 는 머신 로컬 **라벨**일
+    뿐 권위가 아니다 — 라벨을 기대값으로 쓰면 라벨 자신과 실체를 비교하는 꼴이라,
+    `.envrc` 가 통째로 다른 계정으로 드리프트하면 그 계정 프로필을 조회해 그 계정을
+    얻고 "일치" 로 판정한다. 게이트가 스스로를 무력화한다(최종 리뷰 C1).
+
+    manifest 에 ownership 선언이 없거나(미등록 저장소) 이 머신 바인딩에
+    `github_login` 이 없을 때만 라벨로 폴백한다 — 폴백이 없으면 미등록 저장소에서
+    기대값이 비어 항상 불일치가 되는 오탐 차단이 된다.
+    """
+    if resolved is not None and resolved.github_login:
+        return resolved.github_login, f"manifest ownership '{resolved.ownership_id}'"
+    return str(info.gh_account), ".envrc GH_CONFIG_DIR 라벨 (manifest 미선언 폴백)"
+
+
+def _check_gh_identity_actual(
+    info: ProjectInfo, resolved: account_manifest.ResolvedAccount | None
+) -> list[CheckResult]:
     """선언된 gh 계정과 그 프로필 토큰의 **실체**가 일치하는지.
 
     `gh_account_routing` 은 .envrc ↔ ssh alias 라벨 정합만 본다. 라벨이 전부 맞아도
     프로필 안의 토큰이 다른 계정일 수 있다(2026-08-12 사고 ③). 여기서만 사슬 밖으로
     나가 "그 이름이 가리키는 것이 실제로 그것인가"를 묻는다.
+
+    **조회 위치와 비교 대상은 서로 다른 것에서 온다** — 이 구분이 이 check 의 핵심이다:
+
+    - 조회 위치 = `.envrc` 라벨 프로필. "지금 이 프로젝트에서 실제로 쓰일 프로필" 을
+      봐야 하기 때문. 여기까지 ownership 으로 바꾸면 드리프트한 프로필을 아예 안 보게
+      되어 검출이 사라진다.
+    - 비교 대상 = manifest ownership (`_expected_gh_login`). 라벨끼리 비교하면 게이트가
+      무력화된다.
 
     - gh_account 미선언 → 검증 대상 X (silent)
     - 조회 실패 → INFO (모름이지 불일치가 아니다)
@@ -247,37 +276,54 @@ def _check_gh_identity_actual(info: ProjectInfo) -> list[CheckResult]:
         source=_gh_profile_hosts_files(expanded_dir),
         probe=lambda: identity_probe.gh_login(expanded_dir),
     )
+    expected, expected_origin = _expected_gh_login(info, resolved)
     if actual is None:
         return [
             CheckResult(
                 check_name="gh_identity_actual",
                 severity=Severity.INFO,
                 message=(
-                    f"gh 계정 '{info.gh_account}' 실체 확인 불가 "
+                    f"gh 프로필 'gh-{info.gh_account}' 실체 확인 불가 "
                     "(gh 미설치·미인증·네트워크) — 미검증"
                 ),
             )
         ]
-    if actual == info.gh_account:
+    if actual == expected:
         return [
             CheckResult(
                 check_name="gh_identity_actual",
                 severity=Severity.INFO,
-                message=f"gh 계정 실체 일치: 선언·실체 모두 '{actual}'",
+                message=(
+                    f"gh 신원 일치 — 조회 프로필 'gh-{info.gh_account}' 의 실체 "
+                    f"'{actual}' == 기대 '{expected}' ({expected_origin})"
+                ),
             )
         ]
+    # 세 값을 구분해 보여준다 — 조회한 프로필(.envrc 라벨) / 실체 / 기대(+출처).
+    # 셋을 뭉뚱그리면 사용자가 `.envrc` 를 고쳐야 하는지 재인증해야 하는지 모른다.
+    if expected != info.gh_account:
+        suggestion = (
+            f".envrc 라벨 'gh-{info.gh_account}' 가 ownership '{expected}' 와 다릅니다 — "
+            f'export GH_CONFIG_DIR="{gh_config_dir_for_account(expected)}" 로 수정 후 '
+            f"direnv allow. 라벨을 고쳐도 그 프로필의 실체가 '{expected}' 가 아니면 "
+            f'GH_CONFIG_DIR="{gh_config_dir_for_account(expected)}" '
+            "gh auth login -h github.com -p ssh 로 재인증 "
+            "(자격 작업이므로 사용자가 직접 실행)"
+        )
+    else:
+        suggestion = (
+            f'GH_CONFIG_DIR="{config_dir}" gh auth login -h github.com -p ssh '
+            "로 재인증 (자격 작업이므로 사용자가 직접 실행)"
+        )
     return [
         CheckResult(
             check_name="gh_identity_actual",
             severity=Severity.CRITICAL,
             message=(
-                f"gh 프로필 'gh-{info.gh_account}' 의 토큰이 실제로는 '{actual}' 계정 — "
-                f"선언 '{info.gh_account}' 와 실체 '{actual}' 불일치"
+                f"gh 신원 불일치 — 조회 프로필 'gh-{info.gh_account}'(.envrc 라벨)의 "
+                f"실체는 '{actual}' 이나 기대는 '{expected}' ({expected_origin})"
             ),
-            suggestion=(
-                f'GH_CONFIG_DIR="{config_dir}" gh auth login -h github.com -p ssh '
-                "로 재인증 (자격 작업이므로 사용자가 직접 실행)"
-            ),
+            suggestion=suggestion,
         )
     ]
 
@@ -498,18 +544,20 @@ def _origin_repo_slug(info: ProjectInfo) -> str | None:
     return None
 
 
-def _check_commit_identity_actual(info: ProjectInfo, path: Path) -> list[CheckResult]:
+def _check_commit_identity_actual(
+    path: Path, slug: str | None, resolved: account_manifest.ResolvedAccount | None
+) -> list[CheckResult]:
     """manifest 가 선언한 ownership 커밋 이메일과 **실제로 커밋될 신원** 대조.
+
+    `slug`/`resolved` 는 orchestrator 가 한 번만 계산해 내려준다 — check 마다 다시
+    `resolve()` 를 부르면 훅이 Bash 명령마다 호출하는 경로에서 YAML 파싱이 배수로 늘고,
+    같은 실행 안에서 서로 다른 manifest 스냅샷을 볼 여지도 생긴다.
 
     - 저장소 미선언 / 바인딩에 commit_email 없음 → 검증 대상 X (silent)
     - 신원 미해결 → WARNING (fail-closed 라 커밋 자체가 안 되는 상태)
     - 일치 → INFO · 불일치 → CRITICAL
     """
-    slug = _origin_repo_slug(info)
-    if not slug:
-        return []
-    resolved = account_manifest.resolve(slug)
-    if resolved is None or not resolved.commit_email:
+    if not slug or resolved is None or not resolved.commit_email:
         return []
     actual = identity_probe.commit_email(path)
     if actual is None:
@@ -560,22 +608,25 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     """11 check 를 순차 실행. raw secret 검증 위해 redact_secrets=False 로 수집."""
     info = collect_project_info(path, redact_secrets=False)
     report = ProjectDoctorReport(path=path.resolve())
+    # 판정 기준(SoT)인 L1 manifest 를 **여기서 한 번만** 로드해 소비처(gh 실체 대조 ·
+    # 커밋 신원 대조 · expected_* 방출)에 내려준다. check 안에서 각자 resolve() 를
+    # 부르면 훅이 Bash 명령마다 호출하는 경로에서 YAML 파싱이 배수로 늘어난다.
+    slug = _origin_repo_slug(info)
+    resolved = account_manifest.resolve(slug) if slug else None
     report.results.extend(_check_aws_profile_defined(info))
     report.results.extend(_check_aws_account_status(info))
     report.results.extend(_check_github_remote_parseable(info))
     report.results.extend(_check_gh_account_routing(info))
-    report.results.extend(_check_gh_identity_actual(info))
+    report.results.extend(_check_gh_identity_actual(info, resolved))
     report.results.extend(_check_claude_account_dir_exists(info))
     report.results.extend(_check_pulumi_stacks_valid(info))
     report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
-    report.results.extend(_check_commit_identity_actual(info, path))
+    report.results.extend(_check_commit_identity_actual(path, slug, resolved))
     # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
     report.expected_gh_user = info.gh_account
     report.expected_aws_profile = info.aws_profile
-    slug = _origin_repo_slug(info)
-    resolved = account_manifest.resolve(slug) if slug else None
     if resolved is not None:
         report.expected_commit_email = resolved.commit_email
         # manifest ownership 이 있으면 .envrc 라벨보다 우선한다 (L1 이 SoT).

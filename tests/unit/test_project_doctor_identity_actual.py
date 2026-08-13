@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from anvyc.checks.base import Severity
-from anvyc.core import project_doctor
+from anvyc.core import account_manifest, project_doctor
 
 
 def _project(tmp_path: Path, account: str) -> Path:
@@ -205,3 +205,250 @@ def test_sibling_profile_reauth_invalidates_cache(
     )
     assert "heisgone" in res2.message and "16bitdo" in res2.message
     assert len(calls) == 2, "캐시가 무효화되지 않아 재조회가 안 일어남"
+
+
+# ---------------------------------------------------------------------------
+# C1 (최종 리뷰 Critical) — 비교 대상이 `.envrc` 라벨이 아니라 manifest ownership.
+#
+# 위 테스트들은 전부 "`.envrc` 라벨 == 실체?" 만 검증한다 — 라벨 자신과 실체를
+# 비교하므로 `.envrc` 가 통째로 다른 계정으로 드리프트하면 그 계정 프로필을 조회해
+# 그 계정을 얻고 "일치(INFO)" 를 낸다. 게이트가 스스로를 무력화한다. 판정 기준(SoT)
+# 은 L1 manifest 의 ownership 이고 `.envrc` 는 머신 로컬 라벨일 뿐이다.
+# ---------------------------------------------------------------------------
+
+_PROJECTS = """
+version: 1
+projects:
+  - id: analysis
+    repo: 16bitdo/analysis
+    ownership: personal-16bitdo
+"""
+_BINDINGS = """
+version: 1
+machine: test-machine
+accounts:
+  personal-16bitdo:
+    github_login: 16bitdo
+    commit_email: 16bitdo@gmail.com
+    gh_config_dir: ~/.config/gh-16bitdo
+"""
+_BINDINGS_NO_GH_LOGIN = """
+version: 1
+machine: test-machine
+accounts:
+  personal-16bitdo:
+    commit_email: 16bitdo@gmail.com
+"""
+
+
+def _routed_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    envrc_account: str,
+    slug: str = "16bitdo/analysis",
+    bindings: str = _BINDINGS,
+) -> Path:
+    """manifest(L1) + `.envrc` 라벨을 **따로** 지정할 수 있는 저장소 fixture.
+
+    둘을 갈라놓을 수 있어야 "무엇과 비교하는가" 를 검증할 수 있다 — 기존
+    `_project()` 는 manifest 자체가 없어 라벨 == 기대값이 되어 구분이 불가능하다.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(bindings, encoding="utf-8")
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+    # commit_identity_actual 은 이 테스트들의 관심사가 아니다 — 실제 git 호출로
+    # 새어나가 결과가 머신 상태에 의존하지 않도록 고정한다.
+    monkeypatch.setattr(
+        project_doctor.identity_probe, "commit_email", lambda p: "16bitdo@gmail.com"
+    )
+
+    proj = tmp_path / "analysis"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text(
+        f'[remote "origin"]\n\turl = git@github.com:{slug}.git\n', encoding="utf-8"
+    )
+    (proj / ".envrc").write_text(
+        f'export GH_CONFIG_DIR="$HOME/.config/gh-{envrc_account}"\n', encoding="utf-8"
+    )
+    return proj
+
+
+def test_envrc_drift_alone_reproduces_the_gate_bypass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C1 재현 — ownership≠라벨 ∧ 실체==라벨 이면 CRITICAL 이어야 한다.
+
+    manifest 는 `16bitdo/analysis` 를 `personal-16bitdo`(github_login=16bitdo) 소유로
+    선언했는데 `.envrc` 만 `gh-heisgone` 으로 드리프트한 상태. 라벨끼리 비교하면
+    heisgone 프로필을 조회해 heisgone 을 얻고 라벨 heisgone 과 같으므로 **INFO(정상)**
+    가 나온다 — 잘못된 계정으로 `gh pr create` 가 통과한다. 이 브랜치가 막으려던
+    사고가 `.envrc` 파일 한 줄의 드리프트만으로 재현된다.
+    """
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "heisgone")
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None
+    assert res.severity is Severity.CRITICAL, (
+        "ownership(16bitdo)과 실체(heisgone)가 다른데 `.envrc` 라벨(heisgone)과만 "
+        f"비교해 통과시킴 — severity={res.severity}, message={res.message!r}"
+    )
+    assert report.has_blocking()
+
+
+def test_critical_message_distinguishes_probed_actual_and_expected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """불일치 메시지가 세 값을 **구분해** 보여야 한다 — 조회 프로필 / 실체 / 기대.
+
+    세 값이 전부 다른 상황을 만들어(라벨 heisgone · 실체 thirdparty · ownership
+    16bitdo) 어느 하나라도 메시지에서 빠지면 사용자가 무엇을 고쳐야 할지 알 수 없게
+    되는 것을 잡는다. 기대의 출처(manifest / `.envrc` 폴백)도 드러나야 한다.
+    """
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "thirdparty")
+
+    res = _result(project_doctor.run_project_doctor(proj), "gh_identity_actual")
+    assert res is not None and res.severity is Severity.CRITICAL
+    assert "heisgone" in res.message, f"조회한 프로필(.envrc 라벨) 누락: {res.message!r}"
+    assert "thirdparty" in res.message, f"실체 누락: {res.message!r}"
+    assert "16bitdo" in res.message, f"기대(ownership) 누락: {res.message!r}"
+    assert "manifest" in res.message, f"기대의 출처가 안 드러남: {res.message!r}"
+
+
+def test_actual_matching_ownership_is_not_critical_despite_label_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ownership == 실체면 `.envrc` 라벨만 달라도 CRITICAL 이 아니다.
+
+    라벨은 어느 프로필을 **조회할지**만 정한다. gh 는 토큰을 OS 키체인에 공유하므로
+    라벨이 밀려 있어도 실체가 ownership 과 같을 수 있다 — 신원 자체는 옳으므로
+    커밋/PR 을 막을 이유가 없다. 라벨 드리프트는 `gh_account_routing` 의 몫이다.
+    """
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None
+    assert res.severity is Severity.INFO, (
+        f"ownership(16bitdo)==실체(16bitdo)인데 차단함 — message={res.message!r}"
+    )
+    assert not report.has_blocking()
+
+
+def test_probe_target_stays_the_envrc_label_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**조회 위치**는 ownership 이 아니라 `.envrc` 라벨 프로필 그대로여야 한다.
+
+    비교 대상만 ownership 으로 옮기는 것이 C1 수정의 핵심이다. 조회 위치까지
+    ownership 으로 바꾸면 "지금 이 프로젝트에서 실제로 쓰일 프로필"(드리프트한
+    gh-heisgone)을 아예 안 보게 되어 검출 자체가 사라진다 — 게이트가 항상 통과하는
+    더 나쁜 상태가 된다.
+    """
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
+    received: list[object] = []
+
+    def spy_gh_login(config_dir: object) -> str:
+        received.append(config_dir)
+        return "heisgone"
+
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", spy_gh_login)
+    project_doctor.run_project_doctor(proj)
+
+    assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
+    assert Path(str(received[0])) == Path.home() / ".config" / "gh-heisgone", (
+        f"조회 대상이 `.envrc` 라벨 프로필이 아님: {received[0]!r}"
+    )
+
+
+def test_unregistered_repo_falls_back_to_envrc_label_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """manifest 미등록 저장소는 기존 `.envrc` 폴백 동작을 유지한다 (불일치 → CRITICAL)."""
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo", slug="someone/other")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "heisgone")
+
+    res = _result(project_doctor.run_project_doctor(proj), "gh_identity_actual")
+    assert res is not None and res.severity is Severity.CRITICAL
+    assert ".envrc" in res.message, f"폴백 출처가 안 드러남: {res.message!r}"
+
+
+def test_unregistered_repo_falls_back_to_envrc_label_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """manifest 미등록 + 라벨==실체 → 기존대로 INFO (폴백이 과차단하지 않는다)."""
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo", slug="someone/other")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None and res.severity is Severity.INFO
+    assert not report.has_blocking()
+
+
+def test_declared_but_unbound_machine_falls_back_to_envrc_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언은 있으나 이 머신 바인딩에 `github_login` 이 없으면 라벨로 폴백한다.
+
+    `resolve()` 는 이 경우 `ownership_id` 만 채운 부분 결과를 준다 — `resolved is not
+    None` 만 보고 `github_login=None` 을 기대값으로 삼으면 실체와 절대 같아질 수 없어
+    항상 CRITICAL 이 되는 오탐 차단이 된다.
+    """
+    proj = _routed_repo(
+        tmp_path, monkeypatch, envrc_account="16bitdo", bindings=_BINDINGS_NO_GH_LOGIN
+    )
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None and res.severity is Severity.INFO
+    assert not report.has_blocking()
+
+
+def test_probe_failure_is_info_even_with_manifest_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """조회 실패는 manifest 선언이 있어도 INFO — 모름에 fail-closed 를 적용하지 않는다."""
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: None)
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None and res.severity is Severity.INFO
+    assert not report.has_blocking()
+
+
+def test_manifest_loaded_once_per_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """orchestrator 가 manifest 를 한 번만 로드해 check 들에 내려준다.
+
+    check 마다 `account_manifest.resolve()` 를 다시 부르면 훅이 Bash 명령마다 호출하는
+    경로에서 YAML 파싱이 배수로 늘어난다 — C1 수정으로 소비처가 하나 더 늘었으므로
+    회귀 여지가 커졌다.
+    """
+    proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo")
+    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    calls: list[str] = []
+    real_resolve = account_manifest.resolve
+
+    def counting_resolve(slug: str):
+        calls.append(slug)
+        return real_resolve(slug)
+
+    monkeypatch.setattr(project_doctor.account_manifest, "resolve", counting_resolve)
+    project_doctor.run_project_doctor(proj)
+
+    assert calls == ["16bitdo/analysis"], f"manifest 를 {len(calls)}회 로드함: {calls}"
