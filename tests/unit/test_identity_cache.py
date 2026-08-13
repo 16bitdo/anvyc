@@ -5,6 +5,7 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -131,7 +132,7 @@ def test_none_result_is_not_cached(cache_dir: Path, monkeypatch: pytest.MonkeyPa
 
     original_save = identity_cache._save
 
-    def tracked_save(data: dict) -> None:
+    def tracked_save(data: dict[str, dict[str, Any]]) -> None:
         save_calls.append(1)
         return original_save(data)
 
@@ -180,7 +181,7 @@ def test_non_oserror_exception_is_tolerated(cache_dir: Path, monkeypatch: pytest
     # (직렬화 불가능한 객체를 넘겨야 하지만, 테스트에선 직접 json.dump를 mock)
     original_dump = json.dump
 
-    def failing_dump(obj, fp, **kwargs):
+    def failing_dump(obj: object, fp: object, **kwargs: object) -> None:
         raise TypeError("Object of type object is not JSON serializable")
 
     monkeypatch.setattr("json.dump", failing_dump)
