@@ -59,6 +59,43 @@ def test_module_docstring_count_matches() -> None:
     assert missing == [], f"모듈 docstring 에 누락된 check: {missing}"
 
 
+def _repo_root() -> Path:
+    return Path(anvyc.__file__).resolve().parents[2]
+
+
+def test_design_spec_lists_every_check() -> None:
+    """DESIGN §33.3 이 check 명세의 SoT 문서다 — 계수와 표가 실제와 맞아야 한다."""
+    names = _orchestrated_check_names()
+    design = (_repo_root() / "DESIGN.md").read_text(encoding="utf-8")
+
+    header = re.search(r"### 33\.3 project doctor check 명세 \((\d+) check\)", design)
+    assert header is not None, "DESIGN.md 의 §33.3 헤더를 못 찾음 (섹션 번호/제목 변경?)"
+    assert header.group(1) == str(len(names)), (
+        f"DESIGN §33.3 계수({header.group(1)})가 실제({len(names)})와 다름"
+    )
+    missing = [n for n in names if f"`{n}`" not in design]
+    assert missing == [], f"DESIGN.md 에 명세 없는 check: {missing}"
+
+
+# 사용자가 읽는 문서에서 project doctor 계수를 언급하는 지점. 문구가 파일마다 달라
+# 하나의 정규식으로는 못 잡으므로 지점별로 명시한다 — 새 언급을 추가하면 여기도 추가.
+_DOC_COUNT_MENTIONS = (
+    ("README.md", r"cwd connection 정합성 (\d+) check"),
+    ("docs/multi-account.md", r"gh_account_routing 포함 (\d+) check"),
+)
+
+
+def test_doc_count_mentions_match() -> None:
+    names = _orchestrated_check_names()
+    stale: list[str] = []
+    for rel, pattern in _DOC_COUNT_MENTIONS:
+        text = (_repo_root() / rel).read_text(encoding="utf-8")
+        found = re.findall(pattern, text)
+        assert found, f"{rel} 에서 계수 언급을 못 찾음 (문구 변경? 패턴: {pattern})"
+        stale += [f"{rel}: {n}" for n in found if n != str(len(names))]
+    assert stale == [], f"실제({len(names)})와 다른 계수 언급: {stale}"
+
+
 def test_mcp_tool_description_count_matches() -> None:
     """MCP 쪽 설명도 같이 맞춰야 한다 — 에이전트가 읽는 표면이다.
 

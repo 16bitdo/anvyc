@@ -206,11 +206,11 @@ GH_TOKEN=$(gh auth token --user 16bitdo) gh api user --jq .login   # → 16bitdo
 |---|---|---|
 | `project-gh-account-mapping` | `project_roots` 아래 `.envrc` 의 `GH_CONFIG_DIR` ↔ GitHub `origin` ssh alias 정합성 (global) | ✓ v0.11.0 |
 | `gh_account_routing` | cwd 의 `GH_CONFIG_DIR` ↔ origin ssh alias 정합성 (`anvyc project doctor` 의 per-cwd check) | ✓ v0.11.0 |
-| `gh_identity_actual` | `gh api user` 로 **자격 실체**를 역참조해 선언과 대조 (라벨이 아님) | ✓ 신규 |
+| `gh_identity_actual` | `.envrc` 라벨 프로필을 `gh api user` 로 역참조해 얻은 **자격 실체**를 **manifest ownership** 과 대조 — 조회 대상은 라벨 프로필("지금 실제로 쓰일 프로필"), 비교 대상은 ownership(L1 SoT). 라벨끼리 비교하면 `.envrc` 드리프트만으로 게이트가 무력화된다 | ✓ 신규 |
 
 ```bash
 anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 9 check
+anvyc project doctor              # cwd 에 gh_account_routing 포함 11 check
 ```
 
 `anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을

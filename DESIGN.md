@@ -1942,7 +1942,7 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 렌더가 suggestion 의 `[profile x]` 를 Rich markup 으로 삼키던 버그를 해소(회귀 lock:
 `tests/unit/test_project_doctor_render.py`).
 
-### 33.3 project doctor check 명세 (9 check)
+### 33.3 project doctor check 명세 (11 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
@@ -1950,13 +1950,30 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 | `aws_account_status` | `.envrc` 의 AWS_PROFILE 있을 때만 (인증 방식 + 연결 상태; v0.21.0+) | WARNING |
 | `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
 | `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
+| `gh_identity_actual` | `.envrc` 의 GH_CONFIG_DIR 있을 때만 (그 프로필의 `gh api user` 실체 ↔ **manifest ownership**; 조회 실패는 INFO) | **CRITICAL** |
 | `claude_account_dir_exists` | `.envrc` 의 CLAUDE_CONFIG_DIR 있을 때만 | WARNING |
 | `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
 | `pulumi_backend_routing` | `Pulumi.yaml` 의 backend 또는 `.envrc` PULUMI_BACKEND_URL 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
+| `commit_identity_actual` | origin slug 가 manifest 에 선언되고 바인딩에 commit_email 이 있을 때만 (`GIT_AUTHOR_IDENT` 실체 대조; 신원 미해결은 WARNING) | **CRITICAL** |
 
 → check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
+
+`gh_identity_actual` 의 **조회 대상과 비교 대상은 서로 다른 곳에서 온다**:
+조회는 `.envrc` 의 `GH_CONFIG_DIR` 라벨 프로필("지금 이 프로젝트에서 실제로 쓰일
+프로필"), 비교는 manifest ownership(`account_manifest.resolve(slug).github_login`).
+비교까지 `.envrc` 라벨로 하면 라벨 자신과 실체를 대조하는 자기참조가 되어, `.envrc`
+한 줄이 드리프트하면 그 계정 프로필을 조회해 그 계정을 얻고 "일치" 로 통과한다 —
+게이트가 스스로 무력화된다. 반대로 조회까지 ownership 으로 옮기면 드리프트한 프로필을
+아예 안 보게 되어 검출이 사라진다. manifest 미선언 저장소·머신 바인딩 부재 시에만
+`.envrc` 라벨로 폴백한다.
+
+**AWS 는 이 게이트의 차단 범위 밖이다** (account-routing 설계 §6.4 — "AWS 변경은
+`aws-prod-account-confirm.sh` 가 이미 담당, 중복 게이트 금지"). `project doctor` 는
+AWS 프로필을 `aws_profile_defined`/`aws_account_status` 로 **관측**만 하고
+`expected_aws_profile` 같은 기대값을 payload 로 방출하지 않는다 — 방출하면 훅의
+`aws-profile` kind 가 활성화되어 manifest `uses.aws` 에 선언된 프로필까지 deny 된다.
 
 linked worktree(`.git` 이 `gitdir:` 포인터 파일)도 공통 git 디렉터리까지 따라가 remote 를 읽어 `info.github` 가 채워진다(Task 14, `github_remote_parseable`·`commit_identity_actual` 실측 확인) — `gh_account_routing`·`gh_identity_actual` 은 remote 는 이제 읽히지만 보통 gitignore 되어 linked worktree 에는 없는 `.envrc`(`GH_CONFIG_DIR`)에 별도로 의존해 대부분의 worktree 에서는 여전히 silent 하다.
 
