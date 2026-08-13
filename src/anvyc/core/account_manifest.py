@@ -49,6 +49,47 @@ def machine_name() -> str:
     return socket.gethostname().split(".")[0]
 
 
+def normalize_identity(value: object) -> str | None:
+    """바인딩 파일의 신원 값을 비교 가능한 문자열로. 못 쓰는 값이면 None.
+
+    YAML 은 인용부호 없는 값을 타입 추론한다. 전부 숫자인 GitHub 로그인
+    (`github_login: 12345`)은 int 로 파싱되는데, 그대로 두면 문자열인 실체와
+    영원히 불일치해 **해당 계정이 항상 차단**된다. int 는 문자열로 되돌린다.
+
+    `bool` 은 명시적으로 거부한다 — 파이썬에서 `bool` 은 `int` 의 서브클래스라
+    `isinstance(True, int)` 가 참이다. YAML 의 `github_login: yes` 는 `True` 로
+    파싱되고, 걸러내지 않으면 `"True"` 라는 신원이 만들어진다.
+
+    앞뒤 공백은 제거한다(`"16bitdo "` 같은 편집 실수). 빈 값은 미선언과 같게 None.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+def same_identity(declared: str | None, actual: str | None) -> bool:
+    """선언된 신원과 관측된 실체가 같은 대상을 가리키는가.
+
+    **대소문자를 무시한다.** GitHub 로그인은 대소문자 구분이 없고 API 는 정규화된
+    표기를 돌려준다(실측: `users/16BitDo` -> `16bitdo`). 정확 일치로 비교하면
+    바인딩에 `16BitDo` 라고 적은 것만으로 그 계정이 영구 차단된다 — 같은 계정인데
+    오탐으로 막는 것이라 fail-closed 의 이득 없이 손해만 남는다.
+
+    오탐 위험이 없는 이유: GitHub 로그인 문자셋은 `[A-Za-z0-9-]` 이고 대소문자만
+    다른 두 계정은 존재할 수 없으므로, 소문자화로 서로 다른 신원이 겹칠 일이 없다.
+    이메일도 GitHub 이 대소문자 무시로 매칭한다.
+
+    한쪽이라도 비어 있으면 False — "모름"을 "일치"로 승격하지 않는다.
+    """
+    if not declared or not actual:
+        return False
+    return declared.strip().lower() == actual.strip().lower()
+
+
 def manifest_path() -> Path:
     override = os.environ.get("ANVYC_ACCOUNT_MANIFEST")
     return Path(override) if override else _DEFAULT_MANIFEST
@@ -117,9 +158,9 @@ def resolve(repo_slug: str) -> ResolvedAccount | None:
         return ResolvedAccount(ownership_id=project.ownership)
     return ResolvedAccount(
         ownership_id=project.ownership,
-        github_login=binding.get("github_login") or None,
-        commit_email=binding.get("commit_email") or None,
-        ssh_alias=binding.get("ssh_alias") or None,
+        github_login=normalize_identity(binding.get("github_login")),
+        commit_email=normalize_identity(binding.get("commit_email")),
+        ssh_alias=normalize_identity(binding.get("ssh_alias")),
         gh_config_dir=_expand(binding.get("gh_config_dir")),
         claude_config_dir=_expand(binding.get("claude_config_dir")),
     )

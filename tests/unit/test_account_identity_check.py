@@ -211,3 +211,84 @@ def test_probe_cached_source_is_sibling_hosts_files_not_single_path(
     assert parent_names == ["gh-16bitdo", "gh-heisgone"], (
         f"자기 자신만 또는 다른 형제만 모음: {sources!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 신원 값 정규화 배선 — 이 check 은 resolve() 를 거치지 않고 바인딩을 직접 읽는다.
+# 세 비교 지점이 같은 규칙을 쓰지 않으면 같은 바인딩이 check 마다 다르게 판정된다.
+# ---------------------------------------------------------------------------
+
+
+def _wire(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bindings: str) -> None:
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(bindings, encoding="utf-8")
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+
+def test_case_difference_in_binding_is_info(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """바인딩 `16BitDo`, 실체 `16bitdo` — 같은 계정이므로 CRITICAL 이 아니다."""
+    _wire(
+        tmp_path,
+        monkeypatch,
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        "    github_login: 16BitDo\n"
+        "    gh_config_dir: ~/.config/gh-16bitdo\n",
+    )
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
+    results = AccountIdentityActualCheck().run(CheckContext())
+    assert len(results) == 1
+    assert results[0].severity is Severity.INFO
+
+
+def test_all_digit_login_is_verified_not_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`github_login: 12345` 는 YAML 이 int 로 파싱한다.
+
+    예전에는 비-문자열이라 조용히 skip 돼 **그 계정만 미검증**이 됐다. 이제는
+    문자열로 되돌려 정상 검증한다 — 불일치면 CRITICAL 이 나와야 한다.
+    """
+    _wire(
+        tmp_path,
+        monkeypatch,
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        "    github_login: 12345\n"
+        "    gh_config_dir: ~/.config/gh-16bitdo\n",
+    )
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
+    results = AccountIdentityActualCheck().run(CheckContext())
+    assert len(results) == 1
+    assert results[0].severity is Severity.CRITICAL
+
+
+def test_unusable_login_value_is_still_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`github_login: yes` -> bool. 신원으로 쓸 수 없으므로 조용히 건너뛴다."""
+    _wire(
+        tmp_path,
+        monkeypatch,
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        "    github_login: yes\n"
+        "    gh_config_dir: ~/.config/gh-16bitdo\n",
+    )
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
+    assert AccountIdentityActualCheck().run(CheckContext()) == []
