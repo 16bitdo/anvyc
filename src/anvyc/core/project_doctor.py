@@ -229,10 +229,21 @@ def _expected_gh_login(
     manifest 에 ownership 선언이 없거나(미등록 저장소) 이 머신 바인딩에
     `github_login` 이 없을 때만 라벨로 폴백한다 — 폴백이 없으면 미등록 저장소에서
     기대값이 비어 항상 불일치가 되는 오탐 차단이 된다.
+
+    폴백 사유는 두 가지이고 조치가 서로 다르므로 라벨에서 구분한다 — 저장소가 L1
+    manifest 에 아예 없는 것(→ manifest 에 등록)과, 선언은 있는데 이 머신 바인딩에
+    `github_login` 이 없거나 못 쓰는 값인 것(→ 바인딩 수정)이다. 둘을 뭉뚱그리면
+    "미선언" 이라고 적힌 것을 보고 manifest 를 열었다가 이미 있는 것을 발견한다.
     """
     if resolved is not None and resolved.github_login:
         return resolved.github_login, f"manifest ownership '{resolved.ownership_id}'"
-    return str(info.gh_account), ".envrc GH_CONFIG_DIR 라벨 (manifest 미선언 폴백)"
+    if resolved is not None:
+        return (
+            str(info.gh_account),
+            f".envrc GH_CONFIG_DIR 라벨 (ownership '{resolved.ownership_id}' 선언은 "
+            "있으나 이 머신 바인딩에 github_login 없음 — 폴백)",
+        )
+    return str(info.gh_account), ".envrc GH_CONFIG_DIR 라벨 (manifest 미등록 폴백)"
 
 
 def _check_gh_identity_actual(
@@ -297,7 +308,8 @@ def _check_gh_identity_actual(
                 ),
             )
         ]
-    if actual == expected:
+    # 대소문자 무시 비교 — 근거는 account_manifest.same_identity 참고.
+    if account_manifest.same_identity(expected, actual):
         return [
             CheckResult(
                 check_name="gh_identity_actual",
@@ -585,7 +597,8 @@ def _check_commit_identity_actual(
                 ),
             )
         ]
-    if actual == resolved.commit_email:
+    # 대소문자 무시 비교 — GitHub 은 커밋 이메일도 대소문자 무시로 매칭한다.
+    if account_manifest.same_identity(resolved.commit_email, actual):
         return [
             CheckResult(
                 check_name="commit_identity_actual",

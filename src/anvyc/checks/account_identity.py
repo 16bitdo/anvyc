@@ -44,11 +44,13 @@ class AccountIdentityActualCheck:
         for account_id, binding in sorted(bindings.items()):
             if not isinstance(binding, dict):
                 continue
-            expected = binding.get("github_login")
+            # 이 check 은 resolve() 를 거치지 않고 바인딩을 직접 읽으므로, 신원 값
+            # 정규화도 같은 함수로 해야 한다. 예전에는 여기서 비-문자열을 그냥
+            # skip 했는데, 전부 숫자인 로그인(`github_login: 12345` -> YAML int)이
+            # 그 경로로 빠져 **그 계정만 조용히 미검증**이 됐다.
+            expected = account_manifest.normalize_identity(binding.get("github_login"))
             gh_dir = binding.get("gh_config_dir")
-            # 방어적 타입 체크 — account_manifest._expand() 와 동일 관용구.
-            # YAML 이 문자열이 아닌 값(bool/int/list 등)을 담고 있어도 예외 없이 skip.
-            if not isinstance(expected, str) or not expected:
+            if expected is None:
                 continue
             if not isinstance(gh_dir, str) or not gh_dir:
                 continue  # 이 계정은 gh 라우팅 미선언 — 검증 대상 아님 (silent)
@@ -87,7 +89,10 @@ class AccountIdentityActualCheck:
                 # 아니다. global doctor 는 이 머신의 전 계정을 훑으므로, 모름까지
                 # 보고하면 대부분 noise 가 된다 — 침묵한다.
                 continue
-            if actual == expected:
+            # 대소문자 무시 비교 — 세 비교 지점(여기·gh_identity_actual·
+            # commit_identity_actual)이 같은 규칙을 쓰도록 한 곳에서 판정한다.
+            # 한쪽만 정규화하면 같은 바인딩이 check 마다 다르게 판정된다.
+            if account_manifest.same_identity(expected, actual):
                 results.append(
                     CheckResult(
                         check_name=self.name,

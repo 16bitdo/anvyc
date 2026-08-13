@@ -160,3 +160,105 @@ def test_resolve_expands_home_env_var_and_tilde_exactly(
     assert r is not None
     assert r.gh_config_dir == fake_home / ".config" / "gh-16bitdo"
     assert r.claude_config_dir == fake_home / ".claude"
+
+
+# ---------------------------------------------------------------------------
+# normalize_identity — 바인딩 값이 비교 가능한 문자열이 되는가
+#
+# 여기서 걸러내지 못한 값은 "선언은 있는데 실체와 영원히 불일치" 가 되어 그 계정을
+# 항상 차단한다. fail-closed 의 이득 없이 오탐만 남는 자리라 형태별로 고정한다.
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_identity_keeps_plain_string() -> None:
+    assert account_manifest.normalize_identity("16bitdo") == "16bitdo"
+
+
+def test_normalize_identity_strips_surrounding_whitespace() -> None:
+    """YAML 편집 중 흔한 후행 공백. 남겨두면 실체와 영원히 불일치한다."""
+    assert account_manifest.normalize_identity("  16bitdo  ") == "16bitdo"
+
+
+def test_normalize_identity_coerces_all_digit_login_parsed_as_int() -> None:
+    """`github_login: 12345` 는 YAML 이 int 로 파싱한다 — 문자열로 되돌린다."""
+    assert account_manifest.normalize_identity(12345) == "12345"
+
+
+def test_normalize_identity_rejects_bool_despite_int_subclass() -> None:
+    """`github_login: yes` -> True.
+
+    bool 은 int 의 서브클래스라 검사 순서를 안 지키면 `"True"` 라는 신원이 만들어진다.
+    """
+    assert account_manifest.normalize_identity(True) is None
+    assert account_manifest.normalize_identity(False) is None
+
+
+def test_normalize_identity_rejects_non_scalar() -> None:
+    assert account_manifest.normalize_identity(["a", "b"]) is None
+    assert account_manifest.normalize_identity({"a": 1}) is None
+    assert account_manifest.normalize_identity(None) is None
+
+
+def test_normalize_identity_treats_blank_as_undeclared() -> None:
+    assert account_manifest.normalize_identity("") is None
+    assert account_manifest.normalize_identity("   ") is None
+
+
+def test_resolve_normalizes_binding_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """resolve() 가 정규화를 거치는가 — 헬퍼만 고치고 배선을 빼먹으면 무의미하다."""
+    rbr = tmp_path / "rbr" / "metadata"
+    rbr.mkdir(parents=True)
+    (rbr / "account-routing.yaml").write_text(_PROJECTS, encoding="utf-8")
+    binds = tmp_path / "anvyc" / "accounts"
+    binds.mkdir(parents=True)
+    (binds / "bindings.test-machine.yaml").write_text(
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        '    github_login: "  16bitdo  "\n'
+        "    ssh_alias: 4242\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(rbr / "account-routing.yaml"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(binds))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+    r = account_manifest.resolve("16bitdo/analysis")
+    assert r is not None
+    assert r.github_login == "16bitdo"
+    assert r.ssh_alias == "4242"
+
+
+# ---------------------------------------------------------------------------
+# same_identity — 대소문자 무시 비교
+# ---------------------------------------------------------------------------
+
+
+def test_same_identity_ignores_case() -> None:
+    """GitHub 로그인은 대소문자 구분이 없다(실측: users/16BitDo -> 16bitdo).
+
+    정확 일치로 비교하면 바인딩 표기 하나로 그 계정이 영구 차단된다.
+    """
+    assert account_manifest.same_identity("16BitDo", "16bitdo") is True
+    assert account_manifest.same_identity("16bitdo", "16BITDO") is True
+
+
+def test_same_identity_ignores_case_for_email() -> None:
+    assert account_manifest.same_identity("JKLee@Whatap.io", "jklee@whatap.io") is True
+
+
+def test_same_identity_still_rejects_different_accounts() -> None:
+    """정규화가 서로 다른 신원을 겹치게 만들면 안 된다."""
+    assert account_manifest.same_identity("16bitdo", "heisgone") is False
+    assert account_manifest.same_identity("16bitdo", "16bitdoo") is False
+
+
+def test_same_identity_does_not_promote_unknown_to_match() -> None:
+    """한쪽이 비면 False — 조회 실패를 '일치' 로 올리면 게이트가 뚫린다."""
+    assert account_manifest.same_identity(None, "16bitdo") is False
+    assert account_manifest.same_identity("16bitdo", None) is False
+    assert account_manifest.same_identity(None, None) is False
+    assert account_manifest.same_identity("", "") is False

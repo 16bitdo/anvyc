@@ -165,3 +165,126 @@ def test_manifest_gh_user_overrides_envrc_label(
         f"manifest 선언(16bitdo)이 .envrc 라벨(someoneelse)을 이겨야 하는데: "
         f"{report.expected_gh_user!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 대소문자 배선 — 바인딩 표기가 `16BitDo` 일 뿐 같은 계정인데 차단되면 안 된다.
+#
+# 헬퍼(same_identity)만 고치고 호출부를 안 바꾸면 오탐이 그대로 남으므로,
+# 세 비교 지점을 orchestrator 를 통해 각각 고정한다.
+# ---------------------------------------------------------------------------
+
+_BINDINGS_MIXED_CASE = """
+version: 1
+machine: test-machine
+accounts:
+  personal-16bitdo:
+    github_login: 16BitDo
+    commit_email: 16BitDo@Gmail.com
+    ssh_alias: github.com-16bitdo
+    gh_config_dir: ~/.config/gh-16bitdo
+"""
+
+
+@pytest.fixture()
+def repo_mixed_case(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """바인딩 표기만 대소문자가 다른 머신. 실체는 정규 표기를 돌려준다."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(_BINDINGS_MIXED_CASE, encoding="utf-8")
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+    proj = tmp_path / "analysis"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:16bitdo/analysis.git\n', encoding="utf-8"
+    )
+    (proj / ".envrc").write_text(
+        'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n', encoding="utf-8"
+    )
+    return proj
+
+
+def test_commit_identity_case_difference_is_not_critical(
+    repo_mixed_case: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """바인딩 `16BitDo@Gmail.com`, 실체 `16bitdo@gmail.com` — 같은 신원이다."""
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    report = project_doctor.run_project_doctor(repo_mixed_case)
+    res = _result(report, "commit_identity_actual")
+    assert res is not None
+    assert res.severity is Severity.INFO
+
+
+def test_gh_identity_case_difference_is_not_critical(
+    repo_mixed_case: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """바인딩 `16BitDo`, 실체 `16bitdo` — 정확 일치로 비교하면 영구 차단됐다."""
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    report = project_doctor.run_project_doctor(repo_mixed_case)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None
+    assert res.severity is Severity.INFO
+
+
+def test_case_normalization_does_not_admit_a_different_account(
+    repo_mixed_case: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """정규화가 게이트를 느슨하게 만들면 안 된다 — 다른 계정은 여전히 CRITICAL."""
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "jklee@whatap.io")
+    report = project_doctor.run_project_doctor(repo_mixed_case)
+    gh = _result(report, "gh_identity_actual")
+    commit = _result(report, "commit_identity_actual")
+    assert gh is not None and gh.severity is Severity.CRITICAL
+    assert commit is not None and commit.severity is Severity.CRITICAL
+
+
+def test_fallback_label_distinguishes_unregistered_from_missing_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언은 있는데 바인딩에 github_login 이 없는 경우를 '미등록' 이라 하면 안 된다.
+
+    조치가 다르다 — 전자는 바인딩 수정, 후자는 manifest 등록이다.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    # ownership 은 선언됐으나 github_login 이 없는 바인딩
+    (b / "bindings.test-machine.yaml").write_text(
+        "version: 1\n"
+        "machine: test-machine\n"
+        "accounts:\n"
+        "  personal-16bitdo:\n"
+        "    gh_config_dir: ~/.config/gh-16bitdo\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+
+    proj = tmp_path / "analysis"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:16bitdo/analysis.git\n', encoding="utf-8"
+    )
+    (proj / ".envrc").write_text(
+        'export GH_CONFIG_DIR="$HOME/.config/gh-16bitdo"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
+
+    report = project_doctor.run_project_doctor(proj)
+    res = _result(report, "gh_identity_actual")
+    assert res is not None
+    assert "미등록" not in res.message
+    assert "바인딩에 github_login 없음" in res.message
