@@ -155,8 +155,7 @@ def test_save_failure_is_tolerated(cache_dir: Path, monkeypatch: pytest.MonkeyPa
         return "result"
 
     # os.replace()를 실패하도록 monkeypatch → _save 내부의 try/except가 catch
-    original_replace = os.replace
-
+    # (원본 보관 불필요 — monkeypatch 가 teardown 에서 되돌린다)
     def failing_replace(src: str, dst: str) -> None:
         raise OSError("권한 부족")
 
