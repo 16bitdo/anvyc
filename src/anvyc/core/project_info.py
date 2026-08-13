@@ -39,7 +39,7 @@ class ProjectInfo:
     tool_versions: dict[str, str] = field(default_factory=dict)
 
 
-def _derive_gh_account(gh_config_dir: str | None) -> str | None:
+def derive_gh_account(gh_config_dir: str | None) -> str | None:
     """`GH_CONFIG_DIR` 경로 값 → gh 계정 이름.
 
     convention: `$HOME/.config/gh-<account>` → `<account>` (basename 의 `gh-` prefix 제거).
@@ -58,7 +58,7 @@ def _derive_gh_account(gh_config_dir: str | None) -> str | None:
 def gh_config_dir_for_account(account: str) -> str:
     """gh account 이름 → `.envrc` 에 쓸 GH_CONFIG_DIR 리터럴 값.
 
-    convention: `<account>` → `$HOME/.config/gh-<account>` (`_derive_gh_account` 의 역함수).
+    convention: `<account>` → `$HOME/.config/gh-<account>` (`derive_gh_account` 의 역함수).
     `$HOME` 는 **리터럴로 보존** — direnv 가 확장하고, statusline grep / `_parse_envrc` 는
     basename(`gh-<account>`)만 보므로 portable 해야 한다.
     """
@@ -71,7 +71,7 @@ def _derive_claude_account(claude_config_dir: str | None) -> str | None:
     convention: `$HOME/.claude-<account>` → `<account>` (basename 의 `.claude-`
     prefix 제거). 기본 `$HOME/.claude` (suffix 없음) → None.
     basename 이 `.claude-<name>` / `claude-<name>` 형식이 아니면 None.
-    `_derive_gh_account` 패턴과 동일 — 경로 값이므로 basename 추출 후 prefix strip.
+    `derive_gh_account` 패턴과 동일 — 경로 값이므로 basename 추출 후 prefix strip.
     """
     if not claude_config_dir:
         return None
@@ -258,7 +258,7 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
 
     aws_profile = raw_dev_env.get("AWS_PROFILE")  # AWS_PROFILE 자체는 secret 아님
     # GH_CONFIG_DIR 경로 값 → gh 계정 (per-project gh routing). 경로 자체는 secret 아님.
-    gh_account = _derive_gh_account(raw_dev_env.get("GH_CONFIG_DIR"))
+    gh_account = derive_gh_account(raw_dev_env.get("GH_CONFIG_DIR"))
     # CLAUDE_CONFIG_DIR 경로 값 → Claude Code 계정 (per-project routing). 경로 자체는 secret 아님.
     claude_account = _derive_claude_account(raw_dev_env.get("CLAUDE_CONFIG_DIR"))
 

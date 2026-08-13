@@ -88,7 +88,7 @@ def test_project_check_key_follows_probed_dir_not_comparison_target(
     project_doctor.run_project_doctor(proj)
 
     probed_dir = tmp_path / "home" / ".config" / "gh-heisgone"
-    assert captured.get("key") == f"gh:{probed_dir}", (
+    assert captured.get("key") == identity_cache.gh_probe_key(probed_dir), (
         f"캐시 키가 조회 대상({probed_dir})에서 파생되지 않음: {captured.get('key')!r}"
     )
 
@@ -109,7 +109,7 @@ def test_global_check_key_follows_probed_dir(
     AccountIdentityActualCheck().run(CheckContext())
 
     probed_dir = tmp_path / "home" / ".config" / "gh-16bitdo"
-    assert captured.get("key") == f"gh:{probed_dir}", (
+    assert captured.get("key") == identity_cache.gh_probe_key(probed_dir), (
         f"전역 check 의 캐시 키가 논리 계정 ID 등 다른 것에서 파생됨: {captured.get('key')!r}"
     )
 
@@ -165,3 +165,51 @@ def test_different_profiles_do_not_share_a_key(
 
     assert len(keys) == 2
     assert keys[0] != keys[1], f"서로 다른 프로필이 같은 캐시 키를 씀: {keys[0]!r}"
+
+
+# ---------------------------------------------------------------------------
+# 캐시 세대 표식 — 2026-08-14 이전 `gh:` 항목은 `GH_CONFIG_DIR` 만 준 조회의
+# 결과라 "그 프로필의 계정" 이 아니라 "조회 시점의 활성 계정" 이 담겨 있다.
+# 값의 의미가 달라졌으므로 옛 항목을 재사용하면 안 된다 — 재사용하면 오염된 값이
+# TTL 8h 동안 살아남는다.
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_generation_cache_entry_is_not_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """옛 `gh:` 항목이 신선해도 무시하고 다시 조회한다."""
+    import json
+    import time
+
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    config_dir = tmp_path / "home" / ".config" / "gh-heisgone"
+
+    # 옛 세대 항목을 "방금 만든 것" 으로 심는다 — TTL 로는 걸러지지 않는 상태.
+    cache_file = identity_cache.cache_path()
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {
+                f"gh:{config_dir}": {
+                    "value": "16bitdo",  # 오염된 값 — 활성 계정이 담겼다
+                    "at": time.time(),
+                    "source_sig": [],  # 빈 source 의 실제 서명. "" 로 두면 항상 미스라 무효한 테스트가 된다
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    probed = []
+
+    def probe() -> str:
+        probed.append(1)
+        return "heisgone"
+
+    got = identity_cache.probe_cached(
+        key=identity_cache.gh_probe_key(config_dir), source=None, probe=probe
+    )
+
+    assert got == "heisgone", "옛 세대의 오염된 값이 재사용됐다"
+    assert probed, "옛 세대 항목을 신선하다고 보고 조회를 건너뛰었다"

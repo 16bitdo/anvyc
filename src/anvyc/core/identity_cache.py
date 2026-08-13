@@ -57,8 +57,13 @@ def gh_probe_key(config_dir: Path) -> str:
     `resolve()` 로 심볼릭 링크까지 정규화하지는 않는다 — 두 호출부 모두
     `expand_envrc_path()` 로 같은 형태의 절대경로를 만들어 넘기고, 여기서 파일시스템을
     건드리면 조회 대상이 없을 때(미인증 프로필) 동작이 갈릴 수 있다.
+
+    **`gh2:` 세대 표식**: 2026-08-14 이전의 `gh:` 항목은 `GH_CONFIG_DIR` 만 준 조회의
+    결과라 "그 프로필의 계정" 이 아니라 "조회 시점의 활성 계정" 이 담겨 있다
+    (`identity_probe.gh_login` 참고). 값의 의미가 달라졌으므로 접두사를 올려 옛 항목을
+    통째로 무시한다 — 그러지 않으면 오염된 값이 TTL 8h 동안 살아남는다.
     """
-    return f"gh:{Path(config_dir)}"
+    return f"gh2:{Path(config_dir)}"
 
 
 def _load() -> dict[str, dict[str, Any]]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from anvyc.core.project_info import _derive_gh_account, gh_config_dir_for_account
+from anvyc.core.project_info import derive_gh_account, gh_config_dir_for_account
 from anvyc.core.project_init import (
     ensure_gitignore_entry,
     gh_account_logged_in,
@@ -19,7 +19,7 @@ def test_gh_config_dir_for_account() -> None:
 
 
 def test_gh_config_dir_round_trips_with_derive() -> None:
-    assert _derive_gh_account(gh_config_dir_for_account("heisgone")) == "heisgone"
+    assert derive_gh_account(gh_config_dir_for_account("heisgone")) == "heisgone"
 
 
 # ---------------------------------------------------------------------------
