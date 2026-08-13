@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from anvyc.checks.base import Severity
+from anvyc.checks.base import CheckResult, Severity
 from anvyc.core import account_manifest, identity_cache, identity_probe, project_doctor
 
 
@@ -19,7 +19,7 @@ def _project(tmp_path: Path, account: str) -> Path:
     return proj
 
 
-def _result(report, name: str):
+def _result(report: project_doctor.ProjectDoctorReport, name: str) -> CheckResult | None:
     return next((r for r in report.results if r.check_name == name), None)
 
 
@@ -141,7 +141,7 @@ def test_probe_cached_source_is_collection_of_sibling_hosts_files(
     project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
 
     assert "source" in captured, "probe_cached 가 source kwarg 없이 호출됨"
-    sources = list(captured["source"])
+    sources = list(captured["source"])  # type: ignore[call-overload]
     assert len(sources) == 2, f"형제 프로필을 전부 못 모음: {sources!r}"
     names = sorted(Path(str(s)).name for s in sources)
     assert names == ["hosts.yml", "hosts.yml"], f"디렉터리가 섞여 있음: {sources!r}"
@@ -186,6 +186,7 @@ def test_sibling_profile_reauth_invalidates_cache(
 
     report1 = project_doctor.run_project_doctor(proj)
     res1 = _result(report1, "gh_identity_actual")
+    assert res1 is not None
     assert res1.severity is Severity.INFO
     assert len(calls) == 1
 
@@ -199,6 +200,7 @@ def test_sibling_profile_reauth_invalidates_cache(
 
     report2 = project_doctor.run_project_doctor(proj)
     res2 = _result(report2, "gh_identity_actual")
+    assert res2 is not None
     assert res2.severity is Severity.CRITICAL, (
         f"형제 프로필 재인증을 캐시가 놓침 — severity={res2.severity}, "
         f"message={res2.message!r}"
@@ -444,7 +446,7 @@ def test_manifest_loaded_once_per_run(
     calls: list[str] = []
     real_resolve = account_manifest.resolve
 
-    def counting_resolve(slug: str):
+    def counting_resolve(slug: str) -> account_manifest.ResolvedAccount | None:
         calls.append(slug)
         return real_resolve(slug)
 
