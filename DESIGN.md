@@ -1958,6 +1958,8 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 
 → check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
 
+linked worktree(`.git` 이 `gitdir:` 포인터 파일)도 공통 git 디렉터리까지 따라가 remote 를 읽어 `info.github` 가 채워진다(Task 14, `github_remote_parseable`·`commit_identity_actual` 실측 확인) — `gh_account_routing`·`gh_identity_actual` 은 remote 는 이제 읽히지만 보통 gitignore 되어 linked worktree 에는 없는 `.envrc`(`GH_CONFIG_DIR`)에 별도로 의존해 대부분의 worktree 에서는 여전히 silent 하다.
+
 `gh_account_routing` (v0.11.0): origin remote URL 이 `github.com-<alias>` ssh
 alias 를 쓰면, `.envrc` 의 `GH_CONFIG_DIR` 에서 도출한 gh 계정 (§32.4a) 이
 그 alias 와 일치하는지 검증. `GH_CONFIG_DIR` 부재 / 계정 불일치 → WARNING,

@@ -180,6 +180,75 @@ def _collect_tool_versions(path: Path) -> dict[str, str]:
     return out
 
 
+def _resolve_gitdir_pointer(dotgit_file: Path) -> Path | None:
+    """`.git` 파일(`gitdir: <path>` 포인터) → remote config 를 읽을 git 디렉터리.
+
+    linked worktree 의 `.git` 은 디렉터리가 아니라 이 포인터 파일이다(실측:
+    `git worktree add` 로 만든 worktree, 2026-08-13). 포인터가 가리키는 디렉터리는
+    보통 worktree 전용 사설 gitdir(`<본체>/.git/worktrees/<name>/`)이고, 그 안의
+    `commondir` 파일이 remote 설정을 가진 공통 `.git` 디렉터리(본체)를 상대경로로
+    가리킨다. `commondir` 이 없으면(예: `.git` 파일 포맷을 공유하는 git submodule
+    처럼 포인터 대상 자체가 이미 독립된 config 를 가짐) 포인터가 가리키는 디렉터리를
+    그대로 쓴다.
+
+    포인터·commondir 값은 로컬 git 이 쓴 파일이지만 신뢰하지 않는다 — 상대경로는
+    각자의 기준 디렉터리(포인터는 이 `.git` 파일의 부모, commondir 은 포인터가
+    가리키는 디렉터리)를 기준으로 pathlib `/` 연산만으로 해석한다(prefix 를 잘라내는
+    문자열 슬라이싱은 쓰지 않는다 — sync.py 의 path-traversal 회귀 참조). 값이
+    `..`/절대경로를 포함해도 별도로 막지 않는다 — 원격 입력이 아니라 로컬 git 이
+    쓴 파일이고, 실패해도 아래에서 읽기 전용으로만 쓰인다.
+
+    어느 단계든 실패하면(파일 없음/권한 오류/형식 불일치) 예외를 던지지 않고
+    `None` 을 반환한다 — `project_info` 는 `anvyc doctor` 의 offline·non-fatal
+    경로라 여기서 죽으면 안 된다. `commondir` 부재는 실패가 아니라 정상 분기다.
+
+    linked worktree 레이아웃으로만 검증했다 — submodule 의 `.git` 파일도 동일
+    포인터 형식을 쓰지만 별도로 테스트하지는 않았다.
+    """
+    try:
+        raw = dotgit_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    first_line = stripped.splitlines()[0]
+    if not first_line.startswith("gitdir:"):
+        return None
+    pointer = first_line[len("gitdir:"):].strip()
+    if not pointer:
+        return None
+
+    try:
+        pointer_path = Path(pointer)
+    except ValueError:
+        return None
+    git_dir = pointer_path if pointer_path.is_absolute() else dotgit_file.parent / pointer_path
+
+    commondir_file = git_dir / "commondir"
+    try:
+        commondir_exists = commondir_file.is_file()
+    except OSError:
+        return None
+    if not commondir_exists:
+        return git_dir  # 비-worktree gitdir(예: submodule) — 포인터 대상을 그대로 사용
+
+    try:
+        common_raw = commondir_file.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not common_raw:
+        return None
+    common_first_line = common_raw.splitlines()[0]
+
+    try:
+        common_path = Path(common_first_line)
+    except ValueError:
+        return None
+    return common_path if common_path.is_absolute() else git_dir / common_path
+
+
 def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectInfo:
     """단일 path 의 모든 connection 정보 통합."""
     p = path.resolve()
@@ -197,6 +266,11 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
     git_dir = p / ".git"
     if git_dir.is_dir():
         github_remotes = parse_git_config(git_dir)
+    elif git_dir.is_file():
+        # linked worktree (또는 submodule) — `.git` 이 `gitdir:` 포인터 파일.
+        resolved_git_dir = _resolve_gitdir_pointer(git_dir)
+        if resolved_git_dir is not None:
+            github_remotes = parse_git_config(resolved_git_dir)
     github = [_git_to_dict(r) for r in github_remotes] if github_remotes else None
 
     # pulumi dict 는 `backend` 키 포함 (Pulumi.yaml 의 backend.url, per-project routing).
