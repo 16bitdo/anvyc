@@ -245,6 +245,7 @@ anvyc/
 │       │   ├── project_doctor.py  # §33 per-cwd doctor
 │       │   ├── project_discovery.py
 │       │   ├── project_roots.py   # §27.8 프로젝트 루트 SoT
+│       │   ├── account_manifest.py  # 계정 라우팅 L1 프로젝트맵(role-based-ruleset) + L2 머신 바인딩 2층 조인 (read-only)
 │       │   └── doctor.py
 │       ├── adapters/
 │       │   ├── __init__.py
@@ -1227,6 +1228,12 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 | `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
 
+**계정 identity 실체 검증** (global — 바인딩 선언 vs 실제 토큰, `core/account_manifest.py`)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `account-identity-actual` | 이 머신의 `account_manifest` 바인딩이 선언한 `gh_config_dir` 프로필의 토큰이 실제로 `github_login` 계정에 귀속되는지 `gh api user` 역조회로 대조 — `project-gh-account-mapping` 의 라벨 정합과 달리 실체를 본다(path 무관, 바인딩된 논리 계정 전체 순회). 조회 실패는 미보고(모름≠불일치), 불일치만 CRITICAL. L4 anvyx C6 pre-run gate 가 `anvyc doctor --strict --json` 의 `summary.critical` 로 소비 — 이 check 만으로 anvyx 코드 변경 없이 autopilot 이 게이트된다 | v0.21.x |
+
 **multi-account 환경 진단**
 
 | check_name | 영역 | 추가 |
@@ -1756,6 +1763,16 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
 | `tool_versions` | object | no | python/node/asdf 종합 — 빈 객체 가능 |
 
+> **ownership 은 이 schema 에 없다(의도적).** 사람용 출력(`--json` 없이)은
+> `gh_account` 줄 바로 아래에 account-routing manifest(L1)가 선언한 `ownership`
+> 을 병기한다 — `gh_account` 는 `.envrc` 라벨 파생값이라 실체(정책상 소유자)와
+> 다를 수 있어, 어느 쪽이 정책 SoT 인지 드러내기 위해서다(미선언 저장소는
+> `(미선언)` 으로 명시). `account_manifest.resolve()` 조회만 하며 실체
+> 조회(identity_probe)는 절대 하지 않는다 — `project show` 는 오프라인 유지가
+> 원칙이라 §32.7 의 public JSON API 확장 대상에 넣지 않았다. 기계가독으로
+> manifest 파생값이 필요하면 `project doctor --json` 의
+> `expected_gh_user`/`expected_commit_email` 필드를 쓴다.
+
 ### 32.3 github 항목 (array of object)
 
 | key | type | 설명 |
@@ -1925,7 +1942,7 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 렌더가 suggestion 의 `[profile x]` 를 Rich markup 으로 삼키던 버그를 해소(회귀 lock:
 `tests/unit/test_project_doctor_render.py`).
 
-### 33.3 project doctor check 명세 (9 check)
+### 33.3 project doctor check 명세 (11 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
@@ -1933,13 +1950,32 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 | `aws_account_status` | `.envrc` 의 AWS_PROFILE 있을 때만 (인증 방식 + 연결 상태; v0.21.0+) | WARNING |
 | `github_remote_parseable` | `.git/config` 있을 때만 | (parseable 한 것만 info 에 들어가므로 항상 INFO) |
 | `gh_account_routing` | origin remote 가 GitHub ssh alias 쓸 때만 | WARNING |
+| `gh_identity_actual` | `.envrc` 의 GH_CONFIG_DIR 있을 때만 (그 프로필의 `gh api user` 실체 ↔ **manifest ownership**; 조회 실패는 INFO) | **CRITICAL** |
 | `claude_account_dir_exists` | `.envrc` 의 CLAUDE_CONFIG_DIR 있을 때만 | WARNING |
 | `pulumi_stacks_valid` | `Pulumi.yaml` 있을 때만 | WARNING |
 | `pulumi_backend_routing` | `Pulumi.yaml` 의 backend 또는 `.envrc` PULUMI_BACKEND_URL 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
+| `commit_identity_actual` | origin slug 가 manifest 에 선언되고 바인딩에 commit_email 이 있을 때만 (`GIT_AUTHOR_IDENT` 실체 대조; 신원 미해결은 WARNING) | **CRITICAL** |
 
 → check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
+
+`gh_identity_actual` 의 **조회 대상과 비교 대상은 서로 다른 곳에서 온다**:
+조회는 `.envrc` 의 `GH_CONFIG_DIR` 라벨 프로필("지금 이 프로젝트에서 실제로 쓰일
+프로필"), 비교는 manifest ownership(`account_manifest.resolve(slug).github_login`).
+비교까지 `.envrc` 라벨로 하면 라벨 자신과 실체를 대조하는 자기참조가 되어, `.envrc`
+한 줄이 드리프트하면 그 계정 프로필을 조회해 그 계정을 얻고 "일치" 로 통과한다 —
+게이트가 스스로 무력화된다. 반대로 조회까지 ownership 으로 옮기면 드리프트한 프로필을
+아예 안 보게 되어 검출이 사라진다. manifest 미선언 저장소·머신 바인딩 부재 시에만
+`.envrc` 라벨로 폴백한다.
+
+**AWS 는 이 게이트의 차단 범위 밖이다** (account-routing 설계 §6.4 — "AWS 변경은
+`aws-prod-account-confirm.sh` 가 이미 담당, 중복 게이트 금지"). `project doctor` 는
+AWS 프로필을 `aws_profile_defined`/`aws_account_status` 로 **관측**만 하고
+`expected_aws_profile` 같은 기대값을 payload 로 방출하지 않는다 — 방출하면 훅의
+`aws-profile` kind 가 활성화되어 manifest `uses.aws` 에 선언된 프로필까지 deny 된다.
+
+linked worktree(`.git` 이 `gitdir:` 포인터 파일)도 공통 git 디렉터리까지 따라가 remote 를 읽어 `info.github` 가 채워진다(Task 14, `github_remote_parseable`·`commit_identity_actual` 실측 확인) — `gh_account_routing`·`gh_identity_actual` 은 remote 는 이제 읽히지만 보통 gitignore 되어 linked worktree 에는 없는 `.envrc`(`GH_CONFIG_DIR`)에 별도로 의존해 대부분의 worktree 에서는 여전히 silent 하다.
 
 `gh_account_routing` (v0.11.0): origin remote URL 이 `github.com-<alias>` ssh
 alias 를 쓰면, `.envrc` 의 `GH_CONFIG_DIR` 에서 도출한 gh 계정 (§32.4a) 이
@@ -2092,10 +2128,13 @@ Phase 2 에서 `anvyc aws profile create/edit/rm` (`~/.aws/config` profile CRUD,
 > 로 분리됐습니다.**
 
 Control Plane v3 의 첫 axis. 여러 머신 간 control plane mutable state
-(CP-4 snapshot meta + CP-3 health JSON + CP-5 creds expiry timestamp)
-동기화. `SyncTargetManifest schema v1` + `anvyc sync {status|push|pull}` +
+(CP-4 snapshot meta + CP-3 health JSON + 계정 바인딩; CP-5 creds expiry
+timestamp 는 live computation 이라 여전히 out-of-scope) 동기화.
+`SyncTargetManifest schema v1` + `anvyc sync {status|push|pull}` +
 `sync conflict {list|resolve}` (per-entry sha256 명시 해결). auto-policy /
-3-way merge 영구 out-of-scope — 사용자 prompt 가 권위.
+3-way merge 영구 out-of-scope — 사용자 prompt 가 권위. 계정 바인딩
+(`account_bindings` kind)은 rule 27 대응으로 후속 편입 — public
+identifier·경로만 담아 자격 본문 sync 금지(rule 27 §1)에 적격이다.
 
 상세 (schema v1 / diff 알고리즘 / remote target layout / push-pull 안전
 절차 / conflict resolution 정책) → [CP-6 본문](./docs/design-axes/cp-06-sync.md).

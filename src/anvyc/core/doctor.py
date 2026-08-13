@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from anvyc.checks.account_identity import AccountIdentityActualCheck
 from anvyc.checks.adapter_validate import AdapterValidationCheck
 from anvyc.checks.aws_account_status import AwsAccountStatusCheck
 from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
@@ -112,6 +113,7 @@ _REGISTRY: dict[str, Check] = {
     "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
     "project-branch-protection": ProjectBranchProtectionCheck(),
     "container-runtime-health": ContainerRuntimeHealthCheck(),
+    "account-identity-actual": AccountIdentityActualCheck(),
 }
 
 

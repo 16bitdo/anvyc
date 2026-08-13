@@ -9,6 +9,7 @@ import pytest
 
 from anvyc.core.sync import (
     ALL_KINDS,
+    KIND_ACCOUNT_BINDINGS,
     KIND_HEALTH_JSON,
     KIND_SNAPSHOT_META,
     REMOTE_MANIFEST_NAME,
@@ -47,6 +48,12 @@ def _write_snapshot_meta(home: Path, workspace: str, snap_id: str, content: str)
     d = home / "dev" / workspace / ".anvyc" / "snapshots" / snap_id
     d.mkdir(parents=True, exist_ok=True)
     (d / "meta.json").write_text(content, encoding="utf-8")
+
+
+def _write_account_bindings(home: Path, hostname: str, content: str) -> None:
+    d = home / ".config" / "anvyc" / "accounts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"bindings.{hostname}.yaml").write_text(content, encoding="utf-8")
 
 
 def test_resolve_machine_id_explicit() -> None:
@@ -94,9 +101,26 @@ def test_scan_local_manifest_snapshot_meta(fake_home: Path, now_fixed: datetime)
     assert "anvyc/snapshots/foo-project-20260525T100000Z-a1b2c3/meta.json" in paths
 
 
+def test_scan_local_manifest_account_bindings_only(fake_home: Path, now_fixed: datetime) -> None:
+    """`~/.config/anvyc/accounts/bindings.<hostname>.yaml` 이 sync 대상으로 발견되는가 (rule 27)."""
+    _write_account_bindings(fake_home, "JaiKwangui-Mac-Studio", "version: 1\naccounts: {}\n")
+    m = scan_local_manifest(home=fake_home, machine_id="t", now=now_fixed)
+    assert len(m.items) == 1
+    item = m.items[0]
+    assert item.kind == KIND_ACCOUNT_BINDINGS
+    assert item.relative_path == "anvyc/accounts/bindings.JaiKwangui-Mac-Studio.yaml"
+
+
+def test_scan_local_manifest_account_bindings_missing_dir(fake_home: Path, now_fixed: datetime) -> None:
+    """`~/.config/anvyc/accounts/` 자체가 없으면 조용히 빈 list (다른 kind 와 동일 관례)."""
+    m = scan_local_manifest(home=fake_home, machine_id="t", now=now_fixed)
+    assert m.items == []
+
+
 def test_scan_local_manifest_mixed_kinds(fake_home: Path, now_fixed: datetime) -> None:
     _write_health(fake_home, "2026-05-25", "{}")
     _write_snapshot_meta(fake_home, "ws", "id1", "{}")
+    _write_account_bindings(fake_home, "host-x", "version: 1\naccounts: {}\n")
     m = scan_local_manifest(home=fake_home, machine_id="t", now=now_fixed)
     kinds = sorted({i.kind for i in m.items})
     assert kinds == sorted(ALL_KINDS)

@@ -321,10 +321,12 @@ anvyc tools configure [--yes]  # 도구 enable/disable 대화형 선택 → anvy
 
 anvyc project show [--path P] [--json] [--reveal-secrets]
                                # cwd 의 AWS/GitHub/Pulumi/dev_env 통합 view (v0.8.0+)
+                               # 사람용 출력은 manifest 선언 ownership 도 병기 (gh_account 라벨과 구분)
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
-                               # cwd connection 정합성 8 check (v0.8.1+)
+                               # cwd connection 정합성 11 check (v0.8.1+)
+                               # gh/커밋 신원은 라벨이 아니라 실체를 manifest ownership 과 대조
 anvyc prompt [--path P] [--json]
                                # cwd 계정 라우팅을 shell prompt 용 한 줄로 (v0.13.0+)
 

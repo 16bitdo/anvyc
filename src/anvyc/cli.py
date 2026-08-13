@@ -2078,6 +2078,25 @@ def project_show(
     console.print(f"[bold]path[/] {payload['path']}")
     console.print(f"[bold]aws_profile[/] {payload['aws_profile'] or '[dim](unset)[/]'}")
     console.print(f"[bold]gh_account[/] {payload['gh_account'] or '[dim](unset)[/]'}")
+    # ownership — manifest 선언(L1 account-routing.yaml). gh_account 는 .envrc 라벨이라
+    # 실체(정책상 이 저장소를 실제로 소유하는 계정)와 다를 수 있다 — 이 줄이 정책 SoT.
+    # _origin_repo_slug 는 project_doctor 의 동일 로직을 그대로 재사용한다(worktree 등
+    # caveat 를 문서 한 곳에서만 관리하기 위해 재구현하지 않음). cli.py 는 이미
+    # `project doctor` 커맨드에서 project_doctor 를 지연 import 하므로 신규 계층 의존이
+    # 아니고, private helper 재사용도 checks/account_identity.py 에 이미 전례가 있다.
+    # 실체 조회(identity_probe)는 절대 호출하지 않는다 — project show 는 오프라인이어야
+    # 한다(네트워크 대조는 project doctor 의 몫).
+    from anvyc.core import account_manifest
+    from anvyc.core.project_doctor import _origin_repo_slug
+
+    _repo_slug = _origin_repo_slug(info)
+    _resolved = account_manifest.resolve(_repo_slug) if _repo_slug else None
+    if _resolved is not None:
+        console.print(f"[bold]ownership[/] {_resolved.ownership_id}")
+        if _resolved.commit_email:
+            console.print(f"  • commit_email: {_resolved.commit_email}")
+    elif _repo_slug:
+        console.print(f"[bold]ownership[/] [yellow](미선언)[/] — {_repo_slug}")
     console.print(f"[bold]claude_account[/] {payload['claude_account'] or '[dim](unset)[/]'}")
     gh = payload.get("github") or []
     if gh:
@@ -2182,16 +2201,19 @@ def project_doctor(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 8 check.
+    """cwd (또는 --path) 의 connection 정합성 11 check.
 
-    1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
-    2. github_remote_parseable    origin URL parse
-    3. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
-    4. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
-    5. pulumi_stacks_valid        stack 이름 형식
-    6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
-    7. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
-    8. tool_versions_installed    python/node binary PATH 존재
+     1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
+     2. aws_account_status         인증 방식별 연결 상태 (SSO/static/assume-role/process)
+     3. github_remote_parseable    origin URL parse
+     4. gh_account_routing         origin ssh alias ↔ .envrc GH_CONFIG_DIR
+     5. gh_identity_actual         gh 프로필 토큰의 실체 ↔ manifest ownership (CRITICAL)
+     6. claude_account_dir_exists  .envrc CLAUDE_CONFIG_DIR → config 디렉터리 존재
+     7. pulumi_stacks_valid        stack 이름 형식
+     8. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
+     9. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
+    10. tool_versions_installed    python/node binary PATH 존재
+    11. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원 (CRITICAL)
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")
@@ -2201,11 +2223,7 @@ def project_doctor(
     report = run_project_doctor(path)
 
     if json_out:
-        payload = {
-            "path": str(report.path),
-            "results": [r.to_dict() for r in report.results],
-        }
-        typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
+        typer.echo(jsonlib.dumps(report.to_payload(), ensure_ascii=False, indent=2))
     else:
         _render_project_doctor(report)
 

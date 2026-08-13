@@ -7,7 +7,7 @@ stdio transport — Claude Code / Cursor 의 mcp.json 에서:
 8 read-only tool 노출 (D21 + CP-1 3/3 + CP-13):
   project_show       cwd 의 단일 project connection
   project_list       root 아래 모든 project matrix
-  project_doctor     cwd 의 정합성 8 check
+  project_doctor     cwd 의 정합성 11 check
   doctor             anvyc 환경 진단 (24 check)
   tools_list         10 도구 메타데이터 + 상태 (label/category/summary/...)
   activity_summary   Claude Code session 통합 통계 (CP-1)
@@ -90,7 +90,10 @@ def _tool_defs() -> list[Tool]:
         ),
         Tool(
             name="project_doctor",
-            description=("cwd (또는 명시 path) 의 connection 정합성 8 check. DESIGN §33.2/§33.3."),
+            description=(
+                "cwd (또는 명시 path) 의 connection 정합성 11 check "
+                "(gh/커밋 신원 실체 대조 포함). DESIGN §33.2/§33.3."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -281,10 +284,7 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
 
         p = Path(args.get("path") or ".")
         report = run_project_doctor(p)
-        return {
-            "path": str(report.path),
-            "results": [r.to_dict() for r in report.results],
-        }
+        return report.to_payload()
 
     if name == "doctor":
         from anvyc.core.doctor import run_doctor
