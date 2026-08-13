@@ -50,8 +50,15 @@ class ProjectDoctorReport:
     results: list[CheckResult] = field(default_factory=list)
     # 훅(account-routing-mismatch.sh)이 소비하는 C2 계약 필드.
     # 값이 없으면 payload 에서 생략한다 — 훅의 "미특정 → allow" 정책을 깨지 않기 위해.
+    #
+    # AWS 기대값은 **의도적으로 없다**. 설계 §6.4 "차단 범위" 가 AWS 를 명시적으로
+    # 제외한다 — "제외  AWS 변경 — aws-prod-account-confirm.sh 가 이미 담당
+    # (중복 게이트 금지)". `expected_aws_profile` 을 방출하면 훅의 `aws-profile` kind
+    # 가 깨어나 manifest `uses.aws` 에 선언된 프로필을 쓴 `aws s3 ls --profile
+    # whatap-dev` 조차 deny 된다(§9 는 "선언에 없는 도구 자격 → warn 후 allow" 로
+    # 규정). AWS 프로필 관측 자체는 `aws_profile_defined`/`aws_account_status` check
+    # 결과로 이미 보고된다 — 빠진 것처럼 보여도 되살리지 말 것.
     expected_gh_user: str | None = None
-    expected_aws_profile: str | None = None
     expected_commit_email: str | None = None
 
     def has_blocking(self) -> bool:
@@ -66,7 +73,7 @@ class ProjectDoctorReport:
             "path": str(self.path),
             "results": [r.to_dict() for r in self.results],
         }
-        for key in ("expected_gh_user", "expected_aws_profile", "expected_commit_email"):
+        for key in ("expected_gh_user", "expected_commit_email"):
             value = getattr(self, key)
             if value:
                 payload[key] = value
@@ -625,8 +632,8 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_tool_versions_installed(info))
     report.results.extend(_check_commit_identity_actual(path, slug, resolved))
     # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
+    # AWS 는 여기서 방출하지 않는다 (설계 §6.4 제외 — ProjectDoctorReport 주석 참조).
     report.expected_gh_user = info.gh_account
-    report.expected_aws_profile = info.aws_profile
     if resolved is not None:
         report.expected_commit_email = resolved.commit_email
         # manifest ownership 이 있으면 .envrc 라벨보다 우선한다 (L1 이 SoT).
