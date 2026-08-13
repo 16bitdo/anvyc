@@ -29,6 +29,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Any
 
 _DEFAULT_TTL = 8 * 3600
 
@@ -60,7 +61,7 @@ def gh_probe_key(config_dir: Path) -> str:
     return f"gh:{Path(config_dir)}"
 
 
-def _load() -> dict[str, dict]:
+def _load() -> dict[str, dict[str, Any]]:
     p = cache_path()
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
@@ -69,7 +70,7 @@ def _load() -> dict[str, dict]:
     return data if isinstance(data, dict) else {}
 
 
-def _save(data: dict[str, dict]) -> None:
+def _save(data: dict[str, dict[str, Any]]) -> None:
     """Atomic write using tempfile + os.replace. 쓰기 실패는 조용히 넘긴다."""
     p = cache_path()
     try:
