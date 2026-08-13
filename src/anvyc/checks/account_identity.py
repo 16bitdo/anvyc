@@ -61,7 +61,11 @@ class AccountIdentityActualCheck:
             expanded_dir = expand_envrc_path(gh_dir)
 
             actual = identity_cache.probe_cached(
-                key=f"gh:{account_id}",
+                # 키는 논리 계정 ID 가 아니라 **조회한 config 디렉터리**에서 파생한다.
+                # project_doctor 의 gh_identity_actual 이 같은 프로필을 `.envrc` 라벨로
+                # 키잉하고 있어, 값도 무효화 조건도 같은데 키가 갈려 같은 프로필을 두
+                # 번 조회했다(리뷰 M2). 파생 규칙은 identity_cache 한 곳에 둔다.
+                key=identity_cache.gh_probe_key(expanded_dir),
                 # 이 프로필의 hosts.yml 하나가 아니라 형제 gh-* 프로필 전체의
                 # hosts.yml 을 무효화 트리거로 쓴다. gh CLI 는 GH_CONFIG_DIR 로
                 # 라벨(계정 표시)만 프로필별로 나누고 토큰은 OS 키체인에 저장해 모든

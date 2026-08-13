@@ -279,7 +279,9 @@ def _check_gh_identity_actual(
     # 무효화가 실패한다. 그래서 이 프로필 하나가 아니라 형제 프로필 전체의
     # hosts.yml 을 source 로 넘긴다(OR 무효화 — identity_cache.probe_cached 참고).
     actual = identity_cache.probe_cached(
-        key=f"gh:{info.gh_account}",
+        # 키는 비교 대상(ownership)이 아니라 **조회 대상**(이 config 디렉터리)에서
+        # 파생한다 — 전역 check 과 같은 함수를 써 네임스페이스를 통일한다.
+        key=identity_cache.gh_probe_key(expanded_dir),
         source=_gh_profile_hosts_files(expanded_dir),
         probe=lambda: identity_probe.gh_login(expanded_dir),
     )

@@ -39,6 +39,27 @@ def cache_path() -> Path:
     return root / "identity.json"
 
 
+def gh_probe_key(config_dir: Path) -> str:
+    """gh 실체 조회의 캐시 키 — **조회한 config 디렉터리**에서 파생한다.
+
+    키는 "무엇과 비교하는가" 가 아니라 "무엇을 조회했는가" 로 만들어야 한다. 캐시가
+    담는 값은 `gh api user` 의 응답, 즉 **그 디렉터리를 GH_CONFIG_DIR 로 준 조회의
+    결과**이지 그것을 무엇과 대조할지와는 무관하기 때문이다.
+
+    호출부가 각자 편한 이름(프로젝트별 check 은 `.envrc` 라벨, 전역 check 은 논리
+    계정 ID)으로 키를 만들면, 같은 프로필을 가리키면서 키가 갈려 같은 조회를 두 번
+    한다 — 훅이 Bash 명령마다 `project doctor` 를 부르는 경로라 그대로 지연이 된다.
+    반대로 비교 대상(manifest ownership)으로 키를 만들면 서로 다른 프로필의 조회
+    결과가 한 키를 공유하는 더 나쁜 버그가 된다. 그래서 파생 규칙을 여기 한 곳에
+    두고 두 호출부가 공유한다.
+
+    `resolve()` 로 심볼릭 링크까지 정규화하지는 않는다 — 두 호출부 모두
+    `expand_envrc_path()` 로 같은 형태의 절대경로를 만들어 넘기고, 여기서 파일시스템을
+    건드리면 조회 대상이 없을 때(미인증 프로필) 동작이 갈릴 수 있다.
+    """
+    return f"gh:{Path(config_dir)}"
+
+
 def _load() -> dict[str, dict]:
     p = cache_path()
     try:
