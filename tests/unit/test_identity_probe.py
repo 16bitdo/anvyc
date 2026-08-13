@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
@@ -17,9 +18,9 @@ class _Proc:
 
 
 def test_gh_login_returns_actual_account(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **kwargs: object) -> _Proc:
         captured["cmd"] = cmd
         captured["env"] = kwargs.get("env") or {}
         return _Proc(stdout="heisgone\n")
@@ -38,7 +39,7 @@ def test_gh_login_returns_none_on_failure(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_gh_login_returns_none_when_gh_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(*a, **k):
+    def boom(*a: object, **k: object) -> NoReturn:
         raise FileNotFoundError("gh")
 
     monkeypatch.setattr(subprocess, "run", boom)
