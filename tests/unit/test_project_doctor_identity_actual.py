@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from anvyc.checks.base import Severity
-from anvyc.core import account_manifest, project_doctor
+from anvyc.core import account_manifest, identity_cache, identity_probe, project_doctor
 
 
 def _project(tmp_path: Path, account: str) -> Path:
@@ -26,7 +26,7 @@ def _result(report, name: str):
 def test_actual_matches_declared(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
     report = project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
     res = _result(report, "gh_identity_actual")
     assert res is not None
@@ -37,7 +37,7 @@ def test_actual_differs_is_critical(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     """2026-08-12 실측 회귀 케이스 — gh-16bitdo 프로필의 토큰이 heisgone 이었다."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "heisgone")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
     report = project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
     res = _result(report, "gh_identity_actual")
     assert res is not None
@@ -50,7 +50,7 @@ def test_probe_failure_is_info_not_mismatch(tmp_path: Path, monkeypatch: pytest.
     """조회 실패는 모름이지 불일치가 아니다 — 인프라 부재에 fail-closed 를 적용하지 않는다."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: None)
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: None)
     report = project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
     res = _result(report, "gh_identity_actual")
     assert res is not None
@@ -97,7 +97,7 @@ def test_gh_login_receives_expanded_absolute_path(
         received.append(config_dir)
         return "16bitdo"
 
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", spy_gh_login)
+    monkeypatch.setattr(identity_probe, "gh_login", spy_gh_login)
     project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
 
     assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
@@ -123,7 +123,7 @@ def test_probe_cached_source_is_collection_of_sibling_hosts_files(
     """
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
     # 형제 프로필 2개(16bitdo 자신 + heisgone)를 실제로 만들어, glob 이 정말로
     # 부모 디렉터리 아래 gh* 전체를 찾는지(자기 자신만이 아니라) 확인한다.
     gh_root = tmp_path / "home" / ".config"
@@ -137,7 +137,7 @@ def test_probe_cached_source_is_collection_of_sibling_hosts_files(
         captured.update(kwargs)
         return "16bitdo"
 
-    monkeypatch.setattr(project_doctor.identity_cache, "probe_cached", spy_probe_cached)
+    monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
     project_doctor.run_project_doctor(_project(tmp_path, "16bitdo"))
 
     assert "source" in captured, "probe_cached 가 source kwarg 없이 호출됨"
@@ -181,7 +181,7 @@ def test_sibling_profile_reauth_invalidates_cache(
         calls.append(1)
         return shared_keychain[0]
 
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", fake_gh_login)
+    monkeypatch.setattr(identity_probe, "gh_login", fake_gh_login)
     proj = _project(tmp_path, "16bitdo")
 
     report1 = project_doctor.run_project_doctor(proj)
@@ -267,7 +267,7 @@ def _routed_repo(
     # commit_identity_actual 은 이 테스트들의 관심사가 아니다 — 실제 git 호출로
     # 새어나가 결과가 머신 상태에 의존하지 않도록 고정한다.
     monkeypatch.setattr(
-        project_doctor.identity_probe, "commit_email", lambda p: "16bitdo@gmail.com"
+        identity_probe, "commit_email", lambda p: "16bitdo@gmail.com"
     )
 
     proj = tmp_path / "analysis"
@@ -293,7 +293,7 @@ def test_envrc_drift_alone_reproduces_the_gate_bypass(
     사고가 `.envrc` 파일 한 줄의 드리프트만으로 재현된다.
     """
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "heisgone")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
 
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
@@ -315,7 +315,7 @@ def test_critical_message_distinguishes_probed_actual_and_expected(
     되는 것을 잡는다. 기대의 출처(manifest / `.envrc` 폴백)도 드러나야 한다.
     """
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "thirdparty")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "thirdparty")
 
     res = _result(project_doctor.run_project_doctor(proj), "gh_identity_actual")
     assert res is not None and res.severity is Severity.CRITICAL
@@ -335,7 +335,7 @@ def test_actual_matching_ownership_is_not_critical_despite_label_drift(
     커밋/PR 을 막을 이유가 없다. 라벨 드리프트는 `gh_account_routing` 의 몫이다.
     """
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
 
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
@@ -363,7 +363,7 @@ def test_probe_target_stays_the_envrc_label_profile(
         received.append(config_dir)
         return "heisgone"
 
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", spy_gh_login)
+    monkeypatch.setattr(identity_probe, "gh_login", spy_gh_login)
     project_doctor.run_project_doctor(proj)
 
     assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
@@ -377,7 +377,7 @@ def test_unregistered_repo_falls_back_to_envrc_label_mismatch(
 ) -> None:
     """manifest 미등록 저장소는 기존 `.envrc` 폴백 동작을 유지한다 (불일치 → CRITICAL)."""
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo", slug="someone/other")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "heisgone")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
 
     res = _result(project_doctor.run_project_doctor(proj), "gh_identity_actual")
     assert res is not None and res.severity is Severity.CRITICAL
@@ -389,7 +389,7 @@ def test_unregistered_repo_falls_back_to_envrc_label_match(
 ) -> None:
     """manifest 미등록 + 라벨==실체 → 기존대로 INFO (폴백이 과차단하지 않는다)."""
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo", slug="someone/other")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
 
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
@@ -409,7 +409,7 @@ def test_declared_but_unbound_machine_falls_back_to_envrc_label(
     proj = _routed_repo(
         tmp_path, monkeypatch, envrc_account="16bitdo", bindings=_BINDINGS_NO_GH_LOGIN
     )
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
 
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
@@ -422,7 +422,7 @@ def test_probe_failure_is_info_even_with_manifest_ownership(
 ) -> None:
     """조회 실패는 manifest 선언이 있어도 INFO — 모름에 fail-closed 를 적용하지 않는다."""
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="heisgone")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: None)
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: None)
 
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
@@ -440,7 +440,7 @@ def test_manifest_loaded_once_per_run(
     회귀 여지가 커졌다.
     """
     proj = _routed_repo(tmp_path, monkeypatch, envrc_account="16bitdo")
-    monkeypatch.setattr(project_doctor.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
     calls: list[str] = []
     real_resolve = account_manifest.resolve
 
@@ -448,7 +448,7 @@ def test_manifest_loaded_once_per_run(
         calls.append(slug)
         return real_resolve(slug)
 
-    monkeypatch.setattr(project_doctor.account_manifest, "resolve", counting_resolve)
+    monkeypatch.setattr(account_manifest, "resolve", counting_resolve)
     project_doctor.run_project_doctor(proj)
 
     assert calls == ["16bitdo/analysis"], f"manifest 를 {len(calls)}회 로드함: {calls}"

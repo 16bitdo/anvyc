@@ -17,7 +17,7 @@ import pytest
 
 from anvyc.checks.account_identity import AccountIdentityActualCheck
 from anvyc.checks.base import CheckContext
-from anvyc.core import account_manifest, identity_probe, project_doctor
+from anvyc.core import account_manifest, identity_cache, identity_probe, project_doctor
 
 _PROJECTS = """
 version: 1
@@ -84,7 +84,7 @@ def test_project_check_key_follows_probed_dir_not_comparison_target(
         captured.update(kwargs)
         return "heisgone"
 
-    monkeypatch.setattr(project_doctor.identity_cache, "probe_cached", spy_probe_cached)
+    monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
     project_doctor.run_project_doctor(proj)
 
     probed_dir = tmp_path / "home" / ".config" / "gh-heisgone"
@@ -98,7 +98,6 @@ def test_global_check_key_follows_probed_dir(
 ) -> None:
     """전역 check 도 논리 계정 ID 가 아니라 조회한 config 디렉터리로 키를 만든다."""
     _wire(tmp_path, monkeypatch, envrc_account="16bitdo")
-    import anvyc.checks.account_identity as mod
 
     captured: dict[str, object] = {}
 
@@ -106,7 +105,7 @@ def test_global_check_key_follows_probed_dir(
         captured.update(kwargs)
         return "16bitdo"
 
-    monkeypatch.setattr(mod.identity_cache, "probe_cached", spy_probe_cached)
+    monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
     AccountIdentityActualCheck().run(CheckContext())
 
     probed_dir = tmp_path / "home" / ".config" / "gh-16bitdo"
@@ -157,7 +156,7 @@ def test_different_profiles_do_not_share_a_key(
         keys.append(kwargs.get("key"))
         return "16bitdo"
 
-    monkeypatch.setattr(project_doctor.identity_cache, "probe_cached", spy_probe_cached)
+    monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
     project_doctor.run_project_doctor(proj_a)
     (proj_a / ".envrc").write_text(
         'export GH_CONFIG_DIR="$HOME/.config/gh-heisgone"\n', encoding="utf-8"

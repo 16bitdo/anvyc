@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,7 @@ def test_ttl_expiry_triggers_reprobe(cache_dir: Path, monkeypatch: pytest.Monkey
         return f"acct{len(calls)}"
 
     now = [1_000_000.0]
-    monkeypatch.setattr(identity_cache.time, "time", lambda: now[0])
+    monkeypatch.setattr(time, "time", lambda: now[0])
 
     assert identity_cache.probe_cached("k", None, probe, ttl=100) == "acct1"
     now[0] += 101

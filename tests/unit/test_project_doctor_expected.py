@@ -79,4 +79,4 @@ def test_payload_includes_present_expected_fields(tmp_path: Path, monkeypatch: p
     payload = run_project_doctor(proj).to_payload()
     assert payload["expected_gh_user"] == "heisgone"
     assert isinstance(payload["results"], list)
-    assert payload["path"].endswith("proj")
+    assert str(payload["path"]).endswith("proj")

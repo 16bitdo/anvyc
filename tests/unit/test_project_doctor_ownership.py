@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from anvyc.checks.base import Severity
-from anvyc.core import account_manifest, project_doctor
+from anvyc.core import account_manifest, identity_probe, project_doctor
 
 _PROJECTS = """
 version: 1
@@ -53,7 +53,7 @@ def _result(report, name):
 
 
 def test_expected_commit_email_from_manifest(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
     report = project_doctor.run_project_doctor(repo)
     assert report.expected_commit_email == "16bitdo@gmail.com"
     assert report.to_payload()["expected_commit_email"] == "16bitdo@gmail.com"
@@ -66,7 +66,7 @@ def test_expected_commit_email_from_manifest(repo: Path, monkeypatch: pytest.Mon
 
 
 def test_commit_identity_mismatch_is_critical(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", lambda p: "jklee@whatap.io")
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "jklee@whatap.io")
     report = project_doctor.run_project_doctor(repo)
     res = _result(report, "commit_identity_actual")
     assert res is not None and res.severity is Severity.CRITICAL
@@ -75,7 +75,7 @@ def test_commit_identity_mismatch_is_critical(repo: Path, monkeypatch: pytest.Mo
 
 def test_commit_identity_unresolved_is_warning(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """fail-closed 상태(useConfigOnly, 신원 없음) — 커밋이 아예 안 되는 상황."""
-    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", lambda p: None)
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: None)
     report = project_doctor.run_project_doctor(repo)
     res = _result(report, "commit_identity_actual")
     assert res is not None and res.severity is Severity.WARNING
@@ -127,7 +127,7 @@ def test_commit_email_receives_repo_path_not_process_cwd(
         received.append(p)
         return "16bitdo@gmail.com"
 
-    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", spy_commit_email)
+    monkeypatch.setattr(identity_probe, "commit_email", spy_commit_email)
     project_doctor.run_project_doctor(repo)
 
     assert len(received) == 1, f"commit_email 이 {len(received)}회 호출됨 (기대 1회)"
@@ -159,7 +159,7 @@ def test_manifest_gh_user_overrides_envrc_label(
     (repo / ".envrc").write_text(
         'export GH_CONFIG_DIR="$HOME/.config/gh-someoneelse"\n', encoding="utf-8"
     )
-    monkeypatch.setattr(project_doctor.identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
     report = project_doctor.run_project_doctor(repo)
     assert report.expected_gh_user == "16bitdo", (
         f"manifest 선언(16bitdo)이 .envrc 라벨(someoneelse)을 이겨야 하는데: "

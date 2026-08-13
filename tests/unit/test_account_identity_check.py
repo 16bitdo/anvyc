@@ -7,7 +7,7 @@ import pytest
 
 from anvyc.checks.account_identity import AccountIdentityActualCheck
 from anvyc.checks.base import CheckContext, Severity
-from anvyc.core import account_manifest
+from anvyc.core import account_manifest, identity_cache, identity_probe
 
 _PROJECTS = """
 version: 1
@@ -47,9 +47,7 @@ def wired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_mismatch_is_critical(wired: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """2026-08-12 실측 회귀 케이스 — gh-16bitdo 프로필의 토큰이 heisgone 이었다."""
-    import anvyc.checks.account_identity as mod
-
-    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: "heisgone")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "heisgone")
     results = AccountIdentityActualCheck().run(CheckContext())
     assert any(r.severity is Severity.CRITICAL for r in results)
     crit = next(r for r in results if r.severity is Severity.CRITICAL)
@@ -63,9 +61,7 @@ def test_mismatch_is_critical(wired: None, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_match_is_info(wired: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    import anvyc.checks.account_identity as mod
-
-    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: "16bitdo")
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: "16bitdo")
     results = AccountIdentityActualCheck().run(CheckContext())
     assert results and all(r.severity is Severity.INFO for r in results)
 
@@ -87,9 +83,7 @@ def test_probe_failure_is_silent(wired: None, monkeypatch: pytest.MonkeyPatch) -
     이전엔 없었다(mutation D — "None 도 INFO 로 보고"하도록 바꿔도 기존 7개 전부
     통과했다).
     """
-    import anvyc.checks.account_identity as mod
-
-    monkeypatch.setattr(mod.identity_probe, "gh_login", lambda d: None)
+    monkeypatch.setattr(identity_probe, "gh_login", lambda d: None)
     assert AccountIdentityActualCheck().run(CheckContext()) == []
 
 
@@ -119,15 +113,13 @@ def test_gh_login_receives_expanded_absolute_path(
     wired: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """gh_login 에 전달되는 인자가 raw 바인딩 값(`~/...`)이 아니라 확장된 절대경로여야 한다."""
-    import anvyc.checks.account_identity as mod
-
     received: list[object] = []
 
     def spy_gh_login(config_dir: object) -> str:
         received.append(config_dir)
         return "16bitdo"
 
-    monkeypatch.setattr(mod.identity_probe, "gh_login", spy_gh_login)
+    monkeypatch.setattr(identity_probe, "gh_login", spy_gh_login)
     AccountIdentityActualCheck().run(CheckContext())
 
     assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
@@ -168,15 +160,13 @@ def test_gh_login_receives_expanded_path_for_dollar_home_style_binding(
     monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
 
-    import anvyc.checks.account_identity as mod
-
     received: list[object] = []
 
     def spy_gh_login(config_dir: object) -> str:
         received.append(config_dir)
         return "16bitdo"
 
-    monkeypatch.setattr(mod.identity_probe, "gh_login", spy_gh_login)
+    monkeypatch.setattr(identity_probe, "gh_login", spy_gh_login)
     AccountIdentityActualCheck().run(CheckContext())
 
     assert len(received) == 1, f"gh_login 이 {len(received)}회 호출됨 (기대 1회)"
@@ -197,8 +187,6 @@ def test_probe_cached_source_is_sibling_hosts_files_not_single_path(
     재인증으로 실체가 바뀌어도 캐시가 무효화되지 않는다 — 이 테스트가 그 되돌림을
     잡는다(project_doctor._gh_profile_hosts_files 재사용이 실제로 배선됐는지 확인).
     """
-    import anvyc.checks.account_identity as mod
-
     gh_root = Path.home() / ".config"
     for account in ("16bitdo", "heisgone"):
         d = gh_root / f"gh-{account}"
@@ -211,7 +199,7 @@ def test_probe_cached_source_is_sibling_hosts_files_not_single_path(
         captured.update(kwargs)
         return "16bitdo"
 
-    monkeypatch.setattr(mod.identity_cache, "probe_cached", spy_probe_cached)
+    monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
     AccountIdentityActualCheck().run(CheckContext())
 
     assert "source" in captured, "probe_cached 가 source kwarg 없이 호출됨"
