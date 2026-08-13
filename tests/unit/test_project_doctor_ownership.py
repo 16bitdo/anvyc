@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from anvyc.checks.base import Severity
+from anvyc.checks.base import CheckResult, Severity
 from anvyc.core import account_manifest, identity_probe, project_doctor
 
 _PROJECTS = """
@@ -48,7 +48,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return proj
 
 
-def _result(report, name):
+def _result(report: project_doctor.ProjectDoctorReport, name: str) -> CheckResult | None:
     return next((r for r in report.results if r.check_name == name), None)
 
 
