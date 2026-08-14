@@ -25,6 +25,22 @@ _FALLBACK = BranchPolicy(
 )
 
 
+@pytest.fixture(autouse=True)
+def _gh_authenticated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """이 파일은 **인증이 정상일 때의 per-repo 판정** 을 시험한다.
+
+    check 진입점의 gh 인증 preflight 를 고정하지 않으면 실행 머신의 gh 상태가 결과를
+    바꾼다 — 인증된 개발 머신에선 통과하고 CI(gh 없음)에선 전부 빈 결과가 된다.
+
+    autouse 인 이유: one_repo 를 쓰지 않는 시험(test_origin_less_skipped)도 같은
+    관문을 지나며, 그 시험은 preflight 의 빈 결과 때문에 **엉뚱한 이유로** 통과할 수
+    있다. preflight 자체의 동작은 test_project_branch_protection_auth.py 가 시험한다.
+    """
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.gh_auth_state", lambda: "ok"
+    )
+
+
 @pytest.fixture
 def one_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "proj"
