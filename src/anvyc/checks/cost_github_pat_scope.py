@@ -1,8 +1,12 @@
 """cost-github-pat-scope check — CP-13 PR-13D.
 
-DESIGN §38.6 의 5종 cost check 중 하나. `~/.config/gh*` 의 각 user PAT 가
-Enhanced Billing user endpoint 호출 가능 권한 (fine-grained "Plan: Read"
-또는 classic `manage_billing`) 보유 여부 검증.
+DESIGN §38.6 의 5종 cost check 중 하나. `~/.config/gh*` 의 각 user 토큰이
+Enhanced Billing user endpoint 호출 가능 권한 (OAuth/classic `user` scope
+또는 fine-grained "Plan: Read") 보유 여부 검증.
+
+`manage_billing:*` 은 enterprise / Copilot 전용이라 개인 user billing 에는
+해당하지 않는다. 실제 요구 scope 은 GitHub 공식 문서에 기재돼 있지 않고
+응답 헤더 `X-Accepted-Oauth-Scopes: user` 로만 확인된다 (#192).
 
 severity:
   * httpx 미설치 → WARNING (graceful skip — `pip install 'anvyc[cost-github]'`)
@@ -159,7 +163,12 @@ class CostGithubPatScopeCheck:
                         f"user {user!r}: PAT 가 billing 권한 부재 (HTTP 401)"
                     ),
                     suggestion=(
-                        "fine-grained PAT 재발급 — Resource owner=본인, "
+                        # 최소 해법은 PAT 신규 발급이 아니라 기존 토큰에 scope
+                        # 추가다. billing endpoint 는 응답 헤더
+                        # `X-Accepted-Oauth-Scopes: user` 로 이를 알린다.
+                        "gh auth refresh -h github.com -s user "
+                        "(기존 토큰에 scope 추가 — PAT 발급 불필요). "
+                        "대안: fine-grained PAT — Resource owner=본인, "
                         "Account permissions: Plan: Read-only "
                         "(https://github.com/settings/personal-access-tokens/new)"
                     ),
