@@ -126,6 +126,9 @@ def test_401_yields_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res[0].severity is Severity.WARNING
     assert "401" in res[0].message
     assert res[0].suggestion is not None
+    # 최소 해법(기존 토큰에 scope 추가)을 먼저 안내하고 PAT 은 대안으로 병기 (#192 ④)
+    assert "gh auth refresh" in res[0].suggestion
+    assert "-s user" in res[0].suggestion
     assert "Plan: Read-only" in res[0].suggestion
 
 
