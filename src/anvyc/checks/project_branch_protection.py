@@ -17,7 +17,7 @@ from pathlib import Path
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.branch_policy import resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
-from anvyc.core.git_protect import get_ruleset, repo_admin
+from anvyc.core.git_protect import get_ruleset, gh_auth_state, repo_admin
 from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
 
@@ -34,6 +34,28 @@ class ProjectBranchProtectionCheck:
     name = "project-branch-protection"
 
     def run(self, ctx: CheckContext) -> list[CheckResult]:  # noqa: ARG002
+        # preflight — 인증이 깨져 있으면 아래 per-repo 판정이 전부 "admin 아님" 으로
+        # 보여 결과 0건이 된다. 그 0건은 "문제 없음" 이 아니라 "알 수 없음" 이므로,
+        # 조용히 통과시키지 않고 한 건으로 알린다(2026-08-14 실사고).
+        auth = gh_auth_state()
+        if auth == "unauthenticated":
+            return [
+                CheckResult(
+                    check_name=self.name,
+                    severity=Severity.WARNING,
+                    message=(
+                        "gh 인증 실패 — branch protection 을 판정할 수 없습니다. "
+                        "결과 0건은 '문제 없음' 이 아니라 '알 수 없음' 입니다."
+                    ),
+                    # location 없음 — 특정 repo 가 아니라 gh 인증이라는 전역 조건이다.
+                    suggestion="gh auth refresh -h github.com (또는 gh auth login)",
+                )
+            ]
+        if auth != "ok":
+            # gh 미설치·네트워크 불가 — 이 머신에선 검사가 성립하지 않는다. 여기서
+            # 경고를 내면 gh 를 안 쓰는 머신마다 상시 빨강이 된다.
+            return []
+
         results: list[CheckResult] = []
         aligned: list[str] = []
         for repo in resolve_guard_targets(None, None):
