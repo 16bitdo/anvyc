@@ -35,6 +35,7 @@ from anvyc.core.creds import (
     RotateError,
     collect_credentials,
     plan_rotate,
+    resolve_kind_warn_days,
     rotate_credential,
 )
 from anvyc.core.diff import compute_diff
@@ -2683,6 +2684,16 @@ def snapshot_restore(
         console.print(f"  [dim]git stderr:[/]\n{result.git_apply_stderr}")
 
 
+def _fmt_days(days: float) -> str:
+    """임계(일 단위 float)를 사람이 읽는 짧은 문자열로. 15분짜리를 '0d' 로 뭉개지 않는다."""
+    secs = days * 86400
+    if secs < 3600:
+        return f"{round(secs / 60)}m"
+    if secs < 86400:
+        return f"{round(secs / 3600)}h"
+    return f"{days:g}d"
+
+
 @creds_app.command("status")
 def creds_status(
     warn_days: int = typer.Option(
@@ -2707,9 +2718,16 @@ def creds_status(
     CP-5 1/3 — token detection + 만료 계산 + status 분류. 2/3 (doctor check
     통합), 3/3 (rotate) 는 후속 PR.
     """
+    # per-kind 임계를 doctor check 와 **같은 함수**로 해석한다. 이걸 안 넘기면
+    # --warn-days(전역 7d)가 aws_sso 에도 적용돼, 같은 자격을 이 표는 expiring 으로,
+    # statusline/doctor 는 OK 로 분류한다(2026-08-14 실측: 잔여 56분 세션).
+    from anvyc.core.config import load_anvyc_config
+
+    thresholds = resolve_kind_warn_days(load_anvyc_config().doctor.creds_warn_thresholds)
     report = collect_credentials(
         home=home,
         warn_threshold_days=warn_days,
+        kind_warn_days=thresholds,
         probe_github_expiry=not no_probe,
     )
 
@@ -2724,9 +2742,15 @@ def creds_status(
 
     expired = sum(1 for c in creds if c.status == STATUS_EXPIRED)
     expiring = sum(1 for c in creds if c.status == STATUS_EXPIRING)
+    # 헤더는 **실제 적용된** 임계를 보여준다 — 전역값만 적으면 per-kind 가 있는 kind 에
+    # 대해 거짓이 되고, 표를 본 사람이 정책을 오해한다(이 버그의 발견 경위가 그랬다).
+    per_kind = ", ".join(
+        f"{kind}={_fmt_days(d)}" for kind, d in sorted(thresholds.items())
+    )
     console.print(
         f"[bold]{len(creds)} credential(s)[/] — "
-        f"expired={expired} expiring={expiring} (threshold={warn_days}d)"
+        f"expired={expired} expiring={expiring} (threshold={warn_days}d"
+        f"{', ' + per_kind if per_kind else ''})"
     )
     table = Table(show_header=True, header_style="bold")
     table.add_column("kind", style="cyan")

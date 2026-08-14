@@ -43,6 +43,7 @@ import json
 import os
 import re
 import subprocess
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,6 +65,20 @@ KIND_CLAUDE_OAUTH = "claude_oauth"
 # 더 길면 그만큼 더 오래 valid. expired(CRITICAL)는 임계와 무관하게 그대로 잡힌다.
 AWS_SSO_WARN_DAYS = 900 / 86400  # 15min (run-risk window)
 DEFAULT_KIND_WARN_DAYS: dict[str, float] = {KIND_AWS_SSO: AWS_SSO_WARN_DAYS}
+
+
+def resolve_kind_warn_days(overrides_seconds: Mapping[str, float]) -> dict[str, float]:
+    """kind→초 override 를 일 단위로 바꿔 코드 기본값 위에 merge.
+
+    `doctor.creds_expiry.warn_thresholds` (YAML, 초 단위) 를 `collect_credentials` 의
+    `kind_warn_days` (일 단위) 로 변환하는 유일한 지점이다. doctor check 와 `creds
+    status` CLI 가 **같은 함수**를 써야 한 자격이 두 경로에서 다르게 분류되지 않는다 —
+    CLI 가 이 merge 를 안 거쳐 표(expiring)와 statusline 판정(OK)이 갈렸던 이력이 있다.
+    """
+    return {
+        **DEFAULT_KIND_WARN_DAYS,
+        **{kind: secs / 86400 for kind, secs in overrides_seconds.items()},
+    }
 
 STATUS_VALID = "valid"
 STATUS_EXPIRING = "expiring"

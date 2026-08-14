@@ -32,11 +32,11 @@ from __future__ import annotations
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.creds import (
-    DEFAULT_KIND_WARN_DAYS,
     STATUS_EXPIRED,
     STATUS_EXPIRING,
     CredentialStatus,
     collect_credentials,
+    resolve_kind_warn_days,
 )
 
 CHECK_NAME = "creds-expiry"
@@ -81,10 +81,9 @@ class CredsExpiryCheck:
     def run(self, ctx: CheckContext) -> list[CheckResult]:
         # anvyc.yaml `doctor.creds_expiry.warn_thresholds` (kind→초) override 를
         # 일 단위로 변환해 코드 기본값(DEFAULT_KIND_WARN_DAYS) 위에 merge.
-        overrides = {
-            kind: secs / 86400 for kind, secs in ctx.creds_warn_thresholds.items()
-        }
-        thresholds = {**DEFAULT_KIND_WARN_DAYS, **overrides}
+        # merge 는 resolve_kind_warn_days 가 정본 — `creds status` CLI 도 같은 함수를
+        # 쓴다(한 자격이 두 경로에서 다르게 분류되지 않도록).
+        thresholds = resolve_kind_warn_days(ctx.creds_warn_thresholds)
         report = collect_credentials(
             warn_threshold_days=THRESHOLD_DAYS,
             kind_warn_days=thresholds,
