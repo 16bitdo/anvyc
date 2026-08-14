@@ -15,7 +15,8 @@ severity:
   * 권한 OK (HTTP 200) → result 없음 (silent — noise 최소화)
   * HTTP 401 → WARNING + PAT 재발급 안내
   * HTTP 403 → INFO + billing manager role 안내
-  * HTTP 404 → INFO + Enhanced billing 미활성 안내
+  * HTTP 404 → INFO — 응답 헤더(`X-Accepted-OAuth-Scopes`)로 scope 부족과
+    Enhanced billing 미활성을 구분해 안내
   * 네트워크 오류 → INFO + 메시지
 
 본 check 는 외부 호출 (1 req per user per doctor run) 동반 — 일1회 doctor
@@ -26,13 +27,17 @@ severity:
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
 import subprocess
 from datetime import UTC, datetime
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.utils.gh_hosts import discover_gh_accounts
+from anvyc.utils.gh_hosts import (
+    discover_gh_accounts,
+    select_config_dir_for_user,
+)
 
 CHECK_NAME = "cost-github-pat-scope"
 API_VERSION = "2026-03-10"
@@ -46,11 +51,18 @@ def _httpx_available() -> bool:
     return importlib.util.find_spec("httpx") is not None
 
 
-def _gh_auth_token(config_dir: str, host: str = HOST_DEFAULT) -> str | None:
+def _gh_auth_token(
+    config_dir: str, host: str = HOST_DEFAULT, user: str | None = None
+) -> str | None:
     env = {**os.environ, "GH_CONFIG_DIR": config_dir}
+    cmd = ["gh", "auth", "token", "--hostname", host]
+    if user:
+        # --user 를 빼면 active account 의 토큰이 반환돼, user 를 순회해도
+        # 실제로는 같은 토큰 하나로 검증하게 된다 (#192 ①).
+        cmd += ["--user", user]
     try:
         proc = subprocess.run(
-            ["gh", "auth", "token", "--hostname", host],
+            cmd,
             capture_output=True, text=True, env=env,
             check=False, timeout=10,
         )
@@ -59,6 +71,45 @@ def _gh_auth_token(config_dir: str, host: str = HOST_DEFAULT) -> str | None:
     if proc.returncode != 0:
         return None
     return proc.stdout.strip() or None
+
+
+def _header(headers: dict[str, str], name: str) -> str:
+    """대소문자 무시 헤더 조회 (httpx Headers / plain dict 모두 허용)."""
+    lowered = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == lowered:
+            return str(value)
+    return ""
+
+
+def _missing_scopes(accepted: str, current: str) -> list[str]:
+    """`X-Accepted-OAuth-Scopes` 를 하나도 보유하지 않으면 부족 목록 반환.
+
+    GitHub 은 accepted 목록 중 **하나만** 있어도 통과시키므로 교집합이 빌
+    때만 부족으로 본다. accepted 가 비어 있으면 판정 근거가 없어 빈 목록.
+    """
+    accepted_set = {s.strip() for s in accepted.split(",") if s.strip()}
+    if not accepted_set:
+        return []
+    current_set = {s.strip() for s in current.split(",") if s.strip()}
+    if accepted_set & current_set:
+        return []
+    return sorted(accepted_set)
+
+
+def _error_message(body: str) -> str:
+    """응답 body 에서 `message` 필드만 추출.
+
+    body 전체로 문자열 매칭하면 `documentation_url` 의 `/rest/billing/` 이
+    항상 걸려 원인 불문 오진한다 (#192 ③). JSON 이 아니면 body 를 그대로 쓴다.
+    """
+    try:
+        parsed = json.loads(body)
+    except (TypeError, ValueError):
+        return body
+    if isinstance(parsed, dict):
+        return str(parsed.get("message") or "")
+    return body
 
 
 class CostGithubPatScopeCheck:
@@ -96,15 +147,18 @@ class CostGithubPatScopeCheck:
             if acct.user in seen_users:
                 continue
             seen_users.add(acct.user)
+            # 사전식 첫 dir 이 아니라 `gh-<user>` 우선 정책을 따른다 (#192 ②).
+            # select 가 None 이면 발견 시점의 dir 로 fallback.
+            cfg_dir = select_config_dir_for_user(acct.user) or acct.config_dir
             results.extend(
-                self._check_user(acct.user, str(acct.config_dir), acct.host)
+                self._check_user(acct.user, str(cfg_dir), acct.host)
             )
         return results
 
     def _check_user(
         self, user: str, config_dir: str, host: str
     ) -> list[CheckResult]:
-        token = _gh_auth_token(config_dir, host=host)
+        token = _gh_auth_token(config_dir, host=host, user=user)
         if not token:
             return [
                 CheckResult(
@@ -147,10 +201,16 @@ class CostGithubPatScopeCheck:
                 )
             ]
 
-        return self._classify(user, resp.status_code, resp.text)
+        return self._classify(
+            user, resp.status_code, resp.text, dict(resp.headers)
+        )
 
     def _classify(
-        self, user: str, status: int, body: str
+        self,
+        user: str,
+        status: int,
+        body: str,
+        headers: dict[str, str] | None = None,
     ) -> list[CheckResult]:
         if status < 400:
             return []  # OK — silent
@@ -190,7 +250,28 @@ class CostGithubPatScopeCheck:
                 )
             ]
         if status == 404:
-            lowered = body.lower()
+            # GitHub 은 scope 부족을 403 이 아니라 404 로 응답한다. 판정 근거는
+            # body 가 아니라 헤더다 (#192 ③) — gh CLI 도 같은 헤더를 읽는다.
+            missing = _missing_scopes(
+                _header(headers or {}, "X-Accepted-OAuth-Scopes"),
+                _header(headers or {}, "X-OAuth-Scopes"),
+            )
+            if missing:
+                return [
+                    CheckResult(
+                        check_name=self.name,
+                        severity=Severity.INFO,
+                        message=(
+                            f"user {user!r}: billing endpoint 가 요구하는 "
+                            f"scope 부재 — {', '.join(missing)} (HTTP 404)"
+                        ),
+                        suggestion=(
+                            f"gh auth refresh -h github.com -s {missing[0]} "
+                            "(기존 토큰에 scope 추가 — PAT 발급 불필요)"
+                        ),
+                    )
+                ]
+            lowered = _error_message(body).lower()
             if "enhanced" in lowered or "billing" in lowered:
                 return [
                     CheckResult(

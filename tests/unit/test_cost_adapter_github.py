@@ -451,3 +451,32 @@ def test_build_registry_excludes_github_when_httpx_missing(
     registry = _build_registry()
     assert "github" not in registry
     assert "anthropic" in registry
+
+
+def test_gh_auth_token_passes_user_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--user` 없이 부르면 config_dir 의 active account 토큰이 반환된다.
+
+    adapter 는 `select_config_dir_for_user()` 로 dir 은 올바르게 고르지만,
+    그 dir 안에 여러 user 가 있으면 active 쪽 토큰을 집어 다른 계정의 billing
+    을 조회하게 된다 (#192 ①).
+    """
+    from anvyc.core.cost.adapters.github import (  # noqa: PLC0415
+        _gh_auth_token,
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> Any:
+        captured["cmd"] = cmd
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.stdout = "gho_fake\n"
+        return proc
+
+    monkeypatch.setattr(
+        "anvyc.core.cost.adapters.github.subprocess.run", _fake_run
+    )
+    assert _gh_auth_token("/tmp/gh", user="heisgone") == "gho_fake"
+    cmd = captured["cmd"]
+    assert "--user" in cmd
+    assert cmd[cmd.index("--user") + 1] == "heisgone"

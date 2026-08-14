@@ -75,16 +75,25 @@ def _split_account_key(key: str) -> tuple[str, str | None]:
     return key, None
 
 
-def _gh_auth_token(config_dir: str, host: str = DEFAULT_HOST) -> str | None:
-    """`gh auth token --hostname <host>` 호출로 token 추출.
+def _gh_auth_token(
+    config_dir: str, host: str = DEFAULT_HOST, user: str | None = None
+) -> str | None:
+    """`gh auth token --hostname <host> [--user <user>]` 로 token 추출.
 
     `GH_CONFIG_DIR` env 설정 → gh CLI 가 해당 dir 의 hosts.yml + keyring
     에서 token 가져옴. gh 미설치 / 인증 부재 / 호출 실패 시 `None`.
+
+    `user` 를 생략하면 해당 dir 의 **active account** 토큰이 나온다. dir 안에
+    여러 user 가 있으면 다른 계정 토큰으로 billing 을 조회하게 되므로,
+    호출자는 조회 대상 user 를 명시한다 (#192 ①).
     """
     env = {**os.environ, "GH_CONFIG_DIR": config_dir}
+    cmd = ["gh", "auth", "token", "--hostname", host]
+    if user:
+        cmd += ["--user", user]
     try:
         proc = subprocess.run(
-            ["gh", "auth", "token", "--hostname", host],
+            cmd,
             capture_output=True,
             text=True,
             env=env,
@@ -185,8 +194,8 @@ class GitHubBillingAdapter:
     `discover_accounts()` = `~/.config/gh*` glob 의 모든 hosts.yml 의 user.
     org-level account 는 `accounts_override` 명시 (e.g. `"heisgone@whatap"`).
 
-    `fetch_period()` = `GH_CONFIG_DIR=<dir> gh auth token` 으로 token 추출
-    후 httpx 로 Enhanced Billing usage endpoint 호출.
+    `fetch_period()` = `GH_CONFIG_DIR=<dir> gh auth token --user <user>` 로
+    token 추출 후 httpx 로 Enhanced Billing usage endpoint 호출.
     """
 
     name = SOURCE
@@ -233,7 +242,7 @@ class GitHubBillingAdapter:
                 account, period, error="no_config_dir",
                 detail=f"~/.config/gh* 에서 user {user!r} 의 hosts.yml 발견 실패",
             )
-        token = _gh_auth_token(str(config_dir))
+        token = _gh_auth_token(str(config_dir), user=user)
         if not token:
             return self._graceful_report(
                 account, period, error="no_token",
