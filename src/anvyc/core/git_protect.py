@@ -11,11 +11,18 @@ rulesets LIST 호출의 rc 를 직접 보고 분기한다(LIST 실패를 "rulese
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import Any, Literal
 
 RULESET_NAME = "anvyc-pr-required"
+
+# gh 는 실패 시 stderr 에 "gh: <메시지> (HTTP NNN)" 형태로 상태를 남긴다. rc 는 401 도
+# 404 도 1 이라(실측) 이 코드가 유일한 판별자다.
+_HTTP_STATUS_RE = re.compile(r"\(HTTP (\d{3})\)")
+
+GhAuthState = Literal["ok", "unauthenticated", "unavailable"]
 
 ProtectAction = Literal[
     "created", "updated", "exists", "would-create", "no-access", "error"
@@ -97,6 +104,28 @@ def repo_admin(owner: str, repo: str) -> bool:
     """
     rc, out, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".permissions.admin"])
     return rc == 0 and out.strip() == "true"
+
+
+def gh_auth_state() -> GhAuthState:
+    """gh 로 GitHub API 를 쓸 수 있는 상태인가 — 인증 실패와 그 외를 가른다.
+
+    `repo_admin()` 같은 per-repo 판정은 모든 실패를 False 로 뭉갠다. 그래서 토큰이
+    만료되면 전 repo 가 "권한 없음" 으로 보이고, 그걸 silent 처리하는 검사는 **결과
+    0건 = 문제 없음** 으로 보고한다. 2026-08-14 에 실제로 그 일이 났다 — 만료 상태에서
+    doctor 가 warning=0 을 냈고, 재인증 후 같은 검사가 5건을 잡았다.
+
+    호출자는 이 값으로 "정상" 과 "판정 불가" 를 구분해야 한다.
+
+    401·403 → unauthenticated (재인증하면 해소)
+    그 외(404 포함)·gh 부재·네트워크 → unavailable (여기서 할 수 있는 게 없다)
+    """
+    rc, _, err = _gh_api(["user", "--jq", ".login"])
+    if rc == 0:
+        return "ok"
+    m = _HTTP_STATUS_RE.search(err)
+    if m is not None and m.group(1) in ("401", "403"):
+        return "unauthenticated"
+    return "unavailable"
 
 
 @dataclass
