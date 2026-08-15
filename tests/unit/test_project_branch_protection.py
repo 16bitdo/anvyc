@@ -70,9 +70,42 @@ def test_missing_ruleset_yields_warning(one_repo: Path) -> None:
     (one_repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
     with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
          patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
-         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True):
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True), \
+         patch("anvyc.checks.project_branch_protection.repo_archived", return_value=False):
         res = ProjectBranchProtectionCheck().run(CheckContext())
     assert any(r.severity is Severity.WARNING and "ruleset" in r.message for r in res)
+
+
+def test_archived_repo_skipped(one_repo: Path) -> None:
+    """archived repo 는 ruleset 설정이 **영원히 불가능**하다 — 조치 불가 WARN 을 내지 않는다.
+
+    GitHub 은 archived repo 의 쓰기를 403 으로 막는다(2026-08-16 실측: `guard protect
+    --apply` 가 16bitdo/cc-inspect 에서 "Repository was archived so is read-only.
+    (HTTP 403)"). 그런데 doctor 는 매일 그 repo 를 WARNING 으로 올리면서 해소책으로
+    **실패하는 바로 그 명령**을 안내했다. 조치 불가능한 상시 경고는 무시를 훈련시켜
+    진짜 신호까지 함께 묻는다.
+    """
+    (one_repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True), \
+         patch("anvyc.checks.project_branch_protection.repo_archived", return_value=True):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
+    assert not any(r.severity is Severity.WARNING for r in res)
+
+
+def test_archived_not_queried_when_aligned(one_repo: Path) -> None:
+    """정합 repo 에서는 archived 조회를 하지 않는다 — repo 당 gh api 예산을 지킨다.
+
+    이 앵커가 없으면 '전 repo 마다 API 1회 추가' 회귀가 조용히 들어온다(모듈 헤더가
+    선언한 '보호 대상 repo 당 gh api 1~2회' 계약).
+    """
+    (one_repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 1}), \
+         patch("anvyc.checks.project_branch_protection.repo_archived") as m_arch:
+        ProjectBranchProtectionCheck().run(CheckContext())
+    m_arch.assert_not_called()
 
 
 def test_missing_hook_yields_warning(one_repo: Path) -> None:

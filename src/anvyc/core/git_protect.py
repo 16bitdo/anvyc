@@ -106,6 +106,21 @@ def repo_admin(owner: str, repo: str) -> bool:
     return rc == 0 and out.strip() == "true"
 
 
+def repo_archived(owner: str, repo: str) -> bool:
+    """repo 가 archived(read-only)인가 — ruleset 설정이 **영원히 불가능**한 상태.
+
+    GitHub 은 archived repo 의 모든 쓰기를 403 으로 막는다. admin 권한이 있어도
+    마찬가지라 `repo_admin()` 으로는 걸러지지 않는다 — 2026-08-16 실측:
+    `guard protect --apply` 가 16bitdo/cc-inspect 에서
+    "Repository was archived so is read-only. (HTTP 403)".
+
+    조회 실패(404·gh 미설치·네트워크)는 False 로 뭉갠다. archived 라고 잘못 단정해
+    검사를 건너뛰면 진짜 미설정을 놓치므로, 불확실할 때는 **검사하는 쪽**으로 실패한다.
+    """
+    rc, out, _ = _gh_api([f"repos/{owner}/{repo}", "--jq", ".archived"])
+    return rc == 0 and out.strip() == "true"
+
+
 def gh_auth_state() -> GhAuthState:
     """gh 로 GitHub API 를 쓸 수 있는 상태인가 — 인증 실패와 그 외를 가른다.
 

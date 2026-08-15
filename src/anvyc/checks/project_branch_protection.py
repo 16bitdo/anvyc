@@ -6,7 +6,11 @@ repo 에 대해 ① 서버 ruleset 존재 ② 로컬 pre-push 가드 설치 를 
 정책 출처가 fallback(=role-based-ruleset 미발견)·정책상 main push 허용·origin 없음·
 **enforce 불가(admin 아님 — private 404 또는 public read-only whatap 등)** → silent(결과 0건).
 
+**archived repo** 는 쓰기가 403 이라 ruleset 설정이 영원히 불가능하므로 그 항목만 silent
+(로컬 pre-push 훅은 archive 와 무관하게 설치 가능하므로 계속 검사한다).
+
 네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 필요 시 repo_admin)
++ ruleset 미설정으로 판정된 repo 만 repo_archived 1회 추가(정합 repo 에는 없음)
 + resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
 `anvyc doctor --skip project-branch-protection`.
 """
@@ -17,7 +21,7 @@ from pathlib import Path
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.branch_policy import resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
-from anvyc.core.git_protect import get_ruleset, gh_auth_state, repo_admin
+from anvyc.core.git_protect import get_ruleset, gh_auth_state, repo_admin, repo_archived
 from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
 
@@ -73,8 +77,16 @@ class ProjectBranchProtectionCheck:
                 continue  # enforce 불가(admin 아님 — private 404 또는 public read-only) → silent
 
             problems: list[str] = []
-            if ruleset is None:
+            # archived repo 는 GitHub 이 모든 쓰기를 403 으로 막아 ruleset 을 **영원히** 설정할
+            # 수 없다. admin 권한은 그대로라 위 repo_admin 게이트로는 안 걸러진다 (2026-08-16
+            # 실측: guard protect --apply → "Repository was archived so is read-only.
+            # (HTTP 403)"). 조치 불가능한 경고를 매일 올리면서 실패하는 명령을 해소책으로
+            # 안내하면 무시가 훈련되어 진짜 신호까지 함께 묻힌다.
+            # `and` 단축평가로 repo_archived 는 **ruleset 미설정일 때만** 호출된다 — 정합
+            # repo 까지 API 를 쓰면 헤더가 선언한 'repo 당 gh api 1~2회' 예산이 깨진다.
+            if ruleset is None and not repo_archived(owner, name):
                 problems.append("서버 ruleset(anvyc-pr-required) 미설정")
+            # 로컬 훅은 archive 와 무관하게 설치 가능 — archived repo 에서도 계속 검사한다.
             if not _hook_installed(repo):
                 problems.append("로컬 pre-push hook 미설치")
 
