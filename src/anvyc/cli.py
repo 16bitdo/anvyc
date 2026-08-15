@@ -4224,7 +4224,7 @@ def guard_protect(
 ) -> None:
     """대상 repo 에 GitHub repository ruleset(PR 필수)을 적용한다. 기본 dry-run."""
     from anvyc.core.branch_policy import resolve_policy
-    from anvyc.core.git_protect import apply_ruleset, repo_admin
+    from anvyc.core.git_protect import apply_ruleset, repo_admin, repo_archived
     from anvyc.core.guard_targets import resolve_guard_targets
     from anvyc.utils.git_remote import origin_owner_repo
 
@@ -4245,6 +4245,12 @@ def guard_protect(
             continue
         if not repo_admin(owner, name):
             console.print(f"[dim]skip[/] {owner}/{name} (admin 권한 없음 — enforce 불가)")
+            continue
+        # archived 는 admin 권한이 있어도 쓰기가 403 이라 위 게이트로 안 걸러진다. 시도하면
+        # 매번 error 줄만 남고 영원히 해소되지 않는다(2026-08-16 실측: 16bitdo/cc-inspect
+        # "Repository was archived so is read-only. (HTTP 403)").
+        if repo_archived(owner, name):
+            console.print(f"[dim]skip[/] {owner}/{name} (archived — read-only, ruleset 설정 불가)")
             continue
         res = apply_ruleset(
             owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply
