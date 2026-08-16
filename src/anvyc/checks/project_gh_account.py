@@ -13,6 +13,12 @@ project 별로 올바른 계정을 사용 (`gh` 의 single global active account
 - `.envrc` 에 GH_CONFIG_DIR 없음 → 각 project 마다 WARNING (location = project dir)
 - account ≠ ssh alias → 각 mismatch 마다 WARNING (location = .envrc 파일)
 - ssh alias 쓰는 GitHub origin 없음 → 결과 0건 (silent)
+
+별칭 **미사용** GitHub origin (plain `github.com` / https) 도 `gh_owner_accounts` 에
+그 owner 가 등록돼 있으면 WARNING 으로 검출한다 (issue #198). 등록되지 않은 owner 는
+종전대로 silent — 매핑을 선언한 owner 에 대해서만 판정하므로 무오탐을 유지한다.
+매핑 자체가 비어 있으면 owner 기반 검증(별칭 미사용 검출 + owner↔alias 라우팅)이
+전부 skip 되므로, summary INFO 에 그 사실을 함께 표기한다.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ import re
 from pathlib import Path, PurePosixPath
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.utils.git_remote import parse_git_config
+from anvyc.utils.git_remote import GitRemoteInfo, parse_git_config
 
 # 한 줄에 `export GH_CONFIG_DIR=foo` 또는 `export GH_CONFIG_DIR="foo"` 등을 매칭.
 # 인용부호 끝나기 전 까지 또는 공백/#/끝까지 캡쳐.
@@ -31,17 +37,17 @@ _GH_CONFIG_DIR_RE = re.compile(
 )
 
 
-def _origin_routing(git_dir: Path) -> tuple[str, str, str] | None:
-    """origin 이 github ssh-alias remote 면 `(ssh_alias, owner, repo)` 반환.
+def _origin_github(git_dir: Path) -> GitRemoteInfo | None:
+    """origin 이 GitHub remote 면 그 정보를 반환 (ssh alias 유무 무관).
 
-    origin 부재 / GitHub 아님 / ssh alias 없음(plain github.com·https) → None.
+    origin 부재 / GitHub 아님 → None. 별칭 여부는 호출부가 `.ssh_alias` 로 분기한다.
     """
     for remote in parse_git_config(git_dir):
         if remote.name != "origin":
             continue
-        if not remote.host.startswith("github.com") or not remote.ssh_alias:
+        if not remote.host.startswith("github.com"):
             return None
-        return (remote.ssh_alias, remote.owner, remote.repo)
+        return remote
     return None
 
 
@@ -103,18 +109,24 @@ class ProjectGhAccountMappingCheck:
         if not project_dirs:
             return []
 
-        # ssh alias 를 쓰는 GitHub origin 보유 project 만 검증 대상.
+        # GitHub origin 보유 project 를 ssh alias 사용 / 미사용으로 분류.
         targets: list[tuple[Path, str]] = []  # (project_dir, ssh_alias) — alias↔envrc 검증
         routing_targets: list[tuple[Path, str, str, str]] = []  # (dir, alias, owner, repo)
+        unaliased: list[tuple[Path, GitRemoteInfo]] = []  # 별칭 없는 GitHub origin
         for project_dir in project_dirs:
-            info = _origin_routing(project_dir / ".git")
-            if info:
-                alias, owner, repo = info
-                targets.append((project_dir, alias))
-                if owner and repo:
-                    routing_targets.append((project_dir, alias, owner, repo))
+            remote = _origin_github(project_dir / ".git")
+            if remote is None:
+                continue
+            if remote.ssh_alias:
+                targets.append((project_dir, remote.ssh_alias))
+                if remote.owner and remote.repo:
+                    routing_targets.append(
+                        (project_dir, remote.ssh_alias, remote.owner, remote.repo)
+                    )
+            elif remote.owner and remote.repo:
+                unaliased.append((project_dir, remote))
 
-        if not targets:
+        if not targets and not unaliased:
             return []
 
         results: list[CheckResult] = []
@@ -129,7 +141,33 @@ class ProjectGhAccountMappingCheck:
             elif account != alias:
                 mismatch.append((project_dir, account, alias))
 
-        if missing or mismatch:
+        # 별칭 미사용 origin — gh_owner_accounts 에 owner 가 등록된 경우만 판정(무오탐 유지).
+        unaliased_findings: list[CheckResult] = []
+        for project_dir, remote in unaliased:
+            exp_alias = ctx.gh_owner_accounts.get(remote.owner)
+            if not exp_alias:
+                continue
+            unaliased_findings.append(
+                CheckResult(
+                    check_name=self.name,
+                    severity=Severity.WARNING,
+                    message=(
+                        f"{remote.owner}/{remote.repo}: origin 이 별칭 없는 "
+                        f"'{remote.host}'({remote.protocol}) — owner '{remote.owner}' 는 "
+                        f"alias 'github.com-{exp_alias}' 라우팅이어야 함 "
+                        f"(anvyc gh 가 account 를 도출하지 못해 race-immune 경로 사용 불가)"
+                    ),
+                    location=project_dir,
+                    suggestion=(
+                        f"git remote set-url origin "
+                        f"git@github.com-{exp_alias}:{remote.owner}/{remote.repo}.git"
+                        f'  + .envrc 에 export GH_CONFIG_DIR="$HOME/.config/gh-{exp_alias}"'
+                        f" (rule 25)"
+                    ),
+                )
+            )
+
+        if missing or mismatch or unaliased_findings:
             for project_dir, alias in missing:
                 results.append(
                     CheckResult(
@@ -162,14 +200,21 @@ class ProjectGhAccountMappingCheck:
                         ),
                     )
                 )
-        else:
+            results.extend(unaliased_findings)
+        elif targets:
+            # 매핑 미설정이면 owner 기반 검증이 통째로 skip 된다 — clean 오해 방지용 표기.
+            skip_note = (
+                ""
+                if ctx.gh_owner_accounts
+                else " · owner 기반 검증은 doctor.gh_owner_accounts 미설정으로 skip"
+            )
             results.append(
                 CheckResult(
                     check_name=self.name,
                     severity=Severity.INFO,
                     message=(
                         f"GitHub ssh alias project {len(targets)}개 → "
-                        f"gh 계정 라우팅 (.envrc GH_CONFIG_DIR) 모두 일치"
+                        f"gh 계정 라우팅 (.envrc GH_CONFIG_DIR) 모두 일치{skip_note}"
                     ),
                 )
             )

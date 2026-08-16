@@ -101,7 +101,7 @@ def test_mismatched_account_yields_warning(docs: Path) -> None:
 
 
 def test_no_ssh_alias_origin_yields_silent(docs: Path) -> None:
-    """origin 이 plain github.com (ssh alias 없음) → 검증 대상 X (silent)."""
+    """plain github.com origin + owner 가 gh_owner_accounts 에 없음 → silent (무오탐)."""
     proj = docs / "proj-plain"
     _write_origin(proj, "git@github.com:owner/proj-plain.git")
     _write_envrc_gh(proj, "16bitdo")
@@ -126,7 +126,7 @@ def test_no_git_dirs_yields_silent(docs: Path) -> None:
 
 
 def test_https_origin_yields_silent(docs: Path) -> None:
-    """HTTPS origin 은 ssh_alias 가 None → 검증 대상 X (silent)."""
+    """HTTPS origin + owner 가 gh_owner_accounts 에 없음 → silent (무오탐)."""
     proj = docs / "proj-https"
     _write_origin(proj, "https://github.com/owner/proj-https.git")
     _write_envrc_gh(proj, "16bitdo")
@@ -271,6 +271,98 @@ def test_owner_routing_disabled_when_mapping_empty(
     res = ProjectGhAccountMappingCheck().run(CheckContext())  # 빈 매핑
     assert calls["n"] == 0
     assert not any("misroute" in r.message for r in res)
+
+
+# ── 별칭 미사용 origin 검출 (issue #198) ──
+def test_unaliased_origin_warns_when_owner_mapped(docs: Path) -> None:
+    """plain github.com origin 이고 owner 가 매핑에 등록됐으면 WARNING."""
+    proj = docs / "proj-plain"
+    _write_origin(proj, "git@github.com:16bitdo/proj-plain.git")
+
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+
+    assert len(res) == 1
+    assert res[0].severity is Severity.WARNING
+    assert "별칭 없는" in res[0].message
+    assert "16bitdo/proj-plain" in res[0].message
+    assert res[0].location is not None
+    assert res[0].location.name == "proj-plain"
+    assert res[0].suggestion is not None
+    assert "git@github.com-16bitdo:16bitdo/proj-plain.git" in res[0].suggestion
+
+
+def test_unaliased_origin_silent_when_owner_unmapped(docs: Path) -> None:
+    """매핑에 없는 owner 의 별칭 미사용 origin 은 종전대로 silent."""
+    proj = docs / "proj-plain"
+    _write_origin(proj, "git@github.com:acme/proj-plain.git")
+
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+    assert res == []
+
+
+def test_unaliased_https_origin_warns_when_owner_mapped(docs: Path) -> None:
+    """https origin 도 별칭 라우팅이 아니므로 owner 등록 시 WARNING."""
+    proj = docs / "proj-https"
+    _write_origin(proj, "https://github.com/16bitdo/proj-https.git")
+
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+
+    assert len(res) == 1
+    assert res[0].severity is Severity.WARNING
+    assert "https" in res[0].message
+
+
+def test_unaliased_warning_coexists_with_alias_findings(docs: Path) -> None:
+    """별칭 project 의 라우팅 누락 WARNING 과 별칭 미사용 WARNING 이 함께 보고된다."""
+    aliased = docs / "proj-a"
+    _write_origin(aliased, "git@github.com-16bitdo:16bitdo/proj-a.git")  # .envrc 없음
+    plain = docs / "proj-b"
+    _write_origin(plain, "git@github.com:16bitdo/proj-b.git")
+
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+
+    assert len(res) == 2
+    assert all(r.severity is Severity.WARNING for r in res)
+    assert any("GH_CONFIG_DIR" in r.message for r in res)
+    assert any("별칭 없는" in r.message for r in res)
+
+
+# ── 매핑 미설정 시 skip 사실 표기 (issue #198) ──
+def test_summary_notes_skip_when_mapping_empty(docs: Path) -> None:
+    """gh_owner_accounts 미설정이면 summary INFO 에 skip 사실을 표기."""
+    proj = docs / "proj-a"
+    _write_origin(proj, "git@github.com-16bitdo:16bitdo/proj-a.git")
+    _write_envrc_gh(proj, "16bitdo")
+
+    res = ProjectGhAccountMappingCheck().run(CheckContext())
+
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "skip" in res[0].message
+    assert "gh_owner_accounts" in res[0].message
+
+
+def test_summary_has_no_skip_note_when_mapping_set(docs: Path) -> None:
+    """매핑이 설정돼 있으면 skip 문구가 붙지 않는다."""
+    proj = docs / "proj-a"
+    _write_origin(proj, "git@github.com-16bitdo:16bitdo/proj-a.git")
+    _write_envrc_gh(proj, "16bitdo")
+
+    res = ProjectGhAccountMappingCheck().run(
+        CheckContext(gh_owner_accounts={"16bitdo": "16bitdo"})
+    )
+
+    assert len(res) == 1
+    assert res[0].severity is Severity.INFO
+    assert "skip" not in res[0].message
 
 
 def test_gh_honors_individual_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
