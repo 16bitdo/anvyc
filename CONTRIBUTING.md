@@ -142,13 +142,28 @@ pytest -q tests/integration/test_sops_*.py  # SOPS 영역
 ### 4.4 Style
 
 ```bash
-ruff check src tests               # 린트
-ruff format src tests              # 자동 포맷 (선택)
+ruff check src tests               # 린트 — CI·pre-commit 이 강제
 mypy src/anvyc/ tests/             # 타입 체크 (strict — CI / pre-commit 과 동일 범위)
 ```
 
 `mypy` 범위는 CI 의 `Lint and type-check` job 과 동일하게 `src/anvyc/ tests/`
 입니다. pre-commit hook 도 같은 범위로 실행되므로 push 전 잡힙니다.
+
+#### `ruff format` 은 쓰지 않습니다
+
+강제 대상은 **`ruff check`(린트) 와 `mypy`** 뿐입니다. `ruff format` 은 CI
+(`.github/workflows/ci.yml`)에도 pre-commit(`.pre-commit-config.yaml`)에도 없고,
+**PR 에서 실행하지 마세요.**
+
+- **전 트리 포맷**은 253 파일 · 4219 줄을 바꿉니다(2026-08-16 측정). 이 저장소는
+  결정의 근거를 코드 주석과 커밋 이력에 남기는 방식으로 굴러가는데, 그 규모의 재포맷은
+  `git blame` 을 통째로 덮어 "이 줄이 왜 이렇게 됐는가" 를 추적 불가능하게 만듭니다.
+- **일부 파일만 포맷**해도 문제입니다. 변경과 무관한 스타일 diff 가 섞여 리뷰어가 실질
+  변경을 찾기 어려워집니다 — 실제로 2026-08-16 에 4 파일을 고치며 `ruff format` 을 함께
+  돌렸다가 diff 가 70 줄에서 132 줄로 부풀어, 되돌리고 다시 커밋했습니다.
+
+로컬에서 포맷터를 쓰고 싶다면 커밋에 포함시키지 마세요. 스타일이 거슬리는 부분은
+그 파일을 **실제로 고치는 PR** 에서 함께 정리하는 편이 낫습니다.
 
 ### 4.5 CLI 사용자 출력 (console.print 가이드)
 
