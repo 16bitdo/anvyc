@@ -1224,7 +1224,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | check_name | 영역 | 추가 |
 |---|---|---|
 | `project-aws-profile-mapping` | `.envrc` AWS_PROFILE ↔ `~/.aws/config` | v0.6.1 |
-| `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ ssh alias 일치 + **owner↔alias 정합**(rule 25; `doctor.gh_owner_accounts` static + 불일치 시 dynamic gh write-권한 보강) | v0.11.0 |
+| `project-gh-account-mapping` | `.envrc` `GH_CONFIG_DIR` ↔ ssh alias 일치 + **owner↔alias 정합**(rule 25; `doctor.gh_owner_accounts` static + 불일치 시 dynamic gh write-권한 보강) + **별칭 미사용 origin 검출**(plain `github.com`·https 인데 owner 가 매핑에 등록됨 → WARNING; 미등록 owner 는 silent). 매핑 미설정 시 owner 기반 검증이 전부 skip 되므로 summary INFO 에 그 사실을 표기 | v0.11.0 |
 | `project-claude-account-mapping` | `.envrc` `CLAUDE_CONFIG_DIR` → config 디렉터리 존재 | v0.12.0 |
 | `project-pulumi-backend-mapping` | `Pulumi.yaml` backend ↔ `.envrc` `PULUMI_BACKEND_URL` | v0.12.0 |
 
