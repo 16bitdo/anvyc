@@ -1,9 +1,97 @@
 # anvyc 릴리즈 노트
 
-## v0.21.0 — (unreleased)
+## v0.21.0 — 2026-08-17 (minor — 가드/계정 라우팅 서브시스템 + doctor 출력 개편)
 
-- **feat: AWS 계정 인증/연결 상태 점검** (`aws-account-status` 전역 doctor check + `project doctor` `aws_account_status`) + `anvyc aws profile list/show` (`--probe` opt-in). Phase 1 (읽기 전용); Phase 2 (profile CRUD) 예정.
-- **feat: `anvyc aws profile create/edit/rm`** — `~/.aws/config` profile CRUD (surgical 텍스트 편집 + diff/dry-run/.bak/재파싱 검증, 정적 시크릿 불가침, orphan sso-session 경고). AWS account-status Phase 2.
+v0.20.0 이후 70 커밋(feat 29 · fix 20 · docs 13 · 기타 8)을 모은 릴리스. 축은 셋이다 —
+**① 브랜치 보호·pre-push 가드 서브시스템 신설**, **② GitHub/AWS 계정 라우팅을 "라벨"이
+아니라 "실체"로 검증**, **③ doctor 출력을 claude doctor 스타일로 개편**.
+
+### 가드 — 브랜치 보호 · pre-push (신규 서브시스템)
+
+- **`anvyc guard install`** — pre-push 가드 렌더/설치. marker 기반이라 foreign hook 을
+  보존하고 `core.hooksPath` 를 존중한다. `--project/--root/--dry-run/--force`.
+  worktree-safe (`--git-common-dir`).
+- **`anvyc guard protect`** — GitHub repository ruleset 적용 CLI. **기본 dry-run**,
+  `--apply` 로만 실제 반영. LIST rc 를 직접 분기해 중복 POST·오판을 막고,
+  `required_reviews` 를 dry-run detail 에 표시해 적용 전 확인 가능 (#171).
+- **`project-branch-protection` doctor check** — ruleset/hook drift 관측. 접근 불가
+  repo 는 silent, admin 권한 게이트(`repo_admin`)로 read-only public repo 의 영구
+  WARNING/403 제거, archived repo 는 대상에서 제외 (#196).
+- **pre-push SoT 에 `anvyc-pr-guard` 임베드** — CI 게이트와 공존 (#164).
+- `branch_policy` 는 ruleset lookup 으로 해소하고 실패 시 안전 fallback.
+
+### 계정 라우팅 — 라벨이 아니라 실체 검증
+
+- **`anvyc gh`** — race-immune gh account 라우팅 (#160). cwd origin 의 SSH alias 에서
+  account 를 도출해 `GH_TOKEN` 으로 주입하므로, 다른 셸 세션의 `gh auth switch` 가
+  전역 active 를 바꿔도 영향받지 않는다. account 도출 불가 시 silent fallback 없이 비0 exit.
+- **`account-identity-actual` check** (#188) — 선언된 `gh_config_dir` 프로필의 토큰이
+  실제로 그 `github_login` 에 귀속되는지 `gh api user` 역조회로 대조. 라벨 정합만 보던
+  기존 체크와 달리 실체를 본다. 조회 실패는 미보고(모름≠불일치), 불일치만 CRITICAL.
+  L4 anvyx C6 pre-run gate 가 `doctor --strict --json` 의 `summary.critical` 로 소비.
+- **`anvyc github account`** — GitHub 계정 통합 뷰 (#179).
+- **`project-gh-account-mapping` 확장** — owner↔alias 정합 검증 static+dynamic (#158),
+  그리고 **별칭 미사용 origin 검출** (#198) — plain `github.com`·https origin 인데 owner 가
+  `doctor.gh_owner_accounts` 에 등록돼 있으면 WARNING. 미등록 owner 는 silent(무오탐).
+  매핑 미설정 시 owner 기반 검증이 전부 skip 되므로 summary INFO 에 그 사실을 표기한다.
+- **`anvyc project init`** — per-project gh 라우팅 `.envrc` 스캐폴딩 (#176).
+
+### AWS 계정
+
+- **`aws-account-status`** 전역 doctor check + `project doctor` `aws_account_status`,
+  **`anvyc aws profile list/show`** (`--probe` opt-in) — Phase 1 읽기 전용 (#173).
+- **`anvyc aws profile create/edit/rm`** — `~/.aws/config` CRUD (#174). surgical 텍스트
+  편집 + diff/dry-run/`.bak`/재파싱 검증, 정적 시크릿 불가침, orphan sso-session 경고.
+- **scope 정책 정리** — `creds-expiry` 와 `cost-aws-explorer-iam` 를 **실행 중인 프로젝트의
+  AWS profile 로 scope**. 도구 repo 등 AWS 미사용 프로젝트에서는 silent 가 기본 동작이 되어
+  구조적 spurious warning 이 사라진다.
+
+### doctor 출력 개편
+
+- **claude doctor 스타일** (#161) — 글리프 + check 그룹핑 + verdict 한 줄. `project doctor`
+  도 동일 형식으로 통일하고 escape 버그 수정 (#162).
+- 비-TTY 에서 80열 강제 개행되던 `soft_wrap` 문제, Rich 가 `[cost-aws]` 같은 대괄호를
+  markup 으로 먹어 **복붙 명령이 깨지던** escape 문제 수정 (각각 회귀 테스트 동반).
+- cost suggestion 에서 `pip --user` 제거 — venv 안에서 실패하던 플래그.
+
+### 신규 doctor check
+
+`container-runtime-health` (colima(vz) 손상 조기 포착, #157) ·
+`ruleset-deploy-drift` (배포 ruleset stale 관측, #182) ·
+`claude-md-freshness` (fleet CLAUDE.md content-fresh, #183) ·
+`project-branch-protection` · `aws-account-status` · `account-identity-actual`.
+
+### 설정 · 스코프 관리
+
+- **`anvyc config roots`** — 컨테이너 프로젝트 root CRUD (#167).
+- **`anvyc config projects`** — 개별 프로젝트 포함/제외 (#169).
+- deprecated `~/Documents` 를 스캔 SoT 에서 제거 (#163).
+
+### CLI UX
+
+- 전역 help 단어 별칭 — `anvyc … help` = `--help` (#175).
+- no-args 그룹 호출 시 도움말 출력 일관화 — 서브그룹도 루트와 동일 (#177).
+
+### 기타 수정
+
+- `cost-github-pat-scope` — user 별 검증·404 판정 정확화 (#194), suggestion 을 scope
+  추가 우선으로 (#193).
+- gh 인증 실패를 '권한 없음' 과 구분 — 조용한 거짓 음성 차단 (#195).
+- `creds` CLI 가 per-kind 임계를 적용 — 표와 doctor 판정 불일치 해소 (#191).
+- `aws_sso` creds 경고에 `sso_session`/profiles 표시 (startUrl 역매핑, #146).
+- CP-16 P2A `run_summary` 확장 — `self_status` 분포·percentile·blocked + repo scope (#147).
+- `mcp` 를 `<2` 로 상한 고정 — CI red 해소 (#186).
+- mypy strict 부채 해소 (`gh_probe`/`gh_account_view`, #181).
+- `personal-config-guard` pre-commit 을 tracked 로 전환 (#185).
+
+### 업그레이드
+
+```bash
+uv tool upgrade anvyc     # 또는: brew upgrade anvyc
+```
+
+`project-gh-account-mapping` 의 별칭 미사용 origin 검출은 `~/.anvyc/anvyc.yaml` 의
+`doctor.gh_owner_accounts` 를 설정해야 동작한다(미설정 시 종전과 동일하게 silent).
 
 ## v0.20.0 — 2026-05-30 (minor — creds-expiry 임계 anvyc.yaml config화)
 
