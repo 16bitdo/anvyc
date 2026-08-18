@@ -2,12 +2,13 @@
 """Unit tests for project-branch-protection check."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from anvyc.checks.base import CheckContext, Severity
+from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.core.branch_policy import BranchPolicy
 
@@ -152,3 +153,66 @@ def test_origin_less_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED):
         res = ProjectBranchProtectionCheck().run(CheckContext())
     assert res == []
+
+
+@pytest.fixture
+def tracked_hooks_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """core.hooksPath 가 worktree 내부(tracked)를 가리키는 실 repo — 검사 대상으로 등록."""
+    repo = tmp_path / "proj"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    (repo / "githooks").mkdir()
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "core.hooksPath", "githooks"], check=True
+    )
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.resolve_guard_targets",
+        lambda project, root: [repo],
+    )
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.origin_owner_repo",
+        lambda d: ("16bitdo", "proj"),
+    )
+    return repo
+
+
+def _run_with_ruleset_ok() -> list[CheckResult]:
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 1}):
+        return ProjectBranchProtectionCheck().run(CheckContext())
+
+
+def test_tracked_hookspath_without_guard_yields_warning(tracked_hooks_repo: Path) -> None:
+    """tracked hooksPath 여도 가드가 **실제로** 있는지 확인한다.
+
+    anvyc 는 tracked 훅을 clobber 하지 않고 skip 한다. 그때 "해당 repo 도구 책임"
+    이라며 무조건 정합 처리하면, 그 책임을 아무도 지지 않은 repo 가 초록으로
+    보고된다 (2026-08-18 anvyx — githooks/pre-push 에 가드가 없는데 doctor 는 정합).
+    """
+    (tracked_hooks_repo / "githooks" / "pre-push").write_text("#!/bin/sh\necho lint only\n")
+    res = _run_with_ruleset_ok()
+    assert any(r.severity is Severity.WARNING and "가드" in r.message for r in res)
+
+
+def test_tracked_hookspath_suggestion_omits_guard_install(tracked_hooks_repo: Path) -> None:
+    """tracked 케이스에 `anvyc guard install` 을 해소책으로 안내하지 않는다.
+
+    그 명령은 tracked hooksPath 에서 skipped-tracked-hooks 로 **아무 일도 하지 않는다**.
+    실패하는 명령을 해소책으로 걸면 경고 무시가 훈련된다 — archived repo 에서 얻은 교훈.
+    """
+    (tracked_hooks_repo / "githooks" / "pre-push").write_text("#!/bin/sh\necho lint only\n")
+    res = _run_with_ruleset_ok()
+    warn = next(r for r in res if r.severity is Severity.WARNING)
+    assert "guard install" not in (warn.suggestion or "")
+
+
+def test_tracked_hookspath_with_guard_is_aligned(tracked_hooks_repo: Path) -> None:
+    """tracked 훅이 가드 블록을 담고 있으면 정합 — 무조건 경고로 뒤집지 않기 위한 앵커.
+
+    (RED 로 유도된 시험이 아니라, 위 두 시험의 과교정을 막는 반대 방향 구속이다.)
+    """
+    (tracked_hooks_repo / "githooks" / "pre-push").write_text(
+        "#!/bin/sh\n# >>> anvyc-pr-guard >>>\n"
+    )
+    res = _run_with_ruleset_ok()
+    assert not any(r.severity is Severity.WARNING for r in res)
