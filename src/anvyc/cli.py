@@ -2202,7 +2202,7 @@ def project_doctor(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 11 check.
+    """cwd (또는 --path) 의 connection 정합성 12 check.
 
      1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
      2. aws_account_status         인증 방식별 연결 상태 (SSO/static/assume-role/process)
@@ -2214,7 +2214,8 @@ def project_doctor(
      8. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
      9. dev_env_secret_safety      raw secret 없이 op:// 사용 여부 (CRITICAL)
     10. tool_versions_installed    python/node binary PATH 존재
-    11. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원 (CRITICAL)
+    11. ownership_declared         origin 있는 저장소의 manifest 선언 누락
+    12. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원 (CRITICAL)
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")

@@ -94,6 +94,111 @@ def test_undeclared_repo_is_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     report = project_doctor.run_project_doctor(proj)
     assert _result(report, "commit_identity_actual") is None
     assert "expected_commit_email" not in report.to_payload()
+    # 이 침묵은 의도된 것이나 **그 자체가 사각지대**다 — 아래 ownership_declared 가
+    # 메운다. 이 줄이 두 check 의 역할 분담을 계약으로 잠근다.
+    assert _result(report, "ownership_declared") is not None
+
+
+# ---------------------------------------------------------------------------
+# ownership_declared — 선언 자체의 부재를 보고한다.
+#
+# `commit_identity_actual` 은 선언된 이메일과 실체를 대조하므로, 선언이 없으면 대조
+# 기준이 없어 조용히 건너뛴다. 그런데 신원이 잘못 박히는 경로가 바로 그 "선언 없음"
+# 이다. 2026-08-18 에 16bitdo 소유 저장소 12곳에서 148개 커밋이 다른 신원으로 기록
+# 됐는데, 그 12곳은 전부 미선언이라 `commit_identity_actual` 이 한 번도 실행되지
+# 않았다 — 가드가 켜지는 조건이 사고가 나는 조건과 정확히 배타였다.
+# ---------------------------------------------------------------------------
+
+
+def test_undeclared_repo_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """미선언 저장소는 WARNING — strict 에서 exit 1 이 되도록 blocking 이어야 한다."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(tmp_path / "nope.yaml"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(tmp_path / "nope"))
+    proj = tmp_path / "other"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:someone/other.git\n', encoding="utf-8"
+    )
+
+    report = project_doctor.run_project_doctor(proj)
+
+    res = _result(report, "ownership_declared")
+    assert res is not None and res.severity is Severity.WARNING
+    assert "someone/other" in res.message
+    assert report.has_blocking(), "strict 게이트에 걸리지 않으면 경고가 아무것도 막지 못한다"
+
+
+def test_declared_repo_is_silent(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """선언 + commit_email 이 있으면 침묵한다 — 실체 보고는 commit_identity_actual 담당.
+
+    둘 다 말하면 정상 상태에서 매번 두 줄이 뜬다.
+    """
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+
+    report = project_doctor.run_project_doctor(repo)
+
+    assert _result(report, "ownership_declared") is None
+
+
+def test_no_origin_is_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """origin 이 없으면 GitHub 계정 라우팅 대상이 아니다.
+
+    여기서 경고하면 로컬 전용 저장소마다 잡음이 되고, 경고 자체가 무시된다.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(tmp_path / "nope.yaml"))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(tmp_path / "nope"))
+    proj = tmp_path / "local-only"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text("[core]\n\tbare = false\n", encoding="utf-8")
+
+    report = project_doctor.run_project_doctor(proj)
+
+    assert _result(report, "ownership_declared") is None
+
+
+_BINDINGS_NO_EMAIL = """
+version: 1
+machine: test-machine
+accounts:
+  personal-16bitdo:
+    github_login: 16bitdo
+    ssh_alias: github.com-16bitdo
+    gh_config_dir: ~/.config/gh-16bitdo
+"""
+
+
+def test_declared_without_commit_email_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """선언은 있으나 이 머신 바인딩에 commit_email 이 없으면 결과는 미선언과 같다.
+
+    L1 에 등록했다는 사실만으로 안심하기 쉽지만, 신원을 실제로 정하는 값은 L2 에 있다.
+    빠지면 `commit_identity_actual` 이 똑같이 건너뛰고 신원은 전역값으로 떨어진다.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANVYC_CACHE_DIR", str(tmp_path / "cache"))
+    m = tmp_path / "account-routing.yaml"
+    m.write_text(_PROJECTS, encoding="utf-8")
+    b = tmp_path / "binds"
+    b.mkdir()
+    (b / "bindings.test-machine.yaml").write_text(_BINDINGS_NO_EMAIL, encoding="utf-8")
+    monkeypatch.setenv("ANVYC_ACCOUNT_MANIFEST", str(m))
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+    monkeypatch.setattr(account_manifest, "machine_name", lambda: "test-machine")
+    proj = tmp_path / "analysis"
+    (proj / ".git").mkdir(parents=True)
+    (proj / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:16bitdo/analysis.git\n', encoding="utf-8"
+    )
+
+    report = project_doctor.run_project_doctor(proj)
+
+    res = _result(report, "ownership_declared")
+    assert res is not None and res.severity is Severity.WARNING
+    assert "commit_email" in res.message
+    assert _result(report, "commit_identity_actual") is None
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-11 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+12 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
@@ -14,6 +14,7 @@ Check list (D14):
 6. pulumi_backend_routing     Pulumi.yaml backend ↔ .envrc PULUMI_BACKEND_URL
 7. dev_env_secret_safety      .envrc 안 raw secret without op://
 8. tool_versions_installed    python/node binary 의 PATH 존재
+8b. ownership_declared        origin 있는 저장소가 manifest 에 선언돼 커밋 신원이 결정되는지
 9. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원(GIT_AUTHOR_IDENT) 대조
 """
 from __future__ import annotations
@@ -565,6 +566,62 @@ def _origin_repo_slug(info: ProjectInfo) -> str | None:
     return None
 
 
+def _check_ownership_declared(
+    path: Path, slug: str | None, resolved: account_manifest.ResolvedAccount | None
+) -> list[CheckResult]:
+    """origin 이 있는 저장소의 커밋 신원이 **manifest 로 결정되는지** 확인.
+
+    `commit_identity_actual` 은 선언된 이메일과 실체를 대조한다 — 선언이 없으면 대조할
+    기준이 없어 조용히 건너뛴다. 그런데 신원이 잘못 박히는 경로가 바로 그 "선언 없음"
+    이다: ownership 이 없으면 커밋 계정이 `~/.gitconfig` 전역 기본값으로 떨어지고,
+    아무도 그 상태를 보고하지 않는다.
+
+    2026-08-18 에 16bitdo 소유 저장소 12곳에서 148개 커밋이 그렇게 다른 신원으로
+    기록됐다 — 그 12곳은 전부 manifest 미선언이라 `commit_identity_actual` 이 한 번도
+    실행되지 않았다. 가드가 없었던 게 아니라, 가드가 켜지는 조건이 사고가 나는 조건과
+    정확히 배타였다.
+
+    - origin 없음 → 대상 X (GitHub 계정 라우팅 자체가 없다)
+    - 미선언 / 바인딩에 commit_email 없음 → WARNING
+    - 선언 + commit_email 있음 → silent (`commit_identity_actual` 이 실체를 보고한다)
+    """
+    if not slug:
+        return []
+    if resolved is None:
+        return [
+            CheckResult(
+                check_name="ownership_declared",
+                severity=Severity.WARNING,
+                message=(
+                    f"{slug}: ownership 미선언 — 커밋 계정이 전역 기본값으로 떨어지고 "
+                    "신원 대조(commit_identity_actual)가 건너뛰어진다"
+                ),
+                location=path,
+                suggestion=(
+                    "L1 SoT (role-based-ruleset 의 metadata/account-routing.yaml) 에 "
+                    "이 저장소를 등록하세요."
+                ),
+            )
+        ]
+    if not resolved.commit_email:
+        return [
+            CheckResult(
+                check_name="ownership_declared",
+                severity=Severity.WARNING,
+                message=(
+                    f"{slug}: ownership '{resolved.ownership_id}' 은 선언됐으나 이 머신의 "
+                    "바인딩에 commit_email 이 없어 신원 대조가 건너뛰어진다"
+                ),
+                location=path,
+                suggestion=(
+                    "L2 바인딩(~/.config/anvyc/accounts/bindings.<hostname>.yaml) 의 해당 "
+                    "ownership 에 commit_email 을 추가하세요."
+                ),
+            )
+        ]
+    return []
+
+
 def _check_commit_identity_actual(
     path: Path, slug: str | None, resolved: account_manifest.ResolvedAccount | None
 ) -> list[CheckResult]:
@@ -645,6 +702,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
+    report.results.extend(_check_ownership_declared(path, slug, resolved))
     report.results.extend(_check_commit_identity_actual(path, slug, resolved))
     # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
     # AWS 는 여기서 방출하지 않는다 (설계 §6.4 제외 — ProjectDoctorReport 주석 참조).
