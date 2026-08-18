@@ -73,16 +73,25 @@ age-keygen -o ~/.config/sops/age/keys.txt
 `scripts/dev-install.sh` 가 마지막 단계로 `scripts/install-git-hooks.sh` 를
 자동 호출해 `.git/hooks/pre-push` 를 설치합니다 (멱등).
 
-- **pre-push**: `pytest -m "not integration"` 으로 unit fast-fail gate (약
-  15 초). 실패 시 push 차단 — CI 의 `Pytest (unit, fast-fail gate)` step
-  과 동일 명령이므로 결과 일관. 의도적 우회: `git push --no-verify`.
+- **pre-push**: 보호 브랜치 가드(anvyc-pr-guard) → `ruff` → `mypy src/anvyc/ tests/`
+  → `pytest -m "not integration"` 순서로 실행하는 fast-fail gate. 앞 단계 실패 시
+  즉시 차단합니다. CI 의 `Lint and type-check` · `Pytest (unit, fast-fail gate)` step
+  과 동일 명령이라 결과가 일관됩니다. 의도적 우회: `git push --no-verify`.
 - **SoT**: `scripts/hooks/pre-push.sh` (git 추적). 수동 재설치:
   `bash scripts/install-git-hooks.sh`.
 - `.venv/bin/pytest` 가 없으면 hook 은 graceful skip — 셋업 직후 첫 push 가
   실패하지 않습니다.
 
-기존 `.git/hooks/pre-commit` (secret/개인화 파일 차단) 은 별도 도메인의
-hook 으로 이 installer 가 손대지 않습니다.
+`.git/hooks/pre-commit` 은 이 installer 가 손대지 않습니다 — 그 자리는
+**pre-commit framework** (`.pre-commit-config.yaml`) 가 씁니다. `pre-commit install`
+로 켜지며 gitleaks(내용 기반 시크릿) · ruff · mypy(CI 와 동일 범위) ·
+**personal-config-guard**(경로 기반 개인화 파일 차단) 를 실행합니다.
+
+- **personal-config-guard**: tracked `scripts/hooks/pre-commit` 을 local 훅으로
+  호출합니다 — 정규식·마커 로직을 config 에 복제하지 않습니다. `--no-verify` 우회와
+  훅 미설치 환경은 `.github/workflows/personal-config-guard.yml` 이 server-side 로
+  재검사하며, 거기서도 **같은 스크립트를 재호출**해 SoT 를 하나로 유지합니다.
+  배선 자체는 `tests/unit/test_personal_config_guard_wiring.py` 가 구속합니다.
 
 ## 3. 테스트 실행
 

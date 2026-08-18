@@ -1,0 +1,77 @@
+name: personal-config-guard
+
+# `scripts/hooks/pre-commit` 의 server-side 재검사 — 로컬 훅만으로는 `git commit
+# --no-verify` 우회와 **훅 미설치 환경**(fresh clone, collaborator, CI 봇)을 막지 못한다.
+#
+# 단일 SoT: BLOCKED/ALLOWED 정규식과 마커 로직을 여기서 재구현하지 않고 **훅 자체를
+# 호출**한다. 재구현하면 두 정의가 갈려 "로컬은 막는데 CI 는 통과"(또는 반대) 상태가
+# 조용히 생긴다. 정책 본문 SoT 는 role-based-ruleset 의 personal-config-guard SKILL.md.
+#
+# 왜 ci.yml 의 한 step 이 아니라 별도 워크플로인가:
+#   ci.yml 은 비용 절감으로 `paths-ignore: ['**.md', 'docs/**']` 를 둔다. 그런데 차단
+#   패턴에는 `CLAUDE.md`·`CONTEXT.md` 가 들어 있어, 거기 얹으면 **정확히 그 .md 차단
+#   대상만 커밋했을 때** 가드가 통째로 건너뛰어진다. 그래서 paths-ignore 없이 분리한다.
+#
+# 트리거가 자동인 이유: 이 repo 는 public 이라 Actions 가 무료다. private repo
+# (ccinspector)는 billing 때문에 workflow_dispatch 전용을 택했지만, 그 제약이 없는
+# 곳까지 on-demand 로 두면 아무도 돌리지 않아 장식이 된다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR 에 push 가 연달아 들어오면 추월된 run 취소. main push 는 항상 완주시킨다.
+  group: personal-config-guard-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # base 와 비교하려면 부모 커밋이 필요하다.
+          fetch-depth: 0
+
+      - name: Resolve base SHA
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE"
+          else
+            BASE="$PUSH_BEFORE"
+          fi
+          # workflow_dispatch / 첫 push / force-push → HEAD~1(또는 root) fallback.
+          if [ -z "$BASE" ] \
+            || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE="$(git rev-parse HEAD~1 2>/dev/null \
+                    || git rev-list --max-parents=0 HEAD | tail -1)"
+            echo "fallback base used: $BASE" >&2
+          fi
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: personal-config-guard scan (훅 재호출)
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # base 이후 변경분을 index 에 올린다 — 훅의 `git diff --cached --name-only`
+          # 가 정확히 그 변경 파일들을 보게 하기 위함. worktree 파일은 건드리지 않는다.
+          git reset --soft "$BASE_SHA"
+          echo "==== changed paths (head vs base) ===="
+          git diff --cached --name-only || true
+          echo "======================================"
+          bash scripts/hooks/pre-commit

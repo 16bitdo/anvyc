@@ -8,6 +8,19 @@ repos:
   # ruff / mypy 는 프로젝트 .venv 의 [dev] extra 를 재사용 (CI 와 버전 일관).
   - repo: local
     hooks:
+      - id: personal-config-guard
+        # 경로 기반 개인화 파일 차단(.env/.envrc/.claude*/kubeconfig*/*.pem …).
+        # gitleaks 는 **내용** 기반이라 인식 가능한 시크릿 패턴이 없는 개인화 파일은
+        # 통과시킨다 — 두 훅은 대체가 아니라 보완 관계다.
+        # 정규식·마커 로직은 tracked SoT(scripts/hooks/pre-commit)가 갖는다. 여기서
+        # 재구현하지 않는다 — 두 정의가 갈리면 로컬과 CI 판정이 어긋난다.
+        # pass_filenames=false: 훅이 `git diff --cached` 로 직접 수집한다.
+        # always_run=true: 변경 파일 필터에 의존하지 않고 매 커밋 판정한다.
+        name: personal-config-guard (경로 기반 개인화 파일 차단)
+        entry: scripts/hooks/pre-commit
+        language: script
+        pass_filenames: false
+        always_run: true
       - id: ruff
         name: ruff
         entry: .venv/bin/ruff check
