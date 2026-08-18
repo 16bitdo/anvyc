@@ -2,8 +2,10 @@
 # .git/hooks/* 를 scripts/hooks/* SoT 로부터 (재)설치 — 멱등.
 #
 # 동일 내용이면 교체 생략, 다르면 .bak-YYYYMMDD-HHMMSS 백업 후 교체.
-# 현재는 pre-push 만 관리. .git/hooks/pre-commit (personal-config-guard,
-# role-based-ruleset 외부 SoT 가 설치) 은 손대지 않는다 — 별도 도메인.
+# 현재는 pre-push 만 관리. .git/hooks/pre-commit 은 손대지 않는다 — 그 자리는
+# pre-commit framework(.pre-commit-config.yaml) 가 쓴다. personal-config-guard 는
+# 그 framework 의 local 훅으로 배선돼 tracked scripts/hooks/pre-commit 을 호출한다
+# (2026-08-18). 예전 서술의 "외부 SoT 가 .git/hooks 에 직접 설치" 전제는 폐기됐다.
 #
 # Usage:
 #   bash scripts/install-git-hooks.sh
