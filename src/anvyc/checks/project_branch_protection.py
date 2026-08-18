@@ -26,12 +26,29 @@ from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
 
 
-def _hook_installed(repo_dir: Path) -> bool:
+def _hook_problem(repo_dir: Path) -> tuple[str, str] | None:
+    """git 이 실제 실행할 pre-push 훅에 가드 블록이 있는지 검사 — 없으면 사유.
+
+    tracked hooksPath(worktree 내부)도 통과시키지 않는다. anvyc 는 그런 훅을
+    clobber 하지 않고 skip 하는데, 이를 "repo 자체 도구 책임" 이라며 무조건 정합
+    처리하면 **그 책임을 아무도 지지 않은 repo 가 초록으로 보고된다**
+    (2026-08-18 anvyx: core.hooksPath=githooks 인데 githooks/pre-push 에 가드가
+    없어 로컬 보호가 0인 채로 doctor 는 정합이었다).
+    반환은 (사유, 해소책). tracked 에서는 `anvyc guard install` 이 skip 하므로 그 명령을
+    해소책으로 안내하지 않는다 — 조치 불가능한 안내는 경고 무시를 훈련시킨다. 또한
+    core.hooksPath 해제도 권하지 않는다: 그 설정이 해당 repo 의 **의도된 설계**일 수 있고
+    (anvyx 는 그 경로로 로컬 CI 게이트를 돌린다) 해제하면 다른 보호가 무너진다.
+    """
     hooks_dir, tracked = effective_hooks_dir(repo_dir)
-    if tracked:
-        return True  # tracked hooksPath 는 repo 자체 도구 책임 → 위반으로 보지 않음
     hook = hooks_dir / "pre-push"
-    return hook.is_file() and GUARD_BEGIN in hook.read_text(errors="replace")
+    if hook.is_file() and GUARD_BEGIN in hook.read_text(errors="replace"):
+        return None
+    if tracked:
+        return (
+            f"로컬 pre-push 가드 없음 (tracked hooksPath={hooks_dir})",
+            f"{hook} 에 anvyc-pr-guard 블록을 직접 추가 (anvyc 는 tracked 훅을 clobber 하지 않음)",
+        )
+    return ("로컬 pre-push hook 미설치", "anvyc guard install")
 
 
 class ProjectBranchProtectionCheck:
@@ -77,6 +94,7 @@ class ProjectBranchProtectionCheck:
                 continue  # enforce 불가(admin 아님 — private 404 또는 public read-only) → silent
 
             problems: list[str] = []
+            fixes: list[str] = []
             # archived repo 는 GitHub 이 모든 쓰기를 403 으로 막아 ruleset 을 **영원히** 설정할
             # 수 없다. admin 권한은 그대로라 위 repo_admin 게이트로는 안 걸러진다 (2026-08-16
             # 실측: guard protect --apply → "Repository was archived so is read-only.
@@ -86,9 +104,12 @@ class ProjectBranchProtectionCheck:
             # repo 까지 API 를 쓰면 헤더가 선언한 'repo 당 gh api 1~2회' 예산이 깨진다.
             if ruleset is None and not repo_archived(owner, name):
                 problems.append("서버 ruleset(anvyc-pr-required) 미설정")
+                fixes.append("anvyc guard protect --apply")
             # 로컬 훅은 archive 와 무관하게 설치 가능 — archived repo 에서도 계속 검사한다.
-            if not _hook_installed(repo):
-                problems.append("로컬 pre-push hook 미설치")
+            hook_problem = _hook_problem(repo)
+            if hook_problem:
+                problems.append(hook_problem[0])
+                fixes.append(hook_problem[1])
 
             if problems:
                 results.append(
@@ -97,7 +118,8 @@ class ProjectBranchProtectionCheck:
                         severity=Severity.WARNING,
                         message=f"{owner}/{name}: " + " / ".join(problems),
                         location=repo,
-                        suggestion="anvyc guard protect --apply / anvyc guard install",
+                        # 해소책은 실제로 걸린 문제의 것만 — 조치 불가능한 안내를 섞지 않는다.
+                        suggestion=" / ".join(fixes),
                     )
                 )
             else:
