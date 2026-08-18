@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from anvyc.checks.base import CheckContext, Severity
+from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.core.branch_policy import BranchPolicy
 
@@ -176,7 +176,7 @@ def tracked_hooks_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return repo
 
 
-def _run_with_ruleset_ok() -> list:
+def _run_with_ruleset_ok() -> list[CheckResult]:
     with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
          patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 1}):
         return ProjectBranchProtectionCheck().run(CheckContext())
