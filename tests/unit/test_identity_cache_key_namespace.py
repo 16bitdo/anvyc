@@ -81,7 +81,11 @@ def test_project_check_key_follows_probed_dir_not_comparison_target(
     captured: dict[str, object] = {}
 
     def spy_probe_cached(**kwargs: object) -> str | None:
-        captured.update(kwargs)
+        # gh 프로필 조회만 이 테스트의 관심사다. project doctor 는 다른 목적의 캐시도
+        # 쓰므로(예: public_repo_email_exposure 의 `repo-visibility:`), 전부 담으면
+        # 마지막 호출이 덮어써 단언이 엉뚱한 키를 검사한다.
+        if str(kwargs.get("key", "")).startswith("gh"):
+            captured.update(kwargs)
         return "heisgone"
 
     monkeypatch.setattr(identity_cache, "probe_cached", spy_probe_cached)
@@ -163,8 +167,11 @@ def test_different_profiles_do_not_share_a_key(
     )
     project_doctor.run_project_doctor(proj_a)
 
-    assert len(keys) == 2
-    assert keys[0] != keys[1], f"서로 다른 프로필이 같은 캐시 키를 씀: {keys[0]!r}"
+    # 전체 호출 수가 아니라 gh 프로필 키만 센다 — 전체를 세면 무관한 check 가
+    # 추가될 때마다 깨지고, 정작 "프로필별로 키가 갈리는가" 는 검사하지 못한다.
+    gh_keys = [k for k in keys if str(k).startswith("gh")]
+    assert len(gh_keys) == 2, f"gh 프로필 조회가 2회가 아님: {gh_keys}"
+    assert gh_keys[0] != gh_keys[1], f"서로 다른 프로필이 같은 캐시 키를 씀: {gh_keys[0]!r}"
 
 
 # ---------------------------------------------------------------------------

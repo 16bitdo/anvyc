@@ -1942,7 +1942,7 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 렌더가 suggestion 의 `[profile x]` 를 Rich markup 으로 삼키던 버그를 해소(회귀 lock:
 `tests/unit/test_project_doctor_render.py`).
 
-### 33.3 project doctor check 명세 (11 check)
+### 33.3 project doctor check 명세 (13 check)
 
 | check_name | trigger | severity (issue 시) |
 |---|---|---|
@@ -1956,7 +1956,9 @@ finding 은 cap 없이 전부 노출하며, 통과 check 도 INFO result 로 '�
 | `pulumi_backend_routing` | `Pulumi.yaml` 의 backend 또는 `.envrc` PULUMI_BACKEND_URL 있을 때만 | WARNING |
 | `dev_env_secret_safety` | `.envrc` 의 export 변수 있을 때만 | **CRITICAL** |
 | `tool_versions_installed` | `.python-version`/`.nvmrc`/`.tool-versions` 있을 때만 | WARNING |
+| `ownership_declared` | origin slug 가 있으나 manifest 미선언 또는 바인딩에 commit_email 부재 (선언이 없으면 `commit_identity_actual` 자체가 건너뛰어져 신원이 전역 기본값으로 낙하) | WARNING |
 | `commit_identity_actual` | origin slug 가 manifest 에 선언되고 바인딩에 commit_email 이 있을 때만 (`GIT_AUTHOR_IDENT` 실체 대조; 신원 미해결은 WARNING) | **CRITICAL** |
+| `public_repo_email_exposure` | 선언 commit_email 이 noreply 가 아니고 저장소가 PUBLIC 이며 계정이 이메일을 비공개로 둘 때만 (판정 근거를 이름 규칙이 아니라 계정 설정에 둔다. 조회 실패는 silent) | WARNING |
 
 → check 의 source 가 없으면 silent skip (결과 0건). bare path 는 `{"results": []}`.
 

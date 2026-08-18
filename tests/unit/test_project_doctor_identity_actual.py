@@ -396,7 +396,10 @@ def test_unregistered_repo_falls_back_to_envrc_label_match(
     report = project_doctor.run_project_doctor(proj)
     res = _result(report, "gh_identity_actual")
     assert res is not None and res.severity is Severity.INFO
-    assert not report.has_blocking()
+    # 요지는 "이 폴백이 과차단하지 않는가" 다 — 리포트 전체의 blocking 을 보면 무관한
+    # check 의 판정까지 삼킨다. 실제로 `ownership_declared` 가 같은 미등록 상태를 별도
+    # 사유(선언 부재)로 WARNING 하면서 이 단언이 깨졌다. 대상 check 만 본다.
+    assert not res.severity.is_blocking
 
 
 def test_declared_but_unbound_machine_falls_back_to_envrc_label(
