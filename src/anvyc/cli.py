@@ -2202,7 +2202,7 @@ def project_doctor(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 12 check.
+    """cwd (또는 --path) 의 connection 정합성 13 check.
 
      1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
      2. aws_account_status         인증 방식별 연결 상태 (SSO/static/assume-role/process)
@@ -2216,6 +2216,7 @@ def project_doctor(
     10. tool_versions_installed    python/node binary PATH 존재
     11. ownership_declared         origin 있는 저장소의 manifest 선언 누락
     12. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원 (CRITICAL)
+    13. public_repo_email_exposure 공개 저장소 커밋의 개인 이메일 노출
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")

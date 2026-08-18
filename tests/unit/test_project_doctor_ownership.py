@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from anvyc.checks.base import CheckResult, Severity
-from anvyc.core import account_manifest, identity_probe, project_doctor
+from anvyc.core import account_manifest, identity_cache, identity_probe, project_doctor
 
 _PROJECTS = """
 version: 1
@@ -156,6 +156,131 @@ def test_no_origin_is_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     report = project_doctor.run_project_doctor(proj)
 
     assert _result(report, "ownership_declared") is None
+
+
+# ---------------------------------------------------------------------------
+# public_repo_email_exposure — 공개 저장소 커밋의 개인 이메일 노출.
+#
+# 2026-08-18: `16bitdo/homebrew-anvyc` 가 PUBLIC 인데 개인 주소로 커밋하고 있었다.
+# 같은 계정의 `16bitdo/anvyc` 는 noreply 로 막고 있었으니 규칙을 어긴 게 아니라
+# 규칙이 코드에 없어서 한쪽만 지켜진 것이다.
+#
+# 판정 근거를 이름 규칙(`-public` 접미사)에 두지 않는 것이 이 check 의 핵심이다 —
+# 그건 이 환경에서만 참이다. 대신 GitHub 계정 자신의 이메일 공개 설정을 본다.
+# ---------------------------------------------------------------------------
+
+
+def _no_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """캐시를 통과시켜 probe 결과를 그대로 보게 한다."""
+    monkeypatch.setattr(
+        identity_cache, "probe_cached", lambda key, source, probe, ttl=0: probe()
+    )
+
+
+def test_public_repo_with_real_email_warns(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PUBLIC + 실주소 + 계정은 이메일 비공개 → WARNING (homebrew-anvyc 실사고)."""
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(identity_probe, "repo_visibility", lambda s, d: "PUBLIC")
+    monkeypatch.setattr(identity_probe, "account_email_setting", lambda d: "PRIVATE")
+
+    report = project_doctor.run_project_doctor(repo)
+
+    res = _result(report, "public_repo_email_exposure")
+    assert res is not None and res.severity is Severity.WARNING
+    assert "16bitdo@gmail.com" in res.message
+
+
+def test_noreply_is_silent_without_any_api_call(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """noreply 면 노출이 없으니 조회조차 하지 않는다.
+
+    선언 이메일만 보고 끝나야 한다 — 여기서 gh 를 때리면 훅 경로에서 매번 네트워크
+    왕복이 붙는다.
+    """
+    monkeypatch.setattr(
+        identity_probe, "commit_email", lambda p: "1+16bitdo@users.noreply.github.com"
+    )
+    called: list[str] = []
+
+    def spy_visibility(slug: str, gh_dir: object) -> str:
+        called.append(slug)
+        return "PUBLIC"
+
+    monkeypatch.setattr(identity_probe, "repo_visibility", spy_visibility)
+    _no_cache(monkeypatch)
+    # 바인딩 선언값도 noreply 여야 이 분기를 탄다.
+    b = tmp_bindings_noreply(repo)
+    monkeypatch.setenv("ANVYC_ACCOUNT_BINDINGS_DIR", str(b))
+
+    report = project_doctor.run_project_doctor(repo)
+
+    assert _result(report, "public_repo_email_exposure") is None
+    assert called == [], f"noreply 인데 visibility 를 조회했다: {called}"
+
+
+def test_private_repo_is_silent(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """비공개 저장소는 실주소여도 노출이 아니다."""
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(identity_probe, "repo_visibility", lambda s, d: "PRIVATE")
+    monkeypatch.setattr(identity_probe, "account_email_setting", lambda d: "PRIVATE")
+
+    report = project_doctor.run_project_doctor(repo)
+
+    assert _result(report, "public_repo_email_exposure") is None
+
+
+def test_account_publishing_its_email_is_silent(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """이메일을 공개해 둔 계정에는 위반이 아니다 — 남의 manifest 에서 조용히 틀리지 않게.
+
+    이 분기가 없으면 이 check 는 "noreply 를 써라"는 취향 강요가 된다.
+    """
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(identity_probe, "repo_visibility", lambda s, d: "PUBLIC")
+    monkeypatch.setattr(
+        identity_probe, "account_email_setting", lambda d: "16bitdo@gmail.com"
+    )
+
+    report = project_doctor.run_project_doctor(repo)
+
+    assert _result(report, "public_repo_email_exposure") is None
+
+
+def test_visibility_probe_failure_is_silent(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """조회 실패(권한 없음·오프라인)는 모름이지 위반이 아니다."""
+    monkeypatch.setattr(identity_probe, "commit_email", lambda p: "16bitdo@gmail.com")
+    _no_cache(monkeypatch)
+    monkeypatch.setattr(identity_probe, "repo_visibility", lambda s, d: None)
+    monkeypatch.setattr(identity_probe, "account_email_setting", lambda d: "PRIVATE")
+
+    report = project_doctor.run_project_doctor(repo)
+
+    assert _result(report, "public_repo_email_exposure") is None
+
+
+def tmp_bindings_noreply(repo: Path) -> Path:
+    """commit_email 이 noreply 인 바인딩 디렉터리를 repo 옆에 만든다."""
+    b = repo.parent / "binds-noreply"
+    b.mkdir(exist_ok=True)
+    (b / "bindings.test-machine.yaml").write_text(
+        "version: 1\nmachine: test-machine\naccounts:\n"
+        "  personal-16bitdo:\n"
+        "    github_login: 16bitdo\n"
+        "    commit_email: 1+16bitdo@users.noreply.github.com\n"
+        "    ssh_alias: github.com-16bitdo\n"
+        "    gh_config_dir: ~/.config/gh-16bitdo\n",
+        encoding="utf-8",
+    )
+    return b
 
 
 _BINDINGS_NO_EMAIL = """

@@ -210,7 +210,7 @@ GH_TOKEN=$(gh auth token --user 16bitdo) gh api user --jq .login   # → 16bitdo
 
 ```bash
 anvyc doctor --only project-gh-account-mapping
-anvyc project doctor              # cwd 에 gh_account_routing 포함 12 check
+anvyc project doctor              # cwd 에 gh_account_routing 포함 13 check
 ```
 
 `anvyc project show --json` 의 `gh_account` 필드로 project 의 라우팅 계정을

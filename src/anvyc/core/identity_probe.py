@@ -89,6 +89,56 @@ def gh_login(gh_config_dir: str | Path) -> str | None:
     return proc.stdout.strip() or None
 
 
+def _gh(gh_config_dir: str | Path, args: list[str]) -> str | None:
+    """`gh_config_dir` 이 가리키는 계정의 토큰을 주입해 gh 를 호출하고 stdout 을 돌려준다.
+
+    `gh_login` 이 확립한 규율을 그대로 따른다 — 주변 `GH_TOKEN` 은 덮어쓰고, 계정을
+    역산하지 못하거나 토큰이 없으면 폴백 없이 None. 폴백은 "다른 계정으로 조회한 답"을
+    이 계정의 실체라고 보고하는 것이라 침묵보다 나쁘다(cli/cli#10136).
+    """
+    expanded = Path(gh_config_dir).expanduser()
+    account = derive_gh_account(str(expanded))
+    if not account:
+        return None
+    token = _gh_account_token(account)
+    if not token:
+        return None
+    env = {**os.environ, "GH_CONFIG_DIR": str(expanded), "GH_TOKEN": token}
+    try:
+        proc = subprocess.run(
+            ["gh", *args],
+            capture_output=True, text=True, check=False, timeout=_TIMEOUT, env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def repo_visibility(slug: str, gh_config_dir: str | Path) -> str | None:
+    """`owner/name` 저장소의 공개 여부 — "PUBLIC" / "PRIVATE" / "INTERNAL".
+
+    조회 실패는 None("모름")이다. 접근 권한이 없는 저장소도 여기로 떨어지므로,
+    소비처는 모름을 위반으로 바꾸면 안 된다.
+    """
+    return _gh(gh_config_dir, ["repo", "view", slug, "--json", "visibility", "--jq", ".visibility"])
+
+
+def account_email_setting(gh_config_dir: str | Path) -> str | None:
+    """이 계정이 프로필 이메일을 공개하는지 — 공개면 그 주소, 비공개면 "PRIVATE".
+
+    GitHub 은 "Keep my email addresses private" 가 켜져 있으면 `user.email` 을 null 로
+    돌려준다. 그 null 이 곧 **사용자가 이메일 노출을 원치 않는다는 선언**이라, 공개
+    저장소 커밋에 실주소가 박히는 것이 정책 위반인지 판정하는 근거가 된다.
+
+    jq 에서 "PRIVATE" 로 접어 넣는 이유는 캐시가 `str | None` 만 다루고 None 을
+    "조회 실패" 로 해석하기 때문이다 — null 을 그대로 흘리면 비공개 설정이 매번
+    캐시 미스가 된다.
+    """
+    return _gh(gh_config_dir, ["api", "user", "--jq", '.email // "PRIVATE"'])
+
+
 def ssh_login(ssh_alias: str) -> str | None:
     """`ssh -T git@<alias>` 인사말에서 실제 인증되는 GitHub login.
 

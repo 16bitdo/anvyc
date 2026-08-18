@@ -1,7 +1,7 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-12 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+13 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
@@ -16,6 +16,7 @@ Check list (D14):
 8. tool_versions_installed    python/node binary 의 PATH 존재
 8b. ownership_declared        origin 있는 저장소가 manifest 에 선언돼 커밋 신원이 결정되는지
 9. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원(GIT_AUTHOR_IDENT) 대조
+9b. public_repo_email_exposure 공개 저장소 커밋에 개인 이메일이 박히는지
 """
 from __future__ import annotations
 
@@ -566,6 +567,77 @@ def _origin_repo_slug(info: ProjectInfo) -> str | None:
     return None
 
 
+_NOREPLY_SUFFIX = "@users.noreply.github.com"
+# visibility 도 계정의 이메일 공개 설정도 사람이 손으로 바꾸는 값이라 거의 안 움직인다.
+# 기본 8h 보다 길게 잡아 `project doctor` 가 훅 경로에서 매번 gh 를 때리지 않게 한다.
+_PUBLIC_EXPOSURE_TTL = 24 * 3600
+
+
+def _check_public_repo_email_exposure(
+    path: Path, slug: str | None, resolved: account_manifest.ResolvedAccount | None
+) -> list[CheckResult]:
+    """공개 저장소 커밋에 **개인 이메일이 박히는지** 확인.
+
+    2026-08-18: `16bitdo/homebrew-anvyc` 가 PUBLIC 인데 개인 주소로 커밋하고 있었다.
+    같은 계정의 `16bitdo/anvyc` 는 noreply 를 써서 막고 있었으니 규칙을 어긴 게
+    아니라 **규칙이 코드에 없어서** 한쪽만 지켜진 것이다. 커밋에 한 번 박히면
+    히스토리 재작성 전까지 남고, 공개 저장소라 그사이 색인된다.
+
+    판정 근거를 `-public` 같은 **이름 규칙에 두지 않는다** — 그건 이 환경에서만
+    참이고 다른 사람의 manifest 에서는 조용히 틀린다. 대신 GitHub 계정 자신의 설정을
+    본다: `user.email` 이 null 이면 "Keep my email addresses private" 가 켜진 것이고,
+    그 설정이 곧 노출을 원치 않는다는 선언이다. 이메일을 공개해 둔 계정에서는 이
+    check 가 침묵한다 — 그 사람에게는 위반이 아니기 때문이다.
+
+    - 선언 이메일이 noreply → 노출 자체가 없다 (silent)
+    - 저장소가 PUBLIC 이 아님 / 조회 실패 → silent (모름을 위반으로 바꾸지 않는다)
+    - 계정이 이메일을 공개 → silent
+    - PUBLIC + 실주소 + 계정은 비공개 설정 → WARNING
+    """
+    if not slug or resolved is None or not resolved.commit_email:
+        return []
+    if resolved.commit_email.endswith(_NOREPLY_SUFFIX):
+        return []
+    if resolved.gh_config_dir is None:
+        return []
+    gh_dir = resolved.gh_config_dir
+    visibility = identity_cache.probe_cached(
+        # 이 저장소는 probe_cached 를 전부 keyword 로 부른다 — spy 기반 테스트가
+        # 인자 이름으로 "캐시 키를 조회 대상에서 파생했는가" 를 검증하기 때문이다.
+        key=f"repo-visibility:{slug}",
+        source=None,  # 원격 상태라 무효화할 로컬 파일이 없다 — TTL 만 본다
+        probe=lambda: identity_probe.repo_visibility(slug, gh_dir),
+        ttl=_PUBLIC_EXPOSURE_TTL,
+    )
+    if visibility != "PUBLIC":
+        return []
+    account_email = identity_cache.probe_cached(
+        key=f"account-email-setting:{gh_dir}",
+        source=None,
+        probe=lambda: identity_probe.account_email_setting(gh_dir),
+        ttl=_PUBLIC_EXPOSURE_TTL,
+    )
+    if account_email != "PRIVATE":
+        return []
+    return [
+        CheckResult(
+            check_name="public_repo_email_exposure",
+            severity=Severity.WARNING,
+            message=(
+                f"{slug}: 공개 저장소인데 커밋 이메일이 실주소다 "
+                f"('{resolved.commit_email}', ownership '{resolved.ownership_id}') — "
+                "이 계정은 이메일을 비공개로 두고 있다"
+            ),
+            location=path,
+            suggestion=(
+                "공개 저장소용 ownership 을 따로 선언하고 그 바인딩의 commit_email 을 "
+                f"'<id>+<login>{_NOREPLY_SUFFIX}' 로 두세요. 이미 커밋된 주소는 "
+                "히스토리 재작성 전까지 남습니다."
+            ),
+        )
+    ]
+
+
 def _check_ownership_declared(
     path: Path, slug: str | None, resolved: account_manifest.ResolvedAccount | None
 ) -> list[CheckResult]:
@@ -704,6 +776,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_tool_versions_installed(info))
     report.results.extend(_check_ownership_declared(path, slug, resolved))
     report.results.extend(_check_commit_identity_actual(path, slug, resolved))
+    report.results.extend(_check_public_repo_email_exposure(path, slug, resolved))
     # expected_* — 선언된 기대값(실체 아님). 훅이 명령에서 뽑은 detected 와 비교한다.
     # AWS 는 여기서 방출하지 않는다 (설계 §6.4 제외 — ProjectDoctorReport 주석 참조).
     report.expected_gh_user = info.gh_account
