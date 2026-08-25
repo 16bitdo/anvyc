@@ -325,7 +325,7 @@ anvyc project show [--path P] [--json] [--reveal-secrets]
 anvyc project list [--root R...] [--json]
                                # root 아래 모든 project matrix (v0.8.1+)
 anvyc project doctor [--path P] [--json] [--strict]
-                               # cwd connection 정합성 13 check (v0.8.1+)
+                               # cwd connection 정합성 14 check (v0.8.1+)
                                # gh/커밋 신원은 라벨이 아니라 실체를 manifest ownership 과 대조
 anvyc prompt [--path P] [--json]
                                # cwd 계정 라우팅을 shell prompt 용 한 줄로 (v0.13.0+)
