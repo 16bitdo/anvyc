@@ -1,7 +1,7 @@
 """Project-level connection 정합성 검증 (P7, v0.8.1).
 
 `anvyc project doctor [--path P]` — cwd (또는 명시 path) 의 connection 정합성
-13 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
+14 check. 기존 `anvyc doctor` 는 global health check, project_doctor 는 path-aware.
 
 Check list (D14):
 1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
@@ -17,6 +17,7 @@ Check list (D14):
 8b. ownership_declared        origin 있는 저장소가 manifest 에 선언돼 커밋 신원이 결정되는지
 9. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원(GIT_AUTHOR_IDENT) 대조
 9b. public_repo_email_exposure 공개 저장소 커밋에 개인 이메일이 박히는지
+10. worktree_rule_links      linked worktree 의 룰 자산(.cursor/·CLAUDE.md) symlink 연결
 """
 from __future__ import annotations
 
@@ -131,6 +132,51 @@ def _check_github_remote_parseable(info: ProjectInfo) -> list[CheckResult]:
             check_name="github_remote_parseable",
             severity=Severity.INFO,
             message=f"GitHub remote {len(info.github)}개 parse OK",
+        )
+    ]
+
+
+def _check_worktree_rule_links(info: ProjectInfo) -> list[CheckResult]:
+    """linked worktree 인데 룰 자산이 연결되지 않았는가.
+
+    `git worktree add` 로 만든 트리에는 `CLAUDE.md`·`.cursor/rules`·`.cursor/skills`
+    가 따라오지 않는다 — 대개 gitignore 대상이라 체크아웃되지 않기 때문이다.
+    그 상태로 작업하면 에이전트가 룰 없이 굴러가는데, 아무 신호도 없다.
+
+    `anvyc worktree add` 를 쓰면 자동으로 연결된다. 직접 `git worktree add` 를
+    쓴 경우를 여기서 잡는다 — 래퍼는 강제할 수 없으므로 탐지로 보완한다.
+    """
+    from anvyc.core.worktree import is_worktree, main_worktree_of, missing_rule_links
+
+    path = Path(info.path)
+    if not is_worktree(path):
+        return []  # 원본 체크아웃 — 검증 대상이 아니다
+
+    missing = missing_rule_links(path)
+    if not missing:
+        return [
+            CheckResult(
+                check_name="worktree_rule_links",
+                severity=Severity.INFO,
+                message="worktree 룰 자산 연결됨",
+            )
+        ]
+
+    origin = main_worktree_of(path)
+    hint = (
+        f"anvyc worktree add 로 만들면 자동 연결된다. 지금 고치려면: "
+        f"cd {path} && ln -s {origin}/<name> <name>"
+        if origin
+        else "anvyc worktree add 로 만들면 자동 연결된다"
+    )
+    return [
+        CheckResult(
+            check_name="worktree_rule_links",
+            severity=Severity.WARNING,
+            message=(
+                f"worktree 에 룰 자산 {len(missing)}개 없음: {', '.join(missing)} "
+                f"— 에이전트가 룰 없이 동작한다. {hint}"
+            ),
         )
     ]
 
@@ -774,6 +820,7 @@ def run_project_doctor(path: Path) -> ProjectDoctorReport:
     report.results.extend(_check_pulumi_backend_routing(info))
     report.results.extend(_check_dev_env_secret_safety(info))
     report.results.extend(_check_tool_versions_installed(info))
+    report.results.extend(_check_worktree_rule_links(info))
     report.results.extend(_check_ownership_declared(path, slug, resolved))
     report.results.extend(_check_commit_identity_actual(path, slug, resolved))
     report.results.extend(_check_public_repo_email_exposure(path, slug, resolved))

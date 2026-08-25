@@ -168,6 +168,11 @@ app.add_typer(tools_app, name="tools", rich_help_panel=PANEL_PROJECT)
 project_app = _typer(name="project", help="cwd 의 connection 정보 조회 (v0.8.0+).")
 app.add_typer(project_app, name="project", rich_help_panel=PANEL_PROJECT)
 
+worktree_app = _typer(
+    name="worktree", help="룰이 따라오는 git worktree 관리 (v0.9.0+)."
+)
+app.add_typer(worktree_app, name="worktree", rich_help_panel=PANEL_PROJECT)
+
 aws_app = _typer(name="aws", help="AWS profile 조회/관리 (~/.aws/config).")
 app.add_typer(aws_app, name="aws", rich_help_panel=PANEL_PROJECT)
 
@@ -2202,7 +2207,7 @@ def project_doctor(
     json_out: bool = typer.Option(False, "--json", help="기계 가독 JSON 출력."),
     strict: bool = typer.Option(False, "--strict", help="warning 이상 발견 시 exit 1."),
 ) -> None:
-    """cwd (또는 --path) 의 connection 정합성 13 check.
+    """cwd (또는 --path) 의 connection 정합성 14 check.
 
      1. aws_profile_defined        .envrc AWS_PROFILE ↔ ~/.aws/config
      2. aws_account_status         인증 방식별 연결 상태 (SSO/static/assume-role/process)
@@ -2217,6 +2222,7 @@ def project_doctor(
     11. ownership_declared         origin 있는 저장소의 manifest 선언 누락
     12. commit_identity_actual     manifest 선언 커밋 이메일 ↔ 실제 커밋 신원 (CRITICAL)
     13. public_repo_email_exposure 공개 저장소 커밋의 개인 이메일 노출
+    14. worktree_rule_links       linked worktree 의 룰 자산(.cursor/·CLAUDE.md) 연결
     """
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")
@@ -4703,6 +4709,52 @@ def github_account_show(
     routed_str = ", ".join(matched.routed_owners) if matched.routed_owners else "(없음)"
     console.print(escape(f"routed_owners: {routed_str}"), soft_wrap=True)
     console.print(escape(f"cwd_routed:  {'✓' if matched.cwd_routed else '✗'}"), soft_wrap=True)
+
+
+@worktree_app.command("add")
+def worktree_add(
+    path: Path = typer.Argument(..., help="새 worktree 경로."),
+    branch: str | None = typer.Option(None, "-b", "--branch", help="새로 만들 브랜치 이름."),
+    ref: str | None = typer.Argument(None, help="기준 ref (default: 현재 HEAD)."),
+    origin: Path = typer.Option(Path.cwd(), "--origin", help="원본 저장소 (default: cwd)."),
+) -> None:
+    """worktree 를 만들고 **룰 자산을 symlink 로 연결**한다.
+
+    `git worktree add` 만으로는 `CLAUDE.md`·`.cursor/` 가 따라오지 않는다 — 대개
+    gitignore 대상이라 체크아웃되지 않기 때문이다. 그 상태로 작업하면 에이전트가
+    룰 없이 굴러간다.
+
+    복사가 아니라 symlink 다. 복사본은 만든 순간부터 stale 해진다 — 룰은 격리
+    대상이 아니고 항상 원본과 같아야 한다.
+    """
+    from anvyc.core.worktree import link_rules
+
+    origin = origin.expanduser().resolve()
+    argv = ["git", "-C", str(origin), "worktree", "add"]
+    if branch:
+        argv += ["-b", branch]
+    argv.append(str(path))
+    if ref:
+        argv.append(ref)
+
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        console.print(f"[red]error[/] git worktree add 실패\n{escape(proc.stderr.strip())}")
+        raise typer.Exit(code=proc.returncode)
+    if proc.stdout.strip():
+        console.print(escape(proc.stdout.strip()), soft_wrap=True)
+
+    wt = path.expanduser().resolve()
+    console.print(f"[green]worktree[/] {wt}")
+    for r in link_rules(origin, wt):
+        tag = {
+            "linked": "[green]link[/]",
+            "exists": "[yellow]keep[/]",
+            "absent": "[dim]none[/]",
+            "notice": "[yellow]note[/]",
+            "failed": "[red]fail[/]",
+        }.get(r.status, r.status)
+        console.print(escape(f"  {r.name}: ") + tag + escape(f" {r.detail}"), soft_wrap=True)
 
 
 if __name__ == "__main__":
