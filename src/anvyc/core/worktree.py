@@ -53,6 +53,62 @@ def _rel_to(target: Path, start: Path) -> str:
     return os.path.relpath(target, start)
 
 
+def _common_exclude_file(worktree: Path) -> Path | None:
+    """저장소 공용 exclude 파일 (`$GIT_COMMON_DIR/info/exclude`).
+
+    `$GIT_DIR/info/exclude`(worktree 전용)는 **읽히지 않는다** — git 은 항상 common
+    쪽을 본다(2026-08-25 실측: worktree 전용에 써도 `?? .cursor` 가 그대로였다).
+
+    공용 파일을 건드리는 것은 두 가지 이유로 안전하다.
+    ① 커밋되지 않는 로컬 파일이라 저장소 이력에 영향이 없다.
+    ② 우리가 적는 경로는 원본이 이미 `.gitignore` 로 ignore 하는 대상이다 —
+       원본에서는 실제 디렉터리라 `.cursor/rules/` 같은 디렉터리 패턴에 걸리고,
+       worktree 에서만 symlink 라서 그 패턴을 빠져나간다. 슬래시 없는 규칙을
+       더하면 worktree 의 symlink 만 추가로 걸린다.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(worktree), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    common = Path(out.stdout.strip())
+    if not common.is_absolute():
+        common = (worktree / common).resolve()
+    return common / "info" / "exclude"
+
+
+def _ensure_excluded(worktree: Path, names: tuple[str, ...]) -> None:
+    """symlink 가 `git status` 를 더럽히지 않게 한다.
+
+    gitignore 의 디렉터리 패턴(뒤 슬래시)은 디렉터리만 매칭한다. symlink 는 파일로
+    취급돼 걸리지 않는다. 저장소마다 패턴 깊이가 달라(`.cursor/` vs
+    `.cursor/rules/`) 링크 위치를 낮추는 것만으로는 덮이지 않는다.
+    """
+    target = _common_exclude_file(worktree)
+    if target is None:
+        return
+    existing = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+    have = {ln.strip() for ln in existing.splitlines()}
+    missing = [n for n in names if n not in have]
+    if not missing:
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            f.write(
+                "\n# anvyc worktree: 룰 symlink — gitignore 의 디렉터리 패턴에 걸리지 않는다\n"
+            )
+            f.write("\n".join(missing) + "\n")
+    except OSError:
+        return
+
+
 def link_rules(origin: Path, worktree: Path) -> list[LinkResult]:
     """원본의 룰 자산을 worktree 로 symlink 한다 (순수 파일 조작).
 
@@ -75,6 +131,10 @@ def link_rules(origin: Path, worktree: Path) -> list[LinkResult]:
             results.append(LinkResult(name, "linked", str(src)))
         except OSError as exc:
             results.append(LinkResult(name, "failed", str(exc)))
+
+    linked = tuple(r.name for r in results if r.status == "linked")
+    if linked:
+        _ensure_excluded(worktree, linked)
 
     for name in NOTICE_TARGETS:
         if (origin / name).exists():

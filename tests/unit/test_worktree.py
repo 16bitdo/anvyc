@@ -204,3 +204,80 @@ class TestDoctorCheck:
 
         assert len(results) == 1
         assert results[0].severity is Severity.INFO
+
+
+class TestGitignoreDepthVariants:
+    """저장소마다 gitignore 패턴 깊이가 다르다 — 링크 위치만으로는 덮이지 않는다.
+
+    `.cursor/`(한 층) 저장소는 `.cursor` 를 실제 디렉터리로 두면 하위 symlink 가
+    ignore 된다. 그런데 `.cursor/rules/`(두 층)를 쓰는 저장소에서는 `rules` 가
+    symlink 라 디렉터리 패턴을 빠져나가 `?? .cursor/` 가 남는다(2026-08-25 실측:
+    role-based-ruleset). 공용 exclude 에 슬래시 없는 규칙을 더해 덮는다.
+    """
+
+    @staticmethod
+    def _repo(tmp: Path, ignore_body: str) -> Path:
+        root = tmp / "repo"
+        root.mkdir()
+        for argv in (
+            ["git", "init", "-q", "-b", "main"],
+            ["git", "config", "user.email", "t@example.com"],
+            ["git", "config", "user.name", "t"],
+        ):
+            subprocess.run(argv, cwd=root, check=True, capture_output=True)
+        (root / ".gitignore").write_text(ignore_body, encoding="utf-8")
+        (root / ".cursor" / "rules").mkdir(parents=True)
+        (root / ".cursor" / "skills").mkdir(parents=True)
+        (root / ".cursor" / "rules" / "r.mdc").write_text("r\n", encoding="utf-8")
+        (root / "CLAUDE.md").write_text("idx\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=root, check=True, capture_output=True
+        )
+        return root
+
+    def _add_worktree(self, root: Path, wt: Path) -> None:
+        subprocess.run(
+            ["git", "worktree", "add", "-q", str(wt), "-b", "probe"],
+            cwd=root, check=True, capture_output=True,
+        )
+
+    @staticmethod
+    def _status(path: Path) -> str:
+        return subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+
+    def test_one_level_pattern_stays_clean(self, tmp_path: Path) -> None:
+        root = self._repo(tmp_path, ".cursor/\nCLAUDE.md\n")
+        wt = tmp_path / "wt"
+        self._add_worktree(root, wt)
+
+        link_rules(root, wt)
+
+        assert self._status(wt) == ""
+
+    def test_two_level_pattern_stays_clean(self, tmp_path: Path) -> None:
+        """회귀의 본체 — 링크 위치를 낮추는 것만으로는 이 형태를 덮지 못했다."""
+        root = self._repo(tmp_path, ".cursor/rules/\n.cursor/skills/\nCLAUDE.md\n")
+        wt = tmp_path / "wt"
+        self._add_worktree(root, wt)
+
+        link_rules(root, wt)
+
+        assert self._status(wt) == ""
+
+    def test_origin_is_unaffected(self, tmp_path: Path) -> None:
+        """공용 exclude 를 건드리지만 원본 동작은 바뀌지 않는다.
+
+        우리가 적는 경로는 원본이 이미 ignore 하는 대상이라 중복 규칙이 된다.
+        """
+        root = self._repo(tmp_path, ".cursor/rules/\n.cursor/skills/\nCLAUDE.md\n")
+        wt = tmp_path / "wt"
+        self._add_worktree(root, wt)
+
+        before = self._status(root)
+        link_rules(root, wt)
+
+        assert self._status(root) == before == ""
