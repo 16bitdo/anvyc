@@ -85,6 +85,18 @@ Security = "https://github.com/16bitdo/anvyc/blob/main/SECURITY.md"
 [tool.hatch.build.targets.wheel]
 packages = ["src/anvyc"]
 
+# 빌드 시 소스 커밋을 src/anvyc/_build_info.py 로 새긴다 (hatch_build.py).
+# 릴리스 배치 버저닝이라 version 하나가 여러 커밋을 덮는다 — 로컬 소스로 설치한
+# 환경에서 "무엇이 깔렸는가" 를 답하려면 커밋이 필요하다.
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+# _build_info.py 는 gitignore 대상(빌드 산출물)이라 hatchling 의 기본 VCS-ignore
+# 규칙에 걸려 wheel/sdist 에서 빠진다. artifacts 로 명시 포함한다 — 이 한 줄이
+# 없으면 훅이 파일을 만들어도 배포본에 실리지 않아 기능이 조용히 무력해진다.
+[tool.hatch.build]
+artifacts = ["src/anvyc/_build_info.py"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

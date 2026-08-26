@@ -56,3 +56,6 @@ CONTEXT.md
 # uv — anvyc 는 pyproject.toml 의 dependencies 만 SoT, lock 은 dev workflow 만
 # 영향 (PyPI 배포는 wheel+sdist). 환경별 차이가 잦아 추적 비용 > 재현성 이득.
 uv.lock
+
+# hatch_build.py 가 빌드 시 생성 — 산출물이라 추적하지 않는다
+src/anvyc/_build_info.py
