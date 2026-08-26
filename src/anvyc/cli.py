@@ -20,7 +20,7 @@ from rich.markup import escape
 from rich.table import Table
 from typer.core import TyperGroup
 
-from anvyc import __version__
+from anvyc import __build_commit__, __version__
 from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.activity import collect_sessions
 from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
@@ -250,7 +250,9 @@ console = Console()
 
 def _version_callback(value: bool) -> None:
     if value:
-        console.print(f"anvyc v{__version__}")
+        # 릴리스가 아닌 빌드에서만 커밋을 병기한다 — 릴리스는 version 이 곧 식별자다.
+        suffix = f" ({__build_commit__})" if __build_commit__ else ""
+        console.print(f"anvyc v{__version__}{suffix}")
         raise typer.Exit()
 
 
