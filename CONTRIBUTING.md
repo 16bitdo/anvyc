@@ -93,6 +93,53 @@ age-keygen -o ~/.config/sops/age/keys.txt
   재검사하며, 거기서도 **같은 스크립트를 재호출**해 SoT 를 하나로 유지합니다.
   배선 자체는 `tests/unit/test_personal_config_guard_wiring.py` 가 구속합니다.
 
+### 2.5 로컬 소스를 tool 로 설치한 경우 — 갱신 절차
+
+`dev-install.sh`(editable) 대신 **로컬 디렉터리를 tool venv 로 non-editable 설치**해
+쓰는 환경이 있습니다.
+
+```bash
+uv tool install "$HOME/dev/anvyc[mcp,tui]"
+```
+
+이 형태는 설치 시점의 소스를 **복사**합니다 — editable 이 아니므로 이후 `git pull` 로
+소스가 바뀌어도 반영되지 않습니다. 갱신은 재설치로만 됩니다.
+
+**`--force` 만으로는 조용히 실패합니다.** uv 캐시에 같은 version 의 빌드 아티팩트가
+남아 있으면 그것을 재사용하는데, 로컬 소스는 커밋이 바뀌어도 `pyproject.toml` 의
+version 이 그대로면 같은 키가 됩니다. 그래서 `--force` 는 재설치를 수행하고 **rc=0 으로
+끝나지만 낡은 빌드가 그대로 다시 깔립니다.** 로그도 정상이라 알아채기 어렵습니다.
+
+```bash
+# 갱신 — 캐시 우회가 필수
+uv tool install --force --reinstall --refresh --python 3.14 "$HOME/dev/anvyc[mcp,tui]"
+```
+
+**검증은 버전 문자열이 아니라 "기대하는 심볼" 로 합니다.** 로컬 소스 설치에서 version 은
+커밋을 구분하지 못합니다.
+
+```bash
+anvyc worktree --help                    # 최근 추가된 커맨드가 보이는가
+P=$(echo ~/.local/share/uv/tools/anvyc/lib/python*/site-packages/anvyc)
+ls "$P/core/worktree.py"                 # 최근 추가된 모듈이 있는가
+```
+
+> **2026-08-26 실사고.** 소스에는 `anvyc worktree add` 와 doctor 의
+> `worktree_rule_links` 검사가 있었으나(2026-08-25 `a281b21`, PR #204) 설치본
+> (2026-08-17 빌드)에는 없었습니다. 양쪽 다 `--version` 이 `v0.21.0` 이라 낙후가
+> 가려졌고, `--force` 만 붙인 첫 재설치는 rc=0 으로 끝났는데 `core/worktree.py` 가
+> 여전히 없었습니다. `--reinstall --refresh` 를 붙여서야 반영됐습니다.
+>
+> uv 캐시에서 직접 확인된 근거 — 같은 버전의 dist-info 가 둘 공존했습니다:
+>
+> ```
+> 2026-08-17 07:00  archive-v0/…/anvyc-0.21.0.dist-info   ← --force 가 재사용한 것
+> 2026-08-26 20:18  archive-v0/…/anvyc-0.21.0.dist-info   ← --refresh 로 새로 빌드된 것
+> ```
+>
+> 이 함정을 없애려면 기능 머지 시 version 을 올리거나 `--version` 에 커밋 SHA 를
+> 병기하는 편이 낫습니다(별도 트랙).
+
 ## 3. 테스트 실행
 
 ```bash
