@@ -20,7 +20,7 @@ from rich.markup import escape
 from rich.table import Table
 from typer.core import TyperGroup
 
-from anvyc import __build_commit__, __version__
+from anvyc import __version__, build_commit
 from anvyc.checks.base import CheckResult, Severity
 from anvyc.core.activity import collect_sessions
 from anvyc.core.apply import ApplyBlockedError, ApplyReport, run_apply
@@ -251,7 +251,10 @@ console = Console()
 def _version_callback(value: bool) -> None:
     if value:
         # 릴리스가 아닌 빌드에서만 커밋을 병기한다 — 릴리스는 version 이 곧 식별자다.
-        suffix = f" ({__build_commit__})" if __build_commit__ else ""
+        # 소스 트리 실행이면 런타임 git 이 권위 소스다 (`build_commit()` 이 판단).
+        # git 조회 비용은 이 경로에서만 낸다 — 모듈 로드는 여전히 subprocess 0회.
+        commit = build_commit()
+        suffix = f" ({commit})" if commit else ""
         console.print(f"anvyc v{__version__}{suffix}")
         raise typer.Exit()
 

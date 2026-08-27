@@ -1434,6 +1434,7 @@ contributor 환경에서 이를 *회피*하는 메커니즘이 dev wrapper 다.
 | 환경 비의존 | wrapper 가 `$HOME` + `ANVYC_VENV` override 로 venv 해석, sibling `src/anvyc` 로 anvyc repo 확인 | 디렉터리 이전·Python 마이너 업그레이드에 견딤. venv 부재 시 침묵 대신 명시적 에러 |
 | 멱등 설치 스크립트 | `scripts/dev-install.sh` — venv·editable 설치·wrapper 설치를 1회 실행으로 | contributor 가 환경을 한 줄로 복구 |
 | `scripts/` wheel 제외 | `pyproject.toml` `packages = ["src/anvyc"]` 가 `src/anvyc` 만 포함 | wrapper 는 contributor 전용 — 배포 wheel 과 분리 |
+| 실행 커밋 = 런타임 git | 소스 트리 실행이면 `--version` 이 런타임 `git rev-parse HEAD` 를 읽어 ` source` 병기(`anvyc.build_commit`). editable 빌드는 `_build_info.py` 를 만들지 않는다(`hatch_build.should_stamp`) | wrapper 는 **live source** 를 실행하므로 설치 시점 스탬프는 `git pull` 직후 거짓이 된다 — "틀린 커밋 표시"가 "미표시"보다 위험. 비용은 `--version` 경로에만 (모듈 로드는 subprocess 0회 유지) |
 
 **적용 범위**: editable install 에 한정. 일반 사용자 경로(`uv tool install` / `pipx`
 — `install.sh`)는 격리 venv 에 비-editable 설치라 `.pth` 를 쓰지 않아 trap 과 무관하다.
