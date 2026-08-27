@@ -81,6 +81,12 @@ age-keygen -o ~/.config/sops/age/keys.txt
   `bash scripts/install-git-hooks.sh`.
 - `.venv/bin/pytest` 가 없으면 hook 은 graceful skip — 셋업 직후 첫 push 가
   실패하지 않습니다.
+- **외부 managed-block 은 보존됩니다.** 설치된 훅에 anvyc 소유가 아닌 블록이 있으면
+  (`# >>> <name> … >>>` ~ `# <<< <name> <<<`) 교체 전에 떼어내 SoT 뒤에 다시 붙입니다
+  (`scripts/preserve_managed_blocks.py`). role-based-ruleset 의 `claude-md-freshness`
+  가 그 예입니다 — 예전에는 재설치가 그 블록을 조용히 지워 CLAUDE.md stale 게이트가
+  push 에서 빠졌습니다(2026-08-27). 짝이 맞지 않는 마커는 깨진 훅을 만들지 않도록
+  보존하지 않고, 무엇을 버렸는지 stderr 에 알립니다.
 
 `.git/hooks/pre-commit` 은 이 installer 가 손대지 않습니다 — 그 자리는
 **pre-commit framework** (`.pre-commit-config.yaml`) 가 씁니다. `pre-commit install`
