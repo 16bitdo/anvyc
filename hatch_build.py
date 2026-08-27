@@ -75,10 +75,23 @@ def render(info: dict[str, Any]) -> str:
     )
 
 
+def should_stamp(version: str) -> bool:
+    """이 빌드 타깃에 스탬프를 남길지. editable 이면 남기지 않는다.
+
+    editable(`pip install -e .`)은 산출물이 아니라 repo 의 src/ 를 **그대로** 실행한다.
+    스탬프는 설치 시점에 얼어붙으므로 `git pull` 직후 실행 중인 코드와 어긋난다 —
+    "커밋 미표시"보다 "틀린 커밋 표시"가 더 위험하다(2026-08-27). 소스 트리에서는
+    런타임 git 이 답하므로(`anvyc.build_commit`) 여기서는 아무것도 만들지 않는다.
+    """
+    return version != "editable"
+
+
 class CustomBuildHook(BuildHookInterface):  # type: ignore[misc]  # base 가 Any(빌드 전용 의존)
     """sdist·wheel 양쪽 빌드 직전에 `_build_info.py` 를 갱신한다."""
 
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
+        if not should_stamp(version):
+            return
         root = Path(self.root)
         info = collect(root)
         if info is None:

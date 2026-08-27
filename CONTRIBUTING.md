@@ -153,28 +153,36 @@ uv tool install --force --reinstall --refresh --python 3.14 "$HOME/dev/anvyc[mcp
 
 #### 갱신 검증
 
-`--version` 은 빌드 시 각인된 소스 커밋을 병기합니다 (v0.21.0+, #206). version 문자열
-만으로는 커밋을 구분할 수 없습니다 — 릴리스 배치 버저닝이라 한 version 이 여러 커밋을
-덮습니다.
+`--version` 은 소스 커밋을 병기합니다 (v0.21.0+, #206). version 문자열만으로는 커밋을
+구분할 수 없습니다 — 릴리스 배치 버저닝이라 한 version 이 여러 커밋을 덮습니다.
+
+**커밋을 어디서 읽는지가 설치 형태마다 다릅니다.** 괄호 안의 ` source` 가 그 구분입니다.
 
 ```bash
+# A — dev wrapper: 런타임 git 이 답한다 (항상 현재값)
+anvyc --version                                   # anvyc v0.21.0 (5ea9534 source)
+git -C "$HOME/dev/anvyc" rev-parse --short HEAD   # 5ea9534   ← 항상 일치
+
+# B — uv tool 설치본: 빌드 시 각인된 값 (설치 시점에 고정)
 anvyc --version                                   # anvyc v0.21.0 (6176216)
-git -C "$HOME/dev/anvyc" rev-parse --short HEAD   # 6176216
+git -C "$HOME/dev/anvyc" rev-parse --short HEAD   # 6176216   ← 일치해야 갱신 완료
 ```
+
+**A (dev wrapper)** — 실행 중인 코드가 곧 워킹트리이므로 `--version` 이 **런타임에**
+`git rev-parse HEAD` 를 읽어 ` source` 를 병기합니다. 따라서 **A 에서는 SHA 가 HEAD 와
+항상 일치**하고, 불일치는 낙후가 아니라 버그입니다. editable 설치는 `_build_info.py` 를
+만들지 않습니다 — 설치 시점에 얼어붙은 값이 `git pull` 직후 거짓이 되기 때문입니다.
+git 조회 비용은 `--version` 경로에서만 냅니다(다른 명령의 시작 시간은 그대로입니다).
 
 **B (uv tool 설치본)** — 각인된 SHA 가 곧 설치된 소스의 커밋입니다. 위 두 값이
 **일치해야 갱신 완료**이고, 불일치는 낙후입니다.
 
-**A (dev wrapper)** — 소스가 곧 실행본이므로 **코드 최신성은 `git log` 가 답**입니다.
-여기서 각인된 SHA 는 *마지막 `dev-install.sh` 시점*을 가리킵니다 — `_build_info.py` 는
-빌드 시에만 생성되어 `git pull` 로는 갱신되지 않기 때문입니다. 그래서 **A 의 SHA 불일치는
-낙후가 아니라 "재설치 이후 커밋이 더 쌓였다"** 는 뜻입니다. 그 구간에서 의존성이나
-version 이 바뀌었다면 위 A 절차대로 재설치하세요.
-
 공통으로:
 
+- `(… source)` 는 **A(소스 실행)** 입니다 — 그 SHA 는 "지금 실행 중인 커밋"입니다.
+  `source` 가 없으면 **B(설치본)** 이고, 그 SHA 는 "빌드된 시점의 커밋"입니다.
 - 괄호가 **아예 없으면**(`anvyc v0.21.0`) #206 이전 빌드입니다 — 그 자체가 낙후 신호입니다.
-- `(6176216+dirty)` 는 커밋되지 않은 변경이 섞인 빌드입니다.
+- `+dirty` 는 커밋되지 않은 변경이 섞여 있다는 뜻입니다 (`5ea9534+dirty source`).
 - 릴리스(태그) 빌드는 version 이 곧 식별자이므로 SHA 를 붙이지 않습니다.
 
 > **2026-08-26 실사고 — #206 이 해소한 문제.** 소스에는 `anvyc worktree add` 와 doctor 의
