@@ -93,14 +93,50 @@ age-keygen -o ~/.config/sops/age/keys.txt
   재검사하며, 거기서도 **같은 스크립트를 재호출**해 SoT 를 하나로 유지합니다.
   배선 자체는 `tests/unit/test_personal_config_guard_wiring.py` 가 구속합니다.
 
-### 2.5 로컬 소스를 tool 로 설치한 경우 — 갱신 절차
+### 2.5 이미 설치된 환경 갱신하기
 
-`dev-install.sh`(editable) 대신 **로컬 디렉터리를 tool venv 로 non-editable 설치**해
-쓰는 환경이 있습니다.
+**먼저 설치 방식을 판별합니다 — 갱신 절차가 정반대입니다.**
+
+```bash
+head -1 "$(command -v anvyc)"
+#  #!/usr/bin/env bash                            → A. dev wrapper (editable)
+#  #!/…/.local/share/uv/tools/anvyc/bin/python3   → B. uv tool 설치본
+```
+
+판별을 건너뛰면 A 환경에서 B 의 절차를 실행하는 사고가 납니다 — `uv tool install` 은
+`~/.local/bin/anvyc` 를 자기 런처로 덮어써 **dev wrapper 를 없앱니다.** "pull 즉시 반영"
+이던 환경이 "매번 재설치" 로 퇴행하는데, 명령 자체는 정상 종료합니다.
+
+#### A. dev wrapper (editable) — `git pull` 이 곧 갱신
+
+`dev-install.sh` 로 셋업한 환경입니다. wrapper 가 repo 의 `src/` 를 `PYTHONPATH` 로
+직접 실행하므로 **소스가 곧 실행본**입니다. 재설치 없이 pull 만으로 반영됩니다.
+
+`dev-install.sh` 재실행이 필요한 경우는 다음입니다 (멱등이라 확신이 안 서면 그냥
+돌려도 안전합니다 — venv 는 인터프리터가 맞으면 재사용됩니다):
+
+- `pyproject.toml` 의 **의존성이 바뀐** pull 을 받았을 때 — 새 패키지가 venv 에 없습니다.
+- `pyproject.toml` 의 **version 이 올랐을 때** — `--version` 표시는 `.venv` 의 dist-info
+  를 읽으므로 재설치 전까지 옛 버전으로 보입니다. **코드는 이미 최신입니다** — 표시만
+  낡은 것이라 낙후로 오진하지 마세요.
+- `scripts/anvyc-wrapper.sh` **정본이 바뀌었을 때** — 설치된 wrapper 는 사본입니다.
+- `scripts/hooks/pre-push.sh` **정본이 바뀌었을 때** — 함께 갱신됩니다.
+
+```bash
+bash scripts/dev-install.sh   # venv 재사용 · editable 재설치 · wrapper/hook 은 변경 시에만 교체
+```
+
+#### B. uv tool 설치본 — 재설치로만 갱신
+
+**로컬 디렉터리를 tool venv 로 non-editable 설치**해 쓰는 환경입니다.
 
 ```bash
 uv tool install "$HOME/dev/anvyc[mcp,tui]"
 ```
+
+> 릴리스(PyPI·whl)로 설치한 일반 사용자는 이 절차가 아닙니다 — `uv tool install
+> --upgrade 'anvyc[mcp]'` 로 끝납니다([README](./README.md)). 아래 캐시 함정은
+> version 이 그대로인 **로컬 소스** 설치에만 생깁니다.
 
 이 형태는 설치 시점의 소스를 **복사**합니다 — editable 이 아니므로 이후 `git pull` 로
 소스가 바뀌어도 반영되지 않습니다. 갱신은 재설치로만 됩니다.
@@ -115,16 +151,33 @@ version 이 그대로면 같은 키가 됩니다. 그래서 `--force` 는 재설
 uv tool install --force --reinstall --refresh --python 3.14 "$HOME/dev/anvyc[mcp,tui]"
 ```
 
-**검증은 버전 문자열이 아니라 "기대하는 심볼" 로 합니다.** 로컬 소스 설치에서 version 은
-커밋을 구분하지 못합니다.
+#### 갱신 검증
+
+`--version` 은 빌드 시 각인된 소스 커밋을 병기합니다 (v0.21.0+, #206). version 문자열
+만으로는 커밋을 구분할 수 없습니다 — 릴리스 배치 버저닝이라 한 version 이 여러 커밋을
+덮습니다.
 
 ```bash
-anvyc worktree --help                    # 최근 추가된 커맨드가 보이는가
-P=$(echo ~/.local/share/uv/tools/anvyc/lib/python*/site-packages/anvyc)
-ls "$P/core/worktree.py"                 # 최근 추가된 모듈이 있는가
+anvyc --version                                   # anvyc v0.21.0 (6176216)
+git -C "$HOME/dev/anvyc" rev-parse --short HEAD   # 6176216
 ```
 
-> **2026-08-26 실사고.** 소스에는 `anvyc worktree add` 와 doctor 의
+**B (uv tool 설치본)** — 각인된 SHA 가 곧 설치된 소스의 커밋입니다. 위 두 값이
+**일치해야 갱신 완료**이고, 불일치는 낙후입니다.
+
+**A (dev wrapper)** — 소스가 곧 실행본이므로 **코드 최신성은 `git log` 가 답**입니다.
+여기서 각인된 SHA 는 *마지막 `dev-install.sh` 시점*을 가리킵니다 — `_build_info.py` 는
+빌드 시에만 생성되어 `git pull` 로는 갱신되지 않기 때문입니다. 그래서 **A 의 SHA 불일치는
+낙후가 아니라 "재설치 이후 커밋이 더 쌓였다"** 는 뜻입니다. 그 구간에서 의존성이나
+version 이 바뀌었다면 위 A 절차대로 재설치하세요.
+
+공통으로:
+
+- 괄호가 **아예 없으면**(`anvyc v0.21.0`) #206 이전 빌드입니다 — 그 자체가 낙후 신호입니다.
+- `(6176216+dirty)` 는 커밋되지 않은 변경이 섞인 빌드입니다.
+- 릴리스(태그) 빌드는 version 이 곧 식별자이므로 SHA 를 붙이지 않습니다.
+
+> **2026-08-26 실사고 — #206 이 해소한 문제.** 소스에는 `anvyc worktree add` 와 doctor 의
 > `worktree_rule_links` 검사가 있었으나(2026-08-25 `a281b21`, PR #204) 설치본
 > (2026-08-17 빌드)에는 없었습니다. 양쪽 다 `--version` 이 `v0.21.0` 이라 낙후가
 > 가려졌고, `--force` 만 붙인 첫 재설치는 rc=0 으로 끝났는데 `core/worktree.py` 가
@@ -137,8 +190,8 @@ ls "$P/core/worktree.py"                 # 최근 추가된 모듈이 있는가
 > 2026-08-26 20:18  archive-v0/…/anvyc-0.21.0.dist-info   ← --refresh 로 새로 빌드된 것
 > ```
 >
-> 이 함정을 없애려면 기능 머지 시 version 을 올리거나 `--version` 에 커밋 SHA 를
-> 병기하는 편이 낫습니다(별도 트랙).
+> 빌드 시 소스 커밋을 각인하는 #206 으로 `--version` 이 커밋을 구분하게 되어, 이제는
+> 같은 함정이 발생해도 즉시 드러납니다.
 
 ## 3. 테스트 실행
 
