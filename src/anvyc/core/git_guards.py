@@ -7,6 +7,7 @@ core.hooksPath 가 worktree 내부(tracked)면 clobber 금지하고 skip 한다.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +15,13 @@ from typing import Literal
 
 from anvyc.core.branch_policy import BranchPolicy
 
-GuardStatus = Literal["installed", "updated", "skipped-foreign", "skipped-tracked-hooks"]
+GuardStatus = Literal[
+    "installed",
+    "updated",
+    "skipped-foreign",
+    "skipped-tracked-hooks",
+    "skipped-stdin-consumer",
+]
 
 GUARD_BEGIN = "# >>> anvyc-pr-guard >>>"
 GUARD_END = "# <<< anvyc-pr-guard <<<"
@@ -44,6 +51,39 @@ def render_guard_block(policy: BranchPolicy) -> str:
         "fi\n"
         f"{GUARD_END}\n"
     )
+
+
+# pre-push 는 stdin 으로 ref 목록을 받고, 가드 블록은 `while read` 로 그것을 소비한다.
+# 이미 stdin 을 읽는 훅에 가드를 끼워 넣으면 어느 위치든 한쪽이 굶는다 — 앞에 넣으면
+# 본문이 ref 를 못 받고, 뒤에 넣으면 가드가 못 받아 **조용히** 통과시킨다.
+# 주석 줄(`#` 이 앞선 경우)은 제외한다.
+_STDIN_CONSUMER_RE = re.compile(
+    r"^[^#\n]*(?:\bwhile\b[^\n]*\bread\b|\bread\s+-r?\b|\$\(\s*cat\s*\))",
+    re.MULTILINE,
+)
+
+
+def _reads_stdin(text: str) -> bool:
+    return _STDIN_CONSUMER_RE.search(text) is not None
+
+
+def _insert_after_preamble(text: str, block: str) -> str:
+    """shebang + 이어지는 `set …`/빈 줄 **직후** 에 block 을 끼운다.
+
+    맨 앞에 넣으면 shebang 이 밀려 스크립트가 아니게 되고, 맨 뒤에 넣으면 본문이 먼저
+    stdin 을 소비했을 때 가드가 무력해진다. anvyc SoT 훅과 같은 배치를 재현한다.
+    주석은 preamble 로 보지 않는다 — 외부 managed-block 의 시작이 주석이기 때문이다.
+    """
+    lines = text.splitlines(keepends=True)
+    i = 0
+    if lines and lines[0].startswith("#!"):
+        i = 1
+        while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("set ")):
+            i += 1
+    head = "".join(lines[:i])
+    if head and not head.endswith("\n"):
+        head += "\n"
+    return head + block + "\n" + "".join(lines[i:])
 
 
 def effective_hooks_dir(repo_dir: Path) -> tuple[Path, bool]:
@@ -113,7 +153,13 @@ def install_pre_push_guard(
         return GuardInstallResult(repo_dir, "updated")
     if not force:
         return GuardInstallResult(repo_dir, "skipped-foreign", str(hook))
+    if _reads_stdin(text):
+        # 손대지 않는다 — 깨진 조합을 만드는 것보다 사람에게 알리는 편이 낫다.
+        return GuardInstallResult(repo_dir, "skipped-stdin-consumer", str(hook))
+    # 통째 교체하지 않는다. 남의 훅에는 다른 도구가 소유한 managed-block 이 들어 있을 수
+    # 있고(role-based-ruleset 의 claude-md-freshness), 교체는 그것을 조용히 지운다
+    # (2026-08-27 실사고 — install-git-hooks.sh 에서 같은 결함을 고쳤다).
     (hooks_dir / "pre-push.pre-anvyc").write_text(text)
-    hook.write_text(_SHEBANG + block)
+    hook.write_text(_insert_after_preamble(text, block))
     hook.chmod(0o755)
-    return GuardInstallResult(repo_dir, "installed", "backup=pre-push.pre-anvyc")
+    return GuardInstallResult(repo_dir, "installed", "merged; backup=pre-push.pre-anvyc")

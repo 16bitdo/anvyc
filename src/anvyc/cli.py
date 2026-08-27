@@ -4199,7 +4199,9 @@ def guard_install(
         None, "--root", help="스캔할 상위 디렉터리 (기본: 등록 roots)."
     ),
     force: bool = typer.Option(
-        False, "--force", help="기존 비-anvyc pre-push 를 백업하고 덮어쓴다."
+        False,
+        "--force",
+        help="기존 비-anvyc pre-push 에 가드를 삽입한다 (백업 후 병합 — 본문 보존).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="설치하지 않고 대상/정책만 출력."),
 ) -> None:
