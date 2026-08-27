@@ -7,7 +7,23 @@
 set -euo pipefail
 
 # 차단 패턴 (정규식, 한 줄)
-BLOCKED_REGEX='^(\.cursor/|\.cursorindexingignore$|\.claude(-[^/]+)?/|CLAUDE\.md$|CONTEXT\.md$|\.env(\.[^.]+)?$|\.envrc(\.[^/]+)?$|\.direnv/|\.vscode/|\.idea/|\.ssh/|.*\.(pem|key|p12)$|kubeconfig.*|credentials.*)'
+#
+# 앵커가 두 계층으로 갈린다 — **의도된 설계이므로 일괄 정규화 금지.**
+#   시크릿 계열(.env·.envrc·pem/key/p12): `.*` 접두 → 계층·접두 무관.
+#     `.env` 를 파일명으로만 보면 `billing/admin.api.env`·`sub/.env` 가 빠져나간다
+#     (실제로 그 형태로 방치된 파일이 있었다). pem/key/p12 는 원래 이 방식이었다.
+#   시크릿 **디렉터리**(.ssh/): `(.*/)?` 접두 → 경로성분이 정확히 `.ssh` 일 때만.
+#     같은 확장이라도 형태가 다른 이유는 대상의 성질이 달라서다 — `.env` 는 접미사
+#     관례라 `admin.api.env` 가 잡혀야 맞고, `.ssh` 는 디렉터리 이름이라 `foo.ssh/` 는
+#     잡히면 안 된다. `id_rsa` 는 확장자가 없어 pem/key/p12 로도 안 잡히므로 하위
+#     경로의 `.ssh/` 는 이 패턴이 유일한 방어선이다.
+#     `(^|/)` 는 그룹 안 `^` 해석이 ERE 구현마다 갈려 회피(macOS/Linux 양쪽 동작).
+#   위치 계열(CLAUDE.md·CONTEXT.md·.claude*/·.cursor/·.vscode/ 등): 루트 앵커 유지.
+#     cc-inspect-overlay 처럼 개인화 파일을 의도적으로 추적하는 SoT 저장소가
+#     `profiles/*/CLAUDE.md` 를 커밋할 수 있는 근거가 이 앵커다 — 마커
+#     (.personal-config-source) 화이트리스트에는 CONTEXT.md 만 있어 앵커가 실제로
+#     load-bearing 이다. 넓히면 그 저장소가 자기 본연의 커밋을 전부 차단당한다.
+BLOCKED_REGEX='^(\.cursor/|\.cursorindexingignore$|\.claude(-[^/]+)?/|CLAUDE\.md$|CONTEXT\.md$|.*\.env(\.[^.]+)?$|.*\.envrc(\.[^/]+)?$|\.direnv/|\.vscode/|\.idea/|(.*/)?\.ssh/|.*\.(pem|key|p12)$|kubeconfig.*|credentials.*)'
 
 # 차단 예외 (정규식): .env.example, .env.sample 은 통과
 ALLOWED_REGEX='\.env\.(example|sample)$'
@@ -17,6 +33,34 @@ SKILL_REF="role-based-ruleset/common/skills/personal-config-guard/SKILL.md"
 
 STAGED=$(git diff --cached --name-only --diff-filter=d)   # 삭제(untrack: git rm --cached)은 guard 대상 제외(#3b)
 [[ -z "$STAGED" ]] && exit 0
+
+# >>> branch-strategies validator >>>
+# metadata/branch-strategies.yaml 이 staging 에 있으면 스키마·룰 검증을 돌린다.
+#
+# 위치가 중요하다 — 이 블록은 STAGED 계산 직후에 있어야 한다. 아래로 내려가면
+# personal-config-guard 의 조기 종료(`[[ -z "$CANDIDATES" ]] && exit 0`) 에 걸려
+# 정상 커밋에서는 도달하지 않는다.
+#
+# 이 템플릿은 다른 저장소에도 배포되므로(install_pre_commit_hook.py --target-dir),
+# manifest 와 validator 가 둘 다 있을 때만 실행한다. 없으면 조용히 통과한다.
+if echo "$STAGED" | grep -q '^metadata/branch-strategies\.yaml$'; then
+  if [[ -f scripts/validate_branch_strategies.py ]]; then
+    if ! python3 scripts/validate_branch_strategies.py; then
+      cat >&2 <<'VEOF'
+
+❌ branch-strategies validator: manifest 검증 실패.
+
+위 ERROR 를 해소한 뒤 다시 커밋하세요.
+merge_strategy 가 owner x 가시성 기본 룰과 다르다면, 의도한 이탈일 때만
+해당 항목에 merge_strategy_override 로 사유를 적습니다.
+
+우회 (사유 명백한 경우만): git commit --no-verify
+VEOF
+      exit 1
+    fi
+  fi
+fi
+# <<< branch-strategies validator <<<
 
 # 차단 후보 추출
 CANDIDATES=$(echo "$STAGED" | grep -E "$BLOCKED_REGEX" | grep -vE "$ALLOWED_REGEX" || true)
