@@ -63,6 +63,33 @@ _STDIN_CONSUMER_RE = re.compile(
 )
 
 
+# 안내는 rich console 로 나간다 — 한글은 더블폭이라 줄이 길면 재래핑돼 읽기 나빠진다.
+# 짧은 논리 줄로 쪼개고, 렌더되지 않는 markdown 강조(**)는 쓰지 않는다.
+_FOREIGN_REMEDY = (
+    "    기존 pre-push 를 보존하려 건드리지 않았습니다.\n"
+    "    --force 는 덮어쓰기가 아니라 병합입니다 — 본문과 외부\n"
+    "    managed-block 을 남긴 채 preamble 직후에 가드만 넣고,\n"
+    "    원본은 pre-push.pre-anvyc 로 백업합니다."
+)
+
+# 자동 이식은 하지 않는다 — 남의 훅 본문을 고쳐야 하고 그 판단은 훅마다 다르다.
+# 대신 동작이 확인된 조합 방법을 준다 (16bitdo/anvyx PR #60 에서 실제로 쓰는 형태).
+_STDIN_REMEDY = (
+    "    기존 훅이 stdin(ref 목록)을 이미 읽습니다.\n"
+    "    stdin 은 한 번만 소비되므로, 가드를 앞에 넣으면 본문이,\n"
+    "    뒤에 넣으면 가드가 빈 입력을 받아 조용히 무력화됩니다.\n"
+    "\n"
+    "    수동 이식 (참조 구현: 16bitdo/anvyx githooks/pre-push):\n"
+    "      1) 훅 앞부분에서 stdin 을 한 번만 읽는다\n"
+    '           REFS=""; [ -t 0 ] || REFS=$(cat)\n'
+    "      2) 가드 블록을 서브셸로 감싸 그 값을 먹인다\n"
+    '           ( ...블록... ) <<< "$REFS" || exit 1\n'
+    '      3) 기존 while read 에도 <<< "$REFS" 를 먹인다\n'
+    "      * 블록 본문은 들여쓰기 없이 byte-identical 로 둘 것 —\n"
+    "        doctor 의 marker 인식과 이후 surgical 갱신의 전제다."
+)
+
+
 def _reads_stdin(text: str) -> bool:
     return _STDIN_CONSUMER_RE.search(text) is not None
 
@@ -152,10 +179,11 @@ def install_pre_push_guard(
         hook.chmod(0o755)
         return GuardInstallResult(repo_dir, "updated")
     if not force:
-        return GuardInstallResult(repo_dir, "skipped-foreign", str(hook))
+        return GuardInstallResult(repo_dir, "skipped-foreign", f"{hook}\n{_FOREIGN_REMEDY}")
     if _reads_stdin(text):
         # 손대지 않는다 — 깨진 조합을 만드는 것보다 사람에게 알리는 편이 낫다.
-        return GuardInstallResult(repo_dir, "skipped-stdin-consumer", str(hook))
+        # 다만 막다른 길로 두지도 않는다: 정답 패턴을 함께 준다.
+        return GuardInstallResult(repo_dir, "skipped-stdin-consumer", f"{hook}\n{_STDIN_REMEDY}")
     # 통째 교체하지 않는다. 남의 훅에는 다른 도구가 소유한 managed-block 이 들어 있을 수
     # 있고(role-based-ruleset 의 claude-md-freshness), 교체는 그것을 조용히 지운다
     # (2026-08-27 실사고 — install-git-hooks.sh 에서 같은 결함을 고쳤다).

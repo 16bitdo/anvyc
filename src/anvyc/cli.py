@@ -4226,7 +4226,12 @@ def guard_install(
             continue
         res = install_pre_push_guard(repo, policy, force=force)
         color = {"installed": "green", "updated": "green"}.get(res.status, "yellow")
-        console.print(f"[{color}]{res.status}[/] {_short_path(repo)} {res.detail}")
+        # detail 은 "요약\n안내(여러 줄)" 형태일 수 있다. 안내는 markup=False 로 낸다 —
+        # `[ -t 0 ]` 같은 셸 조각을 rich 가 스타일 태그로 삼키면 안내가 조용히 훼손된다.
+        head, _, remedy = res.detail.partition("\n")
+        console.print(f"[{color}]{res.status}[/] {_short_path(repo)} {head}")
+        if remedy:
+            console.print(remedy, markup=False, highlight=False)
 
 
 @guard_app.command("protect")

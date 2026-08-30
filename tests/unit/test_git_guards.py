@@ -203,3 +203,66 @@ def test_install_refuses_hook_that_consumes_stdin(tmp_path: Path) -> None:
 
     assert res.status == "skipped-stdin-consumer"
     assert hook.read_text() == body  # 손대지 않는다
+
+
+# --------------------------------------------------------------------------- #
+# skip status 는 막다른 길이 아니라 다음 행동을 알려준다
+# --------------------------------------------------------------------------- #
+# 계기 — 2026-08-30: `skipped-stdin-consumer` 의 detail 이 훅 경로뿐이라, 받은 사람은
+# "왜 안 되는지"도 "무엇을 하면 되는지"도 알 수 없었다. 정답 패턴은 이미 실재한다 —
+# anvyx githooks/pre-push 가 stdin 을 한 번 읽어 `$REFS` 에 담고 각 소비자에 서브셸로
+# 먹여, 가드 블록을 byte-identical 로 유지한 채 공존시킨다.
+
+
+def test_stdin_consumer_skip_explains_remedy(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "r")
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/usr/bin/env bash\nwhile read -r a b c d; do :; done\n")
+
+    res = install_pre_push_guard(repo, _POLICY, force=True)
+
+    assert res.status == "skipped-stdin-consumer"
+    assert str(hook) in res.detail  # 어느 파일인지
+    assert "REFS" in res.detail  # 무엇을 하면 되는지
+    assert "anvyx" in res.detail  # 동작하는 참조 구현
+
+
+def test_foreign_skip_mentions_force_is_non_destructive(tmp_path: Path) -> None:
+    """`--force` 는 #211 이후 '덮어쓴다' 가 아니라 '병합한다' — 낡은 인식을 바로잡는다."""
+    repo = _init_repo(tmp_path / "r")
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\necho mine\n")
+
+    res = install_pre_push_guard(repo, _POLICY)
+
+    assert res.status == "skipped-foreign"
+    assert str(hook) in res.detail
+    assert "--force" in res.detail
+
+
+def test_remedy_survives_console_rendering(tmp_path: Path) -> None:
+    """안내가 rich 마크업 파서에 먹히지 않고 터미널까지 온전히 도착해야 한다.
+
+    `[ -t 0 ]` 은 rich 가 태그로 해석할 수 있는 형태다 — 문자열이 맞는 것과 사용자에게
+    제대로 보이는 것은 다른 명제이고, 후자가 구속되지 않으면 안내는 조용히 훼손된다.
+    """
+    import os
+    import sys
+
+    repo = _init_repo(tmp_path / "r")
+    (repo / ".git" / "hooks" / "pre-push").write_text(
+        "#!/usr/bin/env bash\nwhile read -r a b c d; do :; done\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")}
+    env.pop("FORCE_COLOR", None)
+    r = subprocess.run(
+        [sys.executable, "-m", "anvyc", "guard", "install", "--force", "--project", str(repo)],
+        capture_output=True, text=True, env=env,
+    )
+
+    assert r.returncode == 0, r.stderr
+    out = " ".join(r.stdout.split())  # 터미널 폭에 따른 줄바꿈 흡수
+    assert "[ -t 0 ]" in out, f"rich 가 대괄호를 삼켰다: {r.stdout!r}"
+    assert "REFS" in out
+    assert "anvyx" in out
+    assert "**" not in out  # 렌더 안 되는 markdown 강조가 그대로 노출되면 안 된다
