@@ -63,10 +63,33 @@ url "https://github.com/16bitdo/anvyc/releases/download/vX.Y.Z/anvyc-X.Y.Z.tar.g
 sha256 "<위에서-계산한-sha256>"
 ```
 
-### 4. resource sha256 갱신 (의존 라이브러리 새 버전 시만)
+### 4. resource block 갱신 (매 릴리스 확인)
 
-`pyproject.toml` 의 `dependencies` 가 변경됐다면 각 resource 의 `url` + `sha256`
-도 함께 갱신한다. 산출 방법:
+`brew update-python-resources` 가 정본 도구다.
+
+```bash
+brew update-python-resources --print-only anvyc   # 미리보기
+brew update-python-resources anvyc                # tap 클론 formula 직접 수정
+```
+
+> **"의존이 안 바뀌었으면 건너뛴다" 는 판단은 틀렸다.** `pyproject.toml` 의
+> `dependencies` 가 그대로여도 resource 는 낡는다 — 제약이 `>=` 라서 실제로
+> 설치되는 버전은 계속 올라가는데 formula 의 pin 은 고정이기 때문이다.
+>
+> **2026-09-02 사고.** resource 가 initial formula(v0.7.1, `d02ad01`) 이후
+> 한 번도 갱신되지 않아 typer 가 `0.12.5` 에 묶여 있었다. `cli.py` 는 typer
+> 0.26.0(2026-05-26)이 도입한 `typer._click` 을 import 하므로 v0.21.0~v0.22.0
+> 배포본이 `ModuleNotFoundError` 로 실행되지 않았다(homebrew-anvyc#8).
+> 설치는 rc=0 이었고 sha256 도 일치했다 — 실행만 안 됐고 2주간 아무도 몰랐다.
+>
+> 최신 typer 가 click 을 vendoring 하면서 `click`·`typing-extensions` resource
+> 가 빠지고 `annotated-doc` 이 들어왔다. **resource 는 버전뿐 아니라 목록 자체가
+> 바뀐다** — 그래서 개별 sha256 갱신이 아니라 도구로 전체를 재생성해야 한다.
+>
+> anvyc CI 의 `deps-lowest` 잡이 거짓 의존 하한을 잡지만, formula pin 이 낡는
+> 것 자체는 이 단계에서만 막을 수 있다.
+
+개별 값을 수동 산출해야 할 때:
 
 #### 방법 A: PyPI Web UI
 1. `https://pypi.org/project/<pkg>/<version>/#files` 접속
@@ -74,28 +97,36 @@ sha256 "<위에서-계산한-sha256>"
 
 #### 방법 B: pip download
 ```bash
-mkdir -p /tmp/dl && rm -f /tmp/dl/*
-pip download typer==0.12.5 \
+mkdir -p /tmp/dl
+pip download typer==0.27.2 \
   --no-deps --no-binary=:all: -d /tmp/dl
 shasum -a 256 /tmp/dl/*.tar.gz
 ```
 
-#### 방법 C: poet / dottie (자동화 도구)
-```bash
-brew install homebrew/cask/poet  # 또는 nodenv 기반 dottie
-poet -r anvyc -V X.Y.Z
-# resource block 들을 자동 출력
-```
-
 ### 5. 로컬 검증
 
+**Homebrew 6.x 는 tap 밖의 formula 파일 설치를 거부한다** — `brew install
+--build-from-source ./Formula/anvyc.rb` 는 `Error: Homebrew requires formulae to
+be in a tap` 으로 끝난다. tap 클론에 임시 적용해 검증하고 원복한다.
+
 ```bash
-cd 16bitdo-homebrew-anvyc
-brew install --build-from-source ./Formula/anvyc.rb
-anvyc --version
-anvyc doctor
+TAP="$(brew --repository)/Library/Taps/16bitdo/homebrew-anvyc"
+
+cp Formula/anvyc.rb "$TAP/Formula/anvyc.rb"     # 작업본 임시 적용
+brew install --build-from-source anvyc
+
+# 검증은 버전 문자열이 아니라 기대하는 심볼로 한다 (CONTRIBUTING §2.5)
+/opt/homebrew/bin/anvyc --version               # 릴리스 빌드는 SHA 를 붙이지 않는다
+/opt/homebrew/bin/anvyc worktree --help         # 그 릴리스의 신규 명령
+/opt/homebrew/bin/anvyc doctor
+
 brew uninstall anvyc
+git -C "$TAP" checkout -- Formula/anvyc.rb      # 원복
 ```
+
+> **절대경로로 확인할 것.** dev wrapper(`~/.local/bin/anvyc`)가 PATH 에 앞서
+> 있으면 `anvyc` 는 그쪽을 가리킨다 — brew 가 `shadowed by` 경고를 낸다.
+> 이 경고를 지나치면 **dev wrapper 를 검증하고 배포본을 검증했다고 착각한다.**
 
 ### 6. tap repo 에 push
 
@@ -110,9 +141,15 @@ git push origin main
 ```bash
 brew untap 16bitdo/anvyc
 brew tap 16bitdo/anvyc
+brew trust --tap 16bitdo/anvyc   # Homebrew 6.x — 아래 참고
 brew install anvyc
 anvyc --version  # X.Y.Z
 ```
+
+> **Homebrew 6.x 는 비공식 tap 의 formula 를 기본 차단한다.** `brew trust` 없이는
+> `Error: Refusing to load formula … from untrusted tap` 으로 조회조차 되지 않는다
+> (`brew list` 포함). 신뢰 항목은 `~/.homebrew/trust.json` 에 저장된다.
+> 사용자 안내 문서에도 이 단계가 있어야 한다 — [install-via-homebrew.md](install-via-homebrew.md).
 
 > 사용자 관점의 상세 가이드 (사후 검증 체크리스트 / 트러블슈팅 / 제거 절차) 는 [docs/install-via-homebrew.md](install-via-homebrew.md) 참조.
 

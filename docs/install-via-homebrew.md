@@ -31,18 +31,25 @@ sw_vers -productVersion  # macOS 버전
 # 1. tap 추가 (한 번만)
 brew tap 16bitdo/anvyc
 
-# 2. 설치
+# 2. tap 신뢰 (한 번만 — Homebrew 6.x 부터 필수)
+brew trust --tap 16bitdo/anvyc
+
+# 3. 설치
 brew install anvyc
 
-# 3. 검증
+# 4. 검증
 anvyc --version
-# 기대 출력: anvyc v0.14.0
+# 기대 출력: anvyc vX.Y.Z (릴리스 빌드는 커밋 SHA 를 붙이지 않는다)
 ```
+
+> **2번을 건너뛰면 설치가 되지 않는다.** Homebrew 6.x 는 비공식 tap 의 formula
+> 로드를 기본 차단하므로 `Error: Refusing to load formula 16bitdo/anvyc/anvyc
+> from untrusted tap` 이 뜬다. 신뢰 항목은 `~/.homebrew/trust.json` 에 저장된다.
 
 `brew install anvyc` 가 자동으로:
 - `python@3.13` (의존성) 설치
-- anvyc sdist (`anvyc-0.14.0.tar.gz`) 다운로드 + sha256 검증
-- 10개 Python 의존 패키지 (`typer` / `rich` / `pyyaml` / `pathspec` + transitive deps) 다운로드 + sha256 검증
+- anvyc sdist (`anvyc-X.Y.Z.tar.gz`) 다운로드 + sha256 검증
+- Python 의존 패키지 (`typer` / `rich` / `pyyaml` / `pathspec` + transitive deps) 다운로드 + sha256 검증
 - virtualenv 생성 후 anvyc 설치
 
 소요 시간 ~30초 ~ 2분 (네트워크 / 캐시 상태 의존).
@@ -63,6 +70,7 @@ brew cleanup --prune=all
 
 # 3. 부트스트랩 절차 그대로
 brew tap 16bitdo/anvyc
+brew trust --tap 16bitdo/anvyc
 brew install anvyc
 
 # 4. 검증
@@ -79,7 +87,7 @@ which anvyc
 
 | 검증 | 명령 | 기대 결과 |
 |---|---|---|
-| 버전 | `anvyc --version` | `anvyc v0.14.0` |
+| 버전 | `anvyc --version` | `anvyc vX.Y.Z` (릴리스 빌드는 SHA 미표기) |
 | 위치 | `which anvyc` | `$(brew --prefix)/bin/anvyc` |
 | Python 결합 | `head -1 "$(which anvyc)"` | `#!` 로 시작하는 brew python@3.13 경로 |
 | 환경 health | `anvyc doctor` | 모든 check `OK` (실패 시 §6 참조) |
@@ -128,6 +136,7 @@ Expected: 16ed6555...
 brew cleanup --prune=all
 brew untap 16bitdo/anvyc
 brew tap 16bitdo/anvyc
+brew trust --tap 16bitdo/anvyc
 brew install anvyc
 ```
 
@@ -146,9 +155,33 @@ Error: resource '<pkg>' failed
 ```bash
 python3.13 -m venv ~/.local/anvyc-venv
 ~/.local/anvyc-venv/bin/pip install \
-  "https://github.com/16bitdo/anvyc/releases/download/v0.14.0/anvyc-0.14.0-py3-none-any.whl"
+  "https://github.com/16bitdo/anvyc/releases/download/vX.Y.Z/anvyc-X.Y.Z-py3-none-any.whl"
 ln -s ~/.local/anvyc-venv/bin/anvyc ~/.local/bin/anvyc
 ```
+
+### 설치는 성공했는데 `anvyc` 실행이 `ModuleNotFoundError` 로 죽는다
+
+```
+$ anvyc --version
+ModuleNotFoundError: No module named 'typer._click'
+```
+
+원인: Formula 의 `resource` 가 낡아 의존 라이브러리가 너무 오래된 버전으로
+설치된 경우다. **설치는 rc=0 으로 끝나고 sha256 도 맞으므로 실패처럼 보이지
+않는다** — 실행할 때만 드러난다.
+
+먼저 최신 formula 를 받았는지 확인한다:
+
+```bash
+brew update && brew upgrade anvyc
+```
+
+그래도 재현되면 메인테이너 측 결함이다.
+[anvyc Issues](https://github.com/16bitdo/anvyc/issues) 에 `--version` 출력
+전문과 `brew info anvyc` 를 함께 보고한다. 임시 회피는 위의 wheel 직접 설치.
+
+> 실사례 — v0.21.0~v0.22.0 이 이 상태였다(2026-09-02 수정, homebrew-anvyc#8).
+> resource 가 초기 formula 이후 갱신되지 않아 typer 가 0.12.5 에 고정돼 있었다.
 
 ### `python@3.13: command not found` (드물게)
 
