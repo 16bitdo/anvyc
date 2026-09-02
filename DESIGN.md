@@ -1196,9 +1196,11 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (SoT = `doctor.py` `_REGISTRY`; 아래는 대표 카테고리별 묶음)
+#### 27.1.1 등록된 check 목록 (28 check)
 
-SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
+SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 묶음이며,
+`tests/unit/test_doctor_check_registry_drift.py` 가 **이름 집합**으로 정합을 강제한다
+(계수만 보면 하나 빠지고 하나 늘어난 교체를 통과시킨다).
 
 **기본 환경 / adapter**
 
@@ -1210,14 +1212,16 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | `adapter-validate` | adapter 자체 validate wrap | v0.1.0 |
 | `cursor-projects-suggest` | candidate root 의 `.cursor/` 발견 안내 | v0.1.0 |
 | `sops-keys-available` | sops/age binary + age identity | v0.2.0 |
+| `secret-registry-valid` | `secrets:` 레지스트리의 reference 유효성 — 값 custody 는 외부(op/sops/keychain), anvyc 는 참조만 검증 (CP-15) | v0.17.0 |
 | `container-runtime-health` | colima(vz) docker 런타임 손상 관측 — 미설치/정상/clean-stopped silent, 손상(Running+docker dead / Stopped+stale lock)만 WARN | v0.18.x |
 
-**MCP**
+**MCP / optional extras**
 
 | check_name | 영역 | 추가 |
 |---|---|---|
 | `mcp-tokens-warn` | mcp.json 의 raw token 패턴 | v0.2.1 |
 | `mcp-extra-importable` | `[mcp]` extra 미설치 silent failure 차단 | v0.15.2 |
+| `tui-extra-importable` | `[tui]` extra 미설치 silent failure 차단 (`tools configure` 체크박스 TUI) | v0.17.0 |
 
 **per-project 계정 라우팅** (§32.4)
 
@@ -1239,8 +1243,16 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 카테고리별 묶음:
 | check_name | 영역 | 추가 |
 |---|---|---|
 | `aws-profile-status` | 현재 `AWS_PROFILE` env var 정합성 | v0.6.1 |
+| `aws-account-status` | 인증 방식별(SSO 토큰/static/assume-role/process) 연결 상태 — `--probe` opt-in, 정적 시크릿 불가침 | v0.21.0 |
 | `multi-account-detected` | AWS ≥ 2 + ssh alias + cursor alias + `~/.claude-*` | v0.6.1 |
 | `unused-aws-profiles` | `~/.aws/config` 에만 있고 미사용인 profile | v0.7.0 |
+
+**룰셋 배포 관측** (L2 read-only — anvyc 는 SoT 를 수정하지 않는다. 재생성은 사용자/L3 몫)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `ruleset-deploy-drift` | 배포된 `.cursor/rules` 가 role-based-ruleset origin 보다 뒤처졌는지 (스탬프성 신호) | v0.21.0 |
+| `claude-md-freshness` | fleet 의 생성된 `CLAUDE.md` 가 각 repo `.cursor/rules` 와 content-fresh 한지 (per-file 정밀 신호). fresh 일 때는 **재생성됐지만 미커밋인** 구간을 INFO 로 관측 — tracked-only(gitignored repo 는 재생성이 정본이라 침묵), 생성물 판별은 첫 줄 마커. 조치 안내는 2단계(`deploy_cursor_rules` → `generate_claude_md`) — 단독 `--apply` 는 누락 룰을 인덱스에서 drop 한다 | v0.21.0 (미커밋 관측 v0.22.1) |
 
 **Control plane axes** (각 axis 본문은 [docs/design-axes/](../docs/design-axes/) 참조)
 
@@ -1333,7 +1345,7 @@ doctor:
 
 ```
 anvyc doctor
-  ✓ 0 critical    ⚠ 7 warning    ℹ 20 info     ·  ✓ 16/24 checks clean
+  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/28 checks clean
 
 조치 필요
   ⚠ project-branch-protection (6)

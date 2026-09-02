@@ -129,7 +129,7 @@ Manual (참조) — `~/.cursor/mcp.json`:
 | `project_show` | `anvyc project show` | `{path?, reveal_secrets?}` | ProjectInfo (DESIGN §32) |
 | `project_list` | `anvyc project list` | `{roots?, reveal_secrets?}` | array of ProjectInfo (DESIGN §33.1) |
 | `project_doctor` | `anvyc project doctor` | `{path?}` | `{path, results}` (DESIGN §33.2) |
-| `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (24 check) |
+| `doctor` | `anvyc doctor --json` | `{only?, skip?}` | `{results}` (28 check) |
 | `tools_list` | `anvyc tools list --json` | `{}` | array of `{tool, enabled, detected, files, secrets}` |
 | `activity_summary` | `anvyc activity --json` | `{agent?}` | `{total_sessions, total_events, total_tool_calls, total_duration_seconds, oldest, newest, tools_used}` (CP-1, CP-7) |
 | `tool_call_stats` | (MCP 전용 — CLI 미노출) | `{top?, agent?}` | `{tool_call_ranking: [{name, count}], blocked: {total_blocks, by_hook, by_agent, oldest_block_at, newest_block_at}}` (CP-1, CP-8, CP-11) |
