@@ -1,5 +1,115 @@
 # anvyc 릴리즈 노트
 
+## v0.22.0 — 2026-09-02 (minor — 훅 소유권 · 버전 정직성 · 룰이 따라오는 worktree)
+
+v0.21.0 이후 12 커밋(feat 4 · fix 5 · docs 2 · chore 1)을 모은 릴리스. 축은 셋이다 —
+**① 훅을 "내 것만 건드린다" 는 원칙으로 재정렬**, **② 설치본이 어느 커밋인지 정직하게
+답하게 함**, **③ worktree 격리가 룰을 잃지 않게 함**.
+
+세 축의 공통 주제는 **조용한 실패의 제거**다. 전부 "동작하지 않는데 아무도 모르는"
+상태를 실측으로 발견해 드러낸 것이고, 기능 추가보다 관측 가능성 쪽 사이클이다.
+
+### 훅 소유권 — 남의 블록을 파괴하지 않는다
+
+- **`scripts/preserve_managed_blocks.py` 신설 (#210)** — `# >>> <name> … <<<` 마커 블록을
+  파싱해 "기존에만 있고 SoT 에 없는" 블록만 재부착한다. `install-git-hooks.sh` 가
+  `.git/hooks/pre-push` 를 tracked SoT 로 통째 교체하며 **role-based-ruleset 의
+  `claude-md-freshness` 블록을 삼키던** 문제(2026-08-27 실측 — CLAUDE.md stale 게이트가
+  push 에서 빠진 채 아무도 알아채지 못했다)를 이름 기준으로 일반화해 차단한다.
+  stdlib only + `python3` 직접 실행 — 훅 설치가 "동작하는 anvyc" 에 의존하면 부트스트랩이
+  역전되기 때문이다. 짝이 맞지 않는 마커는 보존하지 않고 stderr 로 알린다.
+- **`guard install --force` 가 "덮어쓴다" 에서 "삽입한다" 로 (#211)** — anvyc 블록이 없는
+  훅을 통째 교체하던 동작을 폐기했다. **삽입 위치는 취향이 아니라 정확성이다** — pre-push 는
+  stdin 으로 ref 목록을 받고 가드는 `while read` 로 그것을 소비하므로, 뒤에 붙이면 앞 본문이
+  stdin 을 이미 먹었을 때 가드가 빈 목록을 읽고 **아무것도 차단하지 않으면서 성공한 것처럼**
+  보인다. `_insert_after_preamble()` 로 shebang 직후에 넣고, 이미 stdin 을 읽는 훅에는
+  `skipped-stdin-consumer` 로 손대지 않는다. 백업(`pre-push.pre-anvyc`)은 그대로 남는다.
+- **skip 이 막다른 길이 아니게 (#212)** — `skipped-stdin-consumer`/`skipped-foreign` 의
+  detail 이 훅 경로뿐이라 받은 사람은 왜 안 되는지도, 무엇을 하면 되는지도 알 수 없었다.
+  3단계 이식 절차 + byte-identity 제약 + 참조 구현(anvyx `githooks/pre-push`) 경로를 담았다.
+  안내는 `markup=False` 로 출력한다 — rich 가 `[ -t 0 ]` 를 스타일 태그로 삼키면 안내가
+  조용히 훼손된다.
+- **tracked `hooksPath` 정합 오판 차단 (#201)** — `_hook_installed()` 가 `core.hooksPath` 가
+  worktree 내부(tracked)면 훅 내용을 보지 않고 True 를 반환해, **아무도 가드를 넣지 않은
+  repo 가 초록으로 보고**됐다(실측 4곳 — anvyc 자신 포함). `_hook_problem()` 으로 교체해
+  tracked 여부와 무관하게 실효 훅의 가드 블록을 검사하고, 해소책을 문제별로 분리한다.
+  tracked 에는 `guard install` 을 안내하지 않는다(그 명령은 no-op 이다).
+- **personal-config-guard 재배선 (#202)** — `core.hooksPath` 오설정을 해제해 pre-push 게이트를
+  되살렸더니, 그때까지 hooksPath 덕에 유일하게 돌던 이 가드가 **아무 신호 없이 실행되지 않게**
+  됐다. gitleaks 는 내용 기반이라 인식 가능한 패턴이 없는 개인화 파일(`.envrc`·`kubeconfig*`·
+  `.claude*/`)은 통과시키므로 대체가 되지 않는다. 로컬은 `.pre-commit-config.yaml` local 훅,
+  server-side 는 `personal-config-guard.yml` 워크플로로 배선하되 **양쪽 다 같은 tracked
+  스크립트를 재호출**해 SoT 를 하나로 유지한다. `ci.yml` 에 얹지 않은 이유는 그 워크플로의
+  `paths-ignore: ['**.md']` 가 차단 대상인 CLAUDE.md·CONTEXT.md 를 정확히 비켜가기 때문이다.
+- **가드 스크립트를 현행 SoT 로 (#208)** — tracked 사본이 `efd640f` 에 멈춰 하위경로 시크릿
+  (`sub/.env` · `billing/admin.api.env` · `docs/.ssh/id_rsa`)을 통과시키고 있었다.
+  role-based-ruleset installer 의 framework 분기(rbr#300)로 갱신했다.
+
+### 버전 정직성 — 설치본이 어느 커밋인지 답한다
+
+- **빌드 시 소스 커밋 각인 (#206)** — `hatch_build.py` 신설. 릴리스 배치 버저닝이라 한 version 이
+  여러 커밋을 덮으므로, 로컬 디렉터리를 tool venv 로 설치해 쓰면 "지금 깔린 게 어느 커밋인가" 를
+  답할 수 없었다. 빌드 시 git 커밋을 `src/anvyc/_build_info.py` 에 기록하고, `--version` 이
+  릴리스 빌드가 아닐 때만 병기한다. `__version__` 은 무변경(기존 소비자 보호), git 부재/실패 시
+  아무것도 쓰지 않는다.
+- **소스 실행은 런타임 git 이 권위 (#209)** — dev wrapper 는 산출물이 아니라 repo 의 `src/` 를
+  실행하므로 설치 시점에 얼어붙은 스탬프는 `git pull` 직후 **실행되지도 않는 커밋을 자신 있게
+  출력**한다. 틀린 커밋 표시는 미표시보다 위험하다. `build_commit()` 이 소스 트리면 런타임
+  `git rev-parse` + `status` 를, 아니면 빌드 스탬프를 쓴다. `.git` 이 파일인 linked
+  worktree(`anvyc worktree add`)도 소스 트리로 인식하고, git 비용은 `--version` 경로에서만 낸다.
+  editable 빌드는 아예 스탬프하지 않는다.
+- 결과 — **A(dev wrapper) 의 SHA 는 HEAD 와 항상 일치**하며 불일치는 낙후가 아니라 버그다.
+  `+dirty` 가 미커밋 변경을, `(… source)` 유무가 A/B 를 가른다.
+- **갱신 절차를 설치 방식으로 분기 (#205 · #207)** — `head -1 "$(command -v anvyc)"` 의 shebang
+  한 줄로 A(dev wrapper)/B(uv tool)를 가르는 판별을 CONTRIBUTING §2.5 첫머리에 세웠다. dev
+  wrapper 환경에서 uv tool 절차를 실행하면 uv 가 `~/.local/bin/anvyc` 를 자기 런처로 덮어써
+  wrapper 가 사라지는데 명령 자체는 정상 종료한다. 그리고 **`--force` 만으로는 조용히 실패한다** —
+  로컬 소스는 커밋이 바뀌어도 version 이 같으면 uv 캐시 키가 같아져 낡은 빌드가 재사용되고
+  rc=0 으로 끝난다. `--reinstall --refresh` 가 필요하다.
+
+### worktree — 룰이 따라온다
+
+- **`anvyc worktree add` (#204)** — `git worktree add` 로 만든 트리에는 에이전트가 읽어야 할 룰이
+  전부 빠진다(CLAUDE.md·`.cursor/rules`·`.cursor/skills`·`.envrc` 는 대개 gitignore 대상이라
+  체크아웃되지 않는다). 정작 rule 18 은 worktree-per-task 격리를 권장하므로 **권장을 따르면 그
+  권장을 담은 룰이 사라지는 모순**이 생긴다. 래퍼가 add 이후 룰 자산을 **symlink** 로 연결한다 —
+  복사가 아니다. 복사본은 만든 순간부터 stale 해지고, 실측에서 CLAUDE.md 는 하루 세 번 재생성돼
+  격리 사본이 본 저장소보다 최신이 되는 역전까지 일어났다. 격리할 것은 코드지 룰이 아니다.
+  상대 경로 링크라 worktree 를 옮겨도 살아 있고, 이미 있는 파일은 건드리지 않으며, `.envrc` 는
+  안내만 한다(direnv 승인은 경로별 보안 경계라 자동으로 열지 않는다).
+- **`worktree_rule_links` project doctor check** — 래퍼는 강제할 수 없다. 직접 `git worktree add`
+  를 쓰면 룰 없이 굴러가는데 신호가 없었다. linked worktree 에서만 검사해 미연결이면 WARNING +
+  해소 명령을 내고, 원본 체크아웃에서는 침묵한다.
+
+### 신원 가드 — 선언 부재 자체를 보고한다
+
+- **`ownership_declared` (#203)** — `commit_identity_actual` 은 선언된 커밋 이메일과 실체를
+  대조하는데, 선언이 없으면 기준이 없어 조용히 건너뛴다. 그런데 **신원이 잘못 박히는 경로가 바로
+  그 "선언 없음"** 이다. 2026-08-18 에 16bitdo 소유 저장소 12곳에서 148개 커밋이 다른 신원으로
+  기록됐고, 그 12곳은 전부 manifest 미선언이라 기존 check 가 한 번도 실행되지 않았다 — 가드가
+  켜지는 조건과 사고가 나는 조건이 정확히 배타였다. origin 있는 저장소만 대상으로, 미선언이거나
+  L2 바인딩에 `commit_email` 이 없으면 WARNING(`project doctor --strict` 시 exit 1).
+- **`public_repo_email_exposure` (#203)** — `16bitdo/homebrew-anvyc` 가 PUBLIC 인데 개인 주소로
+  커밋하고 있었다. 같은 계정의 `anvyc` 는 noreply 로 막고 있었으니 규칙을 어긴 게 아니라 **규칙이
+  코드에 없어서** 한쪽만 지켜진 것이다. 판정 근거를 `-public` 같은 이름 규칙이 아니라 실제
+  가시성에 둔다. 커밋에 한 번 박히면 히스토리 재작성 전까지 남고 그사이 색인된다.
+- `project doctor` check 11 → **14** (`ownership_declared` · `public_repo_email_exposure` ·
+  `worktree_rule_links`). 계수·목록 정합은 drift guard 테스트가 강제한다.
+
+### 업그레이드
+
+```bash
+uv tool upgrade anvyc     # 또는: brew upgrade anvyc
+```
+
+dev wrapper(editable) 사용자는 `git pull` 이 곧 갱신이다 — `--version` 의 SHA 가 HEAD 와
+일치하는지로 확인한다(CONTRIBUTING §2.5). 로컬 소스를 tool venv 에 설치한 경우 `--force` 만으로는
+캐시가 재사용되므로 `--reinstall --refresh` 를 쓴다.
+
+훅이 있는 저장소에 `anvyc guard install --force` 를 다시 돌리면, 이제 기존 훅을 덮지 않고 shebang
+직후에 가드 블록을 **삽입**한다. 이미 stdin 을 읽는 훅은 건드리지 않고 이식 절차를 안내하므로,
+이전 동작(통째 교체)을 기대한 스크립트가 있다면 결과가 달라진다.
+
 ## v0.21.0 — 2026-08-17 (minor — 가드/계정 라우팅 서브시스템 + doctor 출력 개편)
 
 v0.20.0 이후 70 커밋(feat 29 · fix 20 · docs 13 · 기타 8)을 모은 릴리스. 축은 셋이다 —
