@@ -37,10 +37,20 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "typer>=0.12",
+  # 하한은 "실제로 요구하는 최소" 여야 한다 — 느슨한 하한은 그 하한을 믿고
+  # 해석하는 모든 설치 경로(Homebrew formula resource, 배포판 패키징, 타인의
+  # lockfile)를 깨뜨린다. CI 의 deps-lowest 잡이 이 선언을 실측으로 강제한다.
+  #
+  # typer 0.26 — cli.py 가 `import typer._click` 을 한다. 그 패키지는 typer
+  # 0.26.0(2026-05-26)이 click 을 vendoring 하며 도입했다. `>=0.12` 로 두었던
+  # 탓에 Homebrew formula 가 0.12.5 에 고정돼 v0.21.0~v0.22.0 배포본이
+  # ModuleNotFoundError 로 실행 불가였다(homebrew-anvyc#8).
+  "typer>=0.26",
   "rich>=13.7",
   "pathspec>=0.12",
-  "pyyaml>=6.0"
+  # pyyaml 6.0.1 — 6.0 은 Python 3.13 에서 빌드가 실패한다
+  # (Cython: 'build_ext' object has no attribute 'cython_sources').
+  "pyyaml>=6.0.1"
 ]
 
 [project.optional-dependencies]

@@ -91,6 +91,49 @@ jobs:
       - name: Pytest (integration)
         run: pytest -m integration
 
+  # 선언한 의존 하한이 거짓이 아닌지 실측한다.
+  #
+  # 2026-09-02 사고: pyproject 가 `typer>=0.12` 라 Homebrew formula 의 resource 가
+  # typer 0.12.5 에 고정됐는데, cli.py 는 typer 0.26.0 이 도입한 `typer._click` 을
+  # import 한다. v0.21.0~v0.22.0 배포본이 ModuleNotFoundError 로 실행 불가였고
+  # 2주간 아무도 몰랐다 — 개발 환경과 이 CI 는 상한 없는 제약으로 늘 최신을 받고,
+  # Homebrew 경로는 어디서도 테스트되지 않았기 때문이다(homebrew-anvyc#8).
+  #
+  # extras 는 일부러 제외한다. 검증 대상은 런타임 의존 선언이고, 이 조합이 곧
+  # Homebrew formula 가 만드는 환경이다(런타임 의존만 설치 후 CLI 실행).
+  # 같은 이유로 pytest 스위트가 아니라 import + CLI smoke 다 — 테스트는 [mcp]
+  # 등 extras 를 요구하므로 여기서 돌리면 검증 대상이 흐려진다.
+  deps-lowest:
+    name: Lowest declared deps (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Homebrew formula 의 depends_on 과 맞춘다.
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      # lowest-direct = 직접 의존만 선언 하한으로, transitive 는 통상 해석.
+      - name: Install runtime deps at lowest declared versions
+        run: uv pip install --system --resolution lowest-direct -e .
+
+      - name: Show resolved versions
+        run: uv pip list | grep -iE "^(typer|rich|pathspec|pyyaml) "
+
+      - name: Import and CLI smoke
+        run: |
+          python -c "from anvyc.cli import app"
+          anvyc --version
+          anvyc --help > /dev/null
+          anvyc worktree --help > /dev/null
+
   # macOS 실 플랫폼 회귀 — main push(병합 후)에만 실행한다.
   # macOS 러너는 10× 과금이므로 빈번한 PR 단계에서는 제외 (위 주석 참고).
   test-macos:
