@@ -1,5 +1,98 @@
 # anvyc 릴리즈 노트
 
+## v0.22.1 — 2026-09-02 (patch — 배포본이 실행되지 않던 문제 + doctor 가 회귀 명령을 안내하던 문제)
+
+v0.22.0 당일 발행 직후 실동작 확인에서 드러난 두 결함을 고친 patch. 둘 다 **설치·안내는
+성공하는데 결과만 틀린** 종류다.
+
+### Homebrew 배포본이 실행되지 않았다
+
+`brew install anvyc` 로 설치한 **v0.21.0~v0.22.0 이 CLI import 단계에서 죽었다.**
+
+```
+$ anvyc --version
+ModuleNotFoundError: No module named 'typer._click'
+```
+
+설치는 rc=0 이고 sha256 도 일치했다 — 실행만 안 됐고 약 2주간 아무도 몰랐다.
+
+직접 원인은 tap formula 의 resource 가 initial formula(v0.7.1) 이후 한 번도 갱신되지 않아
+typer 가 `0.12.5` 에 고정된 것이고, **이미 수정됐다**([homebrew-anvyc#8](https://github.com/16bitdo/homebrew-anvyc/pull/8)).
+그 pin 을 정당화한 것이 이쪽의 느슨한 선언이다.
+
+- **`typer>=0.12` → `>=0.26`** — `cli.py` 는 2026-06-05(#175)부터 `import typer._click` 을
+  하는데, 그 패키지는 typer 0.26.0(2026-05-26)이 click 을 vendoring 하며 도입했다. 코드가
+  요구하는 것과 선언한 것이 4개월 어긋나 있었다.
+- **`pyyaml>=6.0` → `>=6.0.1`** — 검증 중 함께 드러났다. pyyaml 6.0 은 Python 3.13 에서
+  빌드가 실패한다(Cython `'build_ext' object has no attribute 'cython_sources'`).
+  `requires-python = ">=3.11"` 이므로 6.0 은 애초에 선언 가능한 값이 아니었다.
+
+느슨한 하한은 개발 환경에서 무해하다 — 상한이 없으니 늘 최신이 깔리고 CI 도 그렇다.
+대가는 그 선언을 믿고 해석하는 쪽이 치른다: formula resource, 배포판 패키징, 타인의 lockfile.
+
+**재발 방지 — CI `deps-lowest` 잡.** `uv pip install --resolution lowest-direct` 로 선언한
+하한을 실제로 설치해 import + CLI smoke 를 돌린다. 이 조합이 곧 Homebrew formula 가 만드는
+환경이다(런타임 의존만 설치 후 CLI 실행). 두 결함을 각각 다른 단계에서 잡는다 — pyyaml 은
+설치에서, typer 는 import 에서.
+
+### doctor 가 회귀를 유발하는 명령을 안내했다
+
+`claude-md-freshness` 의 조치 안내가 `generate_claude_md.py --apply 후 각 repo 커밋` 이었다.
+그런데 role-based-ruleset 스크립트 **자신이** `--check` 실패 시 이렇게 답한다:
+
+```
+FAIL: stale — .cursor/rules(생성기 입력)가 SoT 보다 뒤처지면 단독 --apply 는
+누락 룰을 인덱스에서 drop 한다(회귀). 안전 순서:
+  1) deploy_cursor_rules.py --role <role> --target-dir <project> --apply --yes
+  2) generate_claude_md.py --apply
+```
+
+anvyc 가 안내한 것이 정확히 그 위험한 단독 `--apply` 였다. 1단계(재배포)를 포함한 순서로
+교체했다.
+
+### 재생성됐지만 커밋 안 된 CLAUDE.md 를 관측한다 (INFO)
+
+같은 check 가 fresh 일 때 그 다음 구간을 본다. 각 프로젝트에서 룰셋의 **유일한 추적 기록이
+CLAUDE.md** 이므로(`.cursor/` 는 대개 gitignore 대상), 커밋이 빠지면 다음 세션이 옛 인덱스를
+보고 저장소만으로는 어느 룰셋 버전 기준으로 작업했는지 알 수 없다.
+
+- **tracked 게이트가 먼저** — gitignored/untracked repo 는 커밋 자체가 대상이 아니라
+  재생성이 정본이므로 침묵한다(무오탐).
+- **fresh 일 때만** — stale 이면 답이 "재생성하라"이고 미커밋 보고는 그 위에 얹혀 소음이 된다.
+- **INFO 다** — WARNING 은 `is_blocking` 이라 `doctor --strict` 가 exit 1 이 되고, 그 값을
+  소비하는 L4 anvyx C6 pre-run gate 가 autopilot 을 막는다. 커밋 누락은 실행을 차단할 사유가
+  아니다.
+
+생성물 판별은 첫 줄의 `auto-generated from .cursor/rules/` 마커로만 한다 — 이름 규칙이나
+경로로 추정하면 사람이 쓴 CLAUDE.md 를 삼킨다.
+
+### 문서
+
+검증 절차 자체가 낡아 있던 것 셋을 고쳤다.
+
+- **`install-via-homebrew`** — `brew trust --tap 16bitdo/anvyc` 단계 신설. Homebrew 6.x 는
+  비공식 tap 을 기본 차단하므로 **이 단계 없이는 설치가 되지 않는다**. "설치는 성공했는데
+  실행이 죽는" 유형도 트러블슈팅에 추가.
+- **`homebrew-publishing` §4** — resource 갱신을 "의존이 바뀔 때만"에서 **매 릴리스 확인**
+  으로. 제약이 `>=` 라 `dependencies` 가 그대로여도 resource 는 낡는다. 개별 sha256 산출
+  대신 `brew update-python-resources` 로 전체 재생성 — 최신 typer 가 click 을 vendoring 하며
+  **resource 목록 자체가 바뀌었다**(`click`·`typing-extensions` 제거, `annotated-doc` 추가).
+- **`homebrew-publishing` §5** — `brew install --build-from-source ./Formula/anvyc.rb` 는
+  Homebrew 6.x 가 거부한다(tap 밖 formula). tap 클론 임시 적용 + 원복 절차로 교체하고,
+  dev wrapper shadow 때문에 절대경로로 검증해야 함을 명시.
+
+### 업그레이드
+
+```bash
+brew update && brew upgrade anvyc     # 또는: uv tool upgrade anvyc
+```
+
+**Homebrew 사용자는 `brew update` 를 먼저 해야 한다** — 고쳐진 formula 를 받아야 하기
+때문이다. tap 을 처음 쓰는 경우 `brew trust --tap 16bitdo/anvyc` 가 필요하다(Homebrew 6.x).
+
+typer 0.26 미만 환경은 업그레이드가 필요하지만, 그 버전에서는 anvyc 가 애초에 실행되지
+않았으므로 실질적인 breaking 은 없다.
+
 ## v0.22.0 — 2026-09-02 (minor — 훅 소유권 · 버전 정직성 · 룰이 따라오는 worktree)
 
 v0.21.0 이후 12 커밋(feat 4 · fix 5 · docs 2 · chore 1)을 모은 릴리스. 축은 셋이다 —
