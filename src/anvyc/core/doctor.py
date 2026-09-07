@@ -31,6 +31,7 @@ from anvyc.checks.project_gh_account import ProjectGhAccountMappingCheck
 from anvyc.checks.project_pulumi_backend import ProjectPulumiBackendMappingCheck
 from anvyc.checks.ruleset_deploy_drift import RulesetDeployDriftCheck
 from anvyc.checks.secret_registry import SecretRegistryValidCheck
+from anvyc.checks.session_bridge import SessionBridgeCheck
 from anvyc.checks.sops_keys import SopsKeysCheck
 from anvyc.checks.tui_extra import TuiExtraImportableCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
@@ -114,6 +115,7 @@ _REGISTRY: dict[str, Check] = {
     "project-branch-protection": ProjectBranchProtectionCheck(),
     "container-runtime-health": ContainerRuntimeHealthCheck(),
     "account-identity-actual": AccountIdentityActualCheck(),
+    "session-bridge": SessionBridgeCheck(),
 }
 
 

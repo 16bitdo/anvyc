@@ -1196,7 +1196,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (28 check)
+#### 27.1.1 등록된 check 목록 (29 check)
 
 SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 묶음이며,
 `tests/unit/test_doctor_check_registry_drift.py` 가 **이름 집합**으로 정합을 강제한다
@@ -1264,6 +1264,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 
 | `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
 | `work-cwd-track-wired` | work-cwd hook + `env.WORK_CWD_CACHE` 주입 검증 (CP-12) | v0.15.0 |
 | `project-branch-protection` | manifest 정책 ↔ 서버 repository ruleset ↔ 로컬 pre-push 가드 drift (PR 강제; admin 아닌 repo silent) | v0.18.x |
+| `session-bridge` | ccinspector session-bridge(프로필 경계 너머 세션 메시징 — 발견 레코드 쌍 `<pid>.json`+`.key` 를 다른 프로필 `sessions/` 로 복사) 의 read-only 미러. 훅이 배선된 머신에서만 동작: 살아있는 세션이 다른 프로필에서 안 보임 · 활성 프로필 미배선 · `peerProtocol≠1` · 레코드 형식 변경 의심 · manifest 파손 → WARNING, 복사본 5분 이상 stale → INFO 집계(정상 운영에서도 상시 발생하므로 차단하지 않음). 미배선 머신 silent. 조치는 lib `sync`/ccinspector `install.sh` 몫(anvyc 는 복사본·manifest 를 수정하지 않음) | v0.22.x |
 
 ### 27.2 모듈 구조
 
@@ -1345,7 +1346,7 @@ doctor:
 
 ```
 anvyc doctor
-  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/28 checks clean
+  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/29 checks clean
 
 조치 필요
   ⚠ project-branch-protection (6)
