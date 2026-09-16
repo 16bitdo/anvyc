@@ -37,6 +37,7 @@ def render_guard_block(policy: BranchPolicy) -> str:
         f'__anvyc_protected="{protected}"\n'
         f'__anvyc_allowed="{allowed}"\n'
         "__anvyc_zero=0000000000000000000000000000000000000000\n"
+        '__anvyc_remote="${1:-}"\n'
         "while read -r _lref _lsha _rref _rsha; do\n"
         '  _brname="${_rref#refs/heads/}"\n'
         '  if [ "$__anvyc_allowed" != "true" ]; then\n'
@@ -50,14 +51,24 @@ def render_guard_block(policy: BranchPolicy) -> str:
         "      fi\n"
         "    done\n"
         "  fi\n"
-        '  if [ "$_rsha" = "$__anvyc_zero" ] &&\n'
-        '     git config --get "branch.$_brname.merge" >/dev/null 2>&1; then\n'
-        '    echo "" >&2\n'
-        "    echo \"anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성).\" >&2\n"
-        '    echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2\n'
-        f'    echo "  머지가 끝났다면 : git switch {policy.default_branch} && git pull && git switch -c <새 브랜치>" >&2\n'
-        '    echo "  의도한 것이라면 : git push --no-verify" >&2\n'
-        "    exit 1\n"
+        '  if [ "$_rsha" = "$__anvyc_zero" ]; then\n'
+        '    case "$_lref" in\n'
+        '      refs/heads/*) _lbr="${_lref#refs/heads/}" ;;\n'
+        '      HEAD) _lbr="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)" ;;\n'
+        '      *) _lbr="" ;;\n'
+        "    esac\n"
+        '    if [ -n "$_lbr" ] &&\n'
+        '       [ "$(git config --get "branch.$_lbr.merge" 2>/dev/null || true)" = "$_rref" ] &&\n'
+        '       { [ -z "$__anvyc_remote" ] ||\n'
+        '         [ "$(git config --get "branch.$_lbr.remote" 2>/dev/null || true)" = "$__anvyc_remote" ]; }; then\n'
+        '      _spec="$_lbr"; [ "$_lbr" = "$_brname" ] || _spec="$_lbr:$_brname"\n'
+        '      echo "" >&2\n'
+        "      echo \"anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성).\" >&2\n"
+        '      echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2\n'
+        f'      echo "  머지가 끝났다면 : git switch {policy.default_branch} && git pull && git switch -c <새 브랜치>" >&2\n'
+        '      echo "  의도한 것이라면 : git branch --unset-upstream $_lbr && git push -u ${__anvyc_remote:-origin} $_spec" >&2\n'
+        "      exit 1\n"
+        "    fi\n"
         "  fi\n"
         "done\n"
         f"{GUARD_END}\n"

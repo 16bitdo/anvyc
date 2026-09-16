@@ -2,6 +2,7 @@
 """Unit tests for anvyc.core.git_guards."""
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -282,8 +283,18 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     )
 
 
-def _repo_with_remote(tmp_path: Path, policy: BranchPolicy = _POLICY) -> Path:
-    """가드가 설치되고 bare 원격이 붙은, 커밋 1개짜리 저장소."""
+def _repo_with_remote(
+    tmp_path: Path,
+    policy: BranchPolicy = _POLICY,
+    *,
+    seed_main: bool = False,
+    extra_remotes: tuple[str, ...] = (),
+) -> Path:
+    """가드가 설치되고 bare 원격이 붙은, 커밋 1개짜리 저장소.
+
+    seed_main — origin 에 main 을 올리고 fetch 해 `origin/main` 추적 ref 를 만든다.
+    가드가 main 직접 push 를 막으므로 **설치 전에** 올린다.
+    """
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
     repo = _init_repo(tmp_path / "r")
@@ -293,6 +304,13 @@ def _repo_with_remote(tmp_path: Path, policy: BranchPolicy = _POLICY) -> Path:
     _git(repo, "add", "a.txt")
     _git(repo, "commit", "-qm", "init")
     _git(repo, "remote", "add", "origin", str(remote))
+    for name in extra_remotes:
+        extra = tmp_path / f"{name}.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(extra)], check=True)
+        _git(repo, "remote", "add", name, str(extra))
+    if seed_main:
+        _git(repo, "push", "-q", "origin", "main")
+        _git(repo, "fetch", "-q", "origin")
     install_pre_push_guard(repo, policy)
     return repo
 
@@ -305,7 +323,7 @@ def _commit(repo: Path, text: str, msg: str) -> None:
 def test_render_block_has_revived_branch_guard() -> None:
     block = render_guard_block(_POLICY)
     assert "__anvyc_zero=" in block
-    assert 'git config --get "branch.$_brname.merge"' in block
+    assert "symbolic-ref" in block  # `push origin HEAD` 의 local ref 를 실제 브랜치로 푼다
 
 
 def test_revived_guard_allows_first_push_of_new_branch(tmp_path: Path) -> None:
@@ -349,6 +367,120 @@ def test_revived_guard_runs_when_push_to_main_allowed(tmp_path: Path) -> None:
 
     assert r.returncode != 0
     assert "원격에서 사라진 브랜치" in r.stderr
+
+
+# --- #219 오탐·미탐 회귀 ------------------------------------------------------
+#
+# #219 는 「upstream 이 있으면 부활」로 봤다. git 기본값 branch.autoSetupMerge=true 는
+# 원격 추적 브랜치에서 딴 순간 upstream 을 박으므로(`switch -c X origin/main`,
+# `worktree add -b X <p> origin/main`) 그런 브랜치의 첫 push 가 차단됐다.
+# 부활은 「push 하는 로컬 브랜치의 upstream 이 push 대상과 같고, 같은 원격일 때」다.
+
+
+def test_revived_guard_allows_branch_from_remote_tracking(tmp_path: Path) -> None:
+    repo = _repo_with_remote(tmp_path, seed_main=True)
+    _git(repo, "switch", "-qc", "feat/x", "origin/main")
+    # 전제 — autoSetupMerge 가 upstream 을 main 으로 박았다
+    assert _git(repo, "config", "branch.feat/x.merge").stdout.strip() == "refs/heads/main"
+    _commit(repo, "x\n", "c1")
+
+    r = _git(repo, "push", "-u", "origin", "feat/x", check=False)
+
+    assert r.returncode == 0, r.stderr
+
+
+def test_revived_guard_allows_worktree_branch_from_remote_tracking(tmp_path: Path) -> None:
+    """worktree 를 원격 추적 ref 에서 만들 때도 같다 — 실제 저장소들에서 확인된 생성 명령이다."""
+    repo = _repo_with_remote(tmp_path, seed_main=True)
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "feat/x", str(wt), "origin/main")
+    _commit(wt, "x\n", "c1")
+
+    r = _git(wt, "push", "-u", "origin", "HEAD", check=False)
+
+    assert r.returncode == 0, r.stderr
+
+
+def test_revived_guard_allows_first_push_after_branch_rename(tmp_path: Path) -> None:
+    """push 후 `git branch -m old new` 하면 upstream(refs/heads/old)이 새 이름에 따라온다.
+    new 의 첫 push 는 부활이 아니다."""
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/old")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/old")
+    _git(repo, "branch", "-m", "feat/old", "feat/new")
+    # 전제 — upstream 이 옛 이름을 그대로 가리킨다
+    assert _git(repo, "config", "branch.feat/new.merge").stdout.strip() == "refs/heads/feat/old"
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "-u", "origin", "feat/new", check=False)
+
+    assert r.returncode == 0, r.stderr
+
+
+def test_revived_guard_blocks_revival_via_push_head(tmp_path: Path) -> None:
+    """`git push origin HEAD` 는 훅 stdin 의 local ref 가 `HEAD` 그대로 온다.
+    local ref 로만 브랜치를 찾으면 이 흔한 부활을 놓친다."""
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x")
+    _git(repo, "push", "origin", "--delete", "feat/x")
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "origin", "HEAD", check=False)
+
+    assert r.returncode != 0
+    assert "원격에서 사라진 브랜치" in r.stderr
+
+
+def test_revived_guard_blocks_renamed_branch_revival(tmp_path: Path) -> None:
+    """로컬 X 를 원격 Y 로 올렸다가 Y 가 지워진 경우. upstream 은 push 대상(Y)을 가리킨다."""
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x:feat/y")
+    _git(repo, "push", "origin", "--delete", "feat/y")
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "origin", "feat/x:feat/y", check=False)
+
+    assert r.returncode != 0
+    assert "원격에서 사라진 브랜치" in r.stderr
+
+
+def test_revived_guard_allows_first_push_to_another_remote(tmp_path: Path) -> None:
+    """upstream 이 origin 인 브랜치를 fork 로 처음 올리는 것은 부활이 아니다."""
+    repo = _repo_with_remote(tmp_path, extra_remotes=("fork",))
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x")
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "fork", "feat/x", check=False)
+
+    assert r.returncode == 0, r.stderr
+
+
+def test_revived_guard_hint_unsets_upstream_instead_of_no_verify(tmp_path: Path) -> None:
+    """--no-verify 는 같은 훅의 다른 검사(lint·test)까지 건너뛴다. 안내는 upstream 만
+    지우게 하고, 그 명령을 그대로 실행하면 push 가 성공해야 한다."""
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x")
+    _git(repo, "push", "origin", "--delete", "feat/x")
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "origin", "HEAD", check=False)
+
+    assert "--no-verify" not in r.stderr
+    hint = re.search(r"의도한 것이라면 : (.+)", r.stderr)
+    assert hint, r.stderr
+    cmd = hint.group(1).strip()
+    assert cmd == "git branch --unset-upstream feat/x && git push -u origin feat/x"
+    done = subprocess.run(cmd, shell=True, cwd=repo, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
 
 
 def test_dev_hook_sot_embeds_current_guard_block() -> None:

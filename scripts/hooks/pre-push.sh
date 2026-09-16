@@ -29,6 +29,7 @@ set -euo pipefail
 __anvyc_protected="main"
 __anvyc_allowed="false"
 __anvyc_zero=0000000000000000000000000000000000000000
+__anvyc_remote="${1:-}"
 while read -r _lref _lsha _rref _rsha; do
   _brname="${_rref#refs/heads/}"
   if [ "$__anvyc_allowed" != "true" ]; then
@@ -42,14 +43,24 @@ while read -r _lref _lsha _rref _rsha; do
       fi
     done
   fi
-  if [ "$_rsha" = "$__anvyc_zero" ] &&
-     git config --get "branch.$_brname.merge" >/dev/null 2>&1; then
-    echo "" >&2
-    echo "anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성)." >&2
-    echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2
-    echo "  머지가 끝났다면 : git switch main && git pull && git switch -c <새 브랜치>" >&2
-    echo "  의도한 것이라면 : git push --no-verify" >&2
-    exit 1
+  if [ "$_rsha" = "$__anvyc_zero" ]; then
+    case "$_lref" in
+      refs/heads/*) _lbr="${_lref#refs/heads/}" ;;
+      HEAD) _lbr="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)" ;;
+      *) _lbr="" ;;
+    esac
+    if [ -n "$_lbr" ] &&
+       [ "$(git config --get "branch.$_lbr.merge" 2>/dev/null || true)" = "$_rref" ] &&
+       { [ -z "$__anvyc_remote" ] ||
+         [ "$(git config --get "branch.$_lbr.remote" 2>/dev/null || true)" = "$__anvyc_remote" ]; }; then
+      _spec="$_lbr"; [ "$_lbr" = "$_brname" ] || _spec="$_lbr:$_brname"
+      echo "" >&2
+      echo "anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성)." >&2
+      echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2
+      echo "  머지가 끝났다면 : git switch main && git pull && git switch -c <새 브랜치>" >&2
+      echo "  의도한 것이라면 : git branch --unset-upstream $_lbr && git push -u ${__anvyc_remote:-origin} $_spec" >&2
+      exit 1
+    fi
   fi
 done
 # <<< anvyc-pr-guard <<<
