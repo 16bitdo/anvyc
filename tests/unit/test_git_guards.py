@@ -349,3 +349,20 @@ def test_revived_guard_runs_when_push_to_main_allowed(tmp_path: Path) -> None:
 
     assert r.returncode != 0
     assert "원격에서 사라진 브랜치" in r.stderr
+
+
+def test_dev_hook_sot_embeds_current_guard_block() -> None:
+    """`scripts/hooks/pre-push.sh` 의 임베드 블록은 render_guard_block 출력과 byte-identical.
+
+    두 설치 경로(install-git-hooks.sh ↔ anvyc guard install)가 같은 pre-push 를 두고
+    서로 덮어쓰지 않도록 SoT 가 가드를 품는 구조다. render 를 고치고 SoT 를 안 고치면
+    재설치 순서에 따라 가드가 조용히 옛 버전으로 되돌아간다.
+    """
+    sot = Path(__file__).resolve().parents[2] / "scripts" / "hooks" / "pre-push.sh"
+    text = sot.read_text(encoding="utf-8")
+    expected = render_guard_block(_POLICY)
+
+    start = text.index(GUARD_BEGIN)
+    end = text.index(GUARD_END) + len(GUARD_END) + 1  # 마커 줄의 개행까지
+
+    assert text[start:end] == expected

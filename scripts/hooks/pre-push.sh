@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# anvyc pre-push hook: ① branch 가드(보호 브랜치 직접 push 차단) + ② CI 게이트
+# anvyc pre-push hook: ① branch 가드(보호 브랜치 직접 push · 머지된 브랜치 부활 차단) + ② CI 게이트
 # (lint + type + unit test) 를 push 직전 1 회 실행한다.
 #
 # ① branch 가드 — `anvyc guard install` 이 생성하는 anvyc-pr-guard marker 블록을
@@ -28,8 +28,10 @@ set -euo pipefail
 # auto-generated; managed by `anvyc guard install`. policy_source=manifest
 __anvyc_protected="main"
 __anvyc_allowed="false"
-if [ "$__anvyc_allowed" != "true" ]; then
-  while read -r _lref _lsha _rref _rsha; do
+__anvyc_zero=0000000000000000000000000000000000000000
+while read -r _lref _lsha _rref _rsha; do
+  _brname="${_rref#refs/heads/}"
+  if [ "$__anvyc_allowed" != "true" ]; then
     for _b in $__anvyc_protected; do
       if [ "$_rref" = "refs/heads/$_b" ]; then
         echo "" >&2
@@ -39,8 +41,17 @@ if [ "$__anvyc_allowed" != "true" ]; then
         exit 1
       fi
     done
-  done
-fi
+  fi
+  if [ "$_rsha" = "$__anvyc_zero" ] &&
+     git config --get "branch.$_brname.merge" >/dev/null 2>&1; then
+    echo "" >&2
+    echo "anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성)." >&2
+    echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2
+    echo "  머지가 끝났다면 : git switch main && git pull && git switch -c <새 브랜치>" >&2
+    echo "  의도한 것이라면 : git push --no-verify" >&2
+    exit 1
+  fi
+done
 # <<< anvyc-pr-guard <<<
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
