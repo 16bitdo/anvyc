@@ -266,3 +266,86 @@ def test_remedy_survives_console_rendering(tmp_path: Path) -> None:
     assert "REFS" in out
     assert "anvyx" in out
     assert "**" not in out  # 렌더 안 되는 markdown 강조가 그대로 노출되면 안 된다
+
+
+# --- 머지된 브랜치 부활 차단 -------------------------------------------------
+#
+# PR 머지 후 GitHub 이 원격 브랜치를 지워도 로컬은 그 브랜치에 남아 있다. 거기서
+# 커밋하고 push 하면 브랜치가 되살아나고, 그 커밋은 refs/pull 보호를 못 받는다.
+# 가드는 「원격 sha 가 0 + upstream 이 설정돼 있음」으로 그 순간만 집어낸다 —
+# 신규 브랜치의 첫 push -u 는 그 시점에 upstream 이 아직 없어 구분된다.
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=check
+    )
+
+
+def _repo_with_remote(tmp_path: Path, policy: BranchPolicy = _POLICY) -> Path:
+    """가드가 설치되고 bare 원격이 붙은, 커밋 1개짜리 저장소."""
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    repo = _init_repo(tmp_path / "r")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    (repo / "a.txt").write_text("hi\n")
+    _git(repo, "add", "a.txt")
+    _git(repo, "commit", "-qm", "init")
+    _git(repo, "remote", "add", "origin", str(remote))
+    install_pre_push_guard(repo, policy)
+    return repo
+
+
+def _commit(repo: Path, text: str, msg: str) -> None:
+    (repo / "a.txt").write_text(text)
+    _git(repo, "commit", "-qam", msg)
+
+
+def test_render_block_has_revived_branch_guard() -> None:
+    block = render_guard_block(_POLICY)
+    assert "__anvyc_zero=" in block
+    assert 'git config --get "branch.$_brname.merge"' in block
+
+
+def test_revived_guard_allows_first_push_of_new_branch(tmp_path: Path) -> None:
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+
+    r = _git(repo, "push", "-u", "origin", "feat/x", check=False)
+
+    assert r.returncode == 0, r.stderr
+
+
+def test_revived_guard_blocks_push_to_deleted_branch(tmp_path: Path) -> None:
+    repo = _repo_with_remote(tmp_path)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x")
+    _git(repo, "push", "origin", "--delete", "feat/x")  # 머지 후 자동 삭제 재현
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "origin", "feat/x", check=False)
+
+    assert r.returncode != 0
+    assert "원격에서 사라진 브랜치" in r.stderr
+
+
+def test_revived_guard_runs_when_push_to_main_allowed(tmp_path: Path) -> None:
+    """부활 차단은 push_to_main_allowed 와 무관하게 동작해야 한다."""
+    allowed = BranchPolicy(
+        default_branch="main", protected_branches=("main",), push_to_main_allowed=True,
+        pr_required=False, pr_reviewers_min=0, merge_strategy="merge", source="manifest",
+    )
+    repo = _repo_with_remote(tmp_path, allowed)
+    _git(repo, "switch", "-qc", "feat/x")
+    _commit(repo, "x\n", "c1")
+    _git(repo, "push", "-u", "origin", "feat/x")
+    _git(repo, "push", "origin", "--delete", "feat/x")
+    _commit(repo, "y\n", "c2")
+
+    r = _git(repo, "push", "origin", "feat/x", check=False)
+
+    assert r.returncode != 0
+    assert "원격에서 사라진 브랜치" in r.stderr
