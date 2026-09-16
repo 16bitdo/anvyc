@@ -73,7 +73,7 @@ age-keygen -o ~/.config/sops/age/keys.txt
 `scripts/dev-install.sh` 가 마지막 단계로 `scripts/install-git-hooks.sh` 를
 자동 호출해 `.git/hooks/pre-push` 를 설치합니다 (멱등).
 
-- **pre-push**: 보호 브랜치 가드(anvyc-pr-guard) → `ruff` → `mypy src/anvyc/ tests/`
+- **pre-push**: anvyc-pr-guard(보호 브랜치 직접 push · 머지된 브랜치 부활 차단) → `ruff` → `mypy src/anvyc/ tests/`
   → `pytest -m "not integration"` 순서로 실행하는 fast-fail gate. 앞 단계 실패 시
   즉시 차단합니다. CI 의 `Lint and type-check` · `Pytest (unit, fast-fail gate)` step
   과 동일 명령이라 결과가 일관됩니다. 의도적 우회: `git push --no-verify`.

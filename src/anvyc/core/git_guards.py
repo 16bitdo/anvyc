@@ -1,5 +1,5 @@
 # src/anvyc/core/git_guards.py
-"""로컬 pre-push 가드 — 보호 브랜치 직접 push 를 차단한다.
+"""로컬 pre-push 가드 — 보호 브랜치 직접 push 와 머지된 브랜치 부활을 차단한다.
 
 `anvyc guard install` 이 대상 repo 의 effective hooks dir 에 marker 블록을 설치한다.
 정책 스냅샷(protected/allowed)을 hook 에 임베드 → push 시점에 ruleset repo 의존 없음.
@@ -36,8 +36,10 @@ def render_guard_block(policy: BranchPolicy) -> str:
         f"# auto-generated; managed by `anvyc guard install`. policy_source={policy.source}\n"
         f'__anvyc_protected="{protected}"\n'
         f'__anvyc_allowed="{allowed}"\n'
-        'if [ "$__anvyc_allowed" != "true" ]; then\n'
-        "  while read -r _lref _lsha _rref _rsha; do\n"
+        "__anvyc_zero=0000000000000000000000000000000000000000\n"
+        "while read -r _lref _lsha _rref _rsha; do\n"
+        '  _brname="${_rref#refs/heads/}"\n'
+        '  if [ "$__anvyc_allowed" != "true" ]; then\n'
         "    for _b in $__anvyc_protected; do\n"
         '      if [ "$_rref" = "refs/heads/$_b" ]; then\n'
         '        echo "" >&2\n'
@@ -47,8 +49,17 @@ def render_guard_block(policy: BranchPolicy) -> str:
         "        exit 1\n"
         "      fi\n"
         "    done\n"
-        "  done\n"
-        "fi\n"
+        "  fi\n"
+        '  if [ "$_rsha" = "$__anvyc_zero" ] &&\n'
+        '     git config --get "branch.$_brname.merge" >/dev/null 2>&1; then\n'
+        '    echo "" >&2\n'
+        "    echo \"anvyc guard: '$_brname' 은 원격에서 사라진 브랜치입니다 (머지 후 자동 삭제 가능성).\" >&2\n"
+        '    echo "  이대로 push 하면 브랜치가 부활하고, 이 커밋은 refs/pull 보호를 받지 못합니다." >&2\n'
+        f'    echo "  머지가 끝났다면 : git switch {policy.default_branch} && git pull && git switch -c <새 브랜치>" >&2\n'
+        '    echo "  의도한 것이라면 : git push --no-verify" >&2\n'
+        "    exit 1\n"
+        "  fi\n"
+        "done\n"
         f"{GUARD_END}\n"
     )
 
