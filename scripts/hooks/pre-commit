@@ -23,7 +23,7 @@ set -euo pipefail
 #     `profiles/*/CLAUDE.md` 를 커밋할 수 있는 근거가 이 앵커다 — 마커
 #     (.personal-config-source) 화이트리스트에는 CONTEXT.md 만 있어 앵커가 실제로
 #     load-bearing 이다. 넓히면 그 저장소가 자기 본연의 커밋을 전부 차단당한다.
-BLOCKED_REGEX='^(\.cursor/|\.cursorindexingignore$|\.claude(-[^/]+)?/|CLAUDE\.md$|CONTEXT\.md$|.*\.env(\.[^.]+)?$|.*\.envrc(\.[^/]+)?$|\.direnv/|\.vscode/|\.idea/|(.*/)?\.ssh/|.*\.(pem|key|p12)$|kubeconfig.*|credentials.*)'
+BLOCKED_REGEX='^(\.cursor/|\.cursorindexingignore$|\.claude(-[^/]+)?/|CLAUDE\.md$|CONTEXT\.md$|.*\.env(\.[^.]+)?$|.*\.envrc(\.[^/]+)?$|\.direnv/|\.vscode/|\.idea/|(.*/)?\.ssh/|.*\.(pem|key|p12)$|kubeconfig.*|credentials.*|(.*/)?(rootkey|accessKeys|new_user_credentials|credentials)\.csv$)'
 
 # 차단 예외 (정규식): .env.example, .env.sample 은 통과
 ALLOWED_REGEX='\.env\.(example|sample)$'
