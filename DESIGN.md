@@ -1264,7 +1264,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 
 | `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
 | `work-cwd-track-wired` | work-cwd hook + `env.WORK_CWD_CACHE` 주입 검증 (CP-12) | v0.15.0 |
 | `project-branch-protection` | manifest 정책 ↔ 서버 repository ruleset ↔ 로컬 pre-push 가드 drift (PR 강제; admin 아닌 repo silent) | v0.18.x |
-| `session-bridge` | ccinspector session-bridge(프로필 경계 너머 세션 메시징 — 발견 레코드 쌍 `<pid>.json`+`.key` 를 다른 프로필 `sessions/` 로 복사) 의 read-only 미러. 훅이 배선된 머신에서만 동작: 살아있는 세션이 다른 프로필에서 안 보임 · 활성 프로필 미배선 · `peerProtocol≠1` · 레코드 형식 변경 의심 · manifest 파손 → WARNING, 복사본 5분 이상 stale → INFO 집계(정상 운영에서도 상시 발생하므로 차단하지 않음). 미배선 머신 silent. 조치는 lib `sync`/ccinspector `install.sh` 몫(anvyc 는 복사본·manifest 를 수정하지 않음) | v0.22.x |
+| `session-bridge` | ccinspector session-bridge(프로필 경계 너머 세션 메시징 — 발견 레코드 쌍 `<pid>.json`+`.key` 를 다른 프로필 `sessions/` 로 복사) 의 read-only 미러. 훅이 배선된 머신에서만 동작: 살아있는 세션이 다른 프로필에서 안 보임(lib `status --check` 와 같은 두 예외 — 시작 120s 미만 세션은 다음 sync 대기라 보고 안 함, 헤드리스 `claude -p`(`entrypoint` sdk-cli) 세션은 브리지 대상 밖이라 가시성·`peerProtocol` 판정에서 제외) · 활성 프로필 미배선 · `peerProtocol≠1` · 레코드 형식 변경 의심 · manifest 파손 → WARNING, 복사본 5분 이상 stale → INFO 집계(정상 운영에서도 상시 발생하므로 차단하지 않음). 미배선 머신 silent. 조치는 lib `sync`/ccinspector `install.sh` 몫(anvyc 는 복사본·manifest 를 수정하지 않음) | v0.22.x |
 
 ### 27.2 모듈 구조
 
