@@ -19,7 +19,13 @@ silent(모듈 off / ccinspector 미설치 머신 → N/A). 대상 프로필 집�
 - manifest 복사본은 있는데 인식되는 원본 쌍이 0 → WARNING. 하네스가 레코드 형식을 바꾸면
   브리지가 "전부 가시" 로 오판하는 바로 그 고장(lib `status --check` 와 같은 guard).
 - 살아있는 원본 세션이 다른 활성 프로필에 쌍으로 없음 → 세션당 WARNING. 그 프로필의 세션에서
-  `ListAgents` 에 안 보이고 `SendMessage` 가 닿지 않는다.
+  `ListAgents` 에 안 보이고 `SendMessage` 가 닿지 않는다. lib `status --check` 와 같은 두 예외:
+  - 갓 생긴 세션(시작 `GRACE_SEC` 미만)의 누락은 보고하지 않는다 — sync 는 SessionStart/End 훅에서만
+    돌고 하네스는 `.key` 를 먼저·`.json` 을 나중에 써서, 시작 직후의 누락은 '다음 sync 대기' 다.
+    나이는 레코드 `startedAt`(epoch ms), 없으면 `.key` mtime, 둘 다 모르면 유예 없음.
+  - 헤드리스(`claude -p`, `entrypoint` 가 `HEADLESS_ENTRYPOINTS`) 세션은 lib 가 미러하지 않는
+    브리지 대상 밖이라 가시성·peerProtocol 판정에서 뺀다. 레코드 `kind` 는 헤드리스도 interactive
+    로 찍혀 쓸 수 없다. entrypoint 가 없거나 모르는 값이면 대화형으로 본다.
 - 원본 레코드 `peerProtocol ≠ 1`(부재 포함) → 값별 집계 WARNING. 브리지는 protocol 1 로만
   검증됐다 — 검증되지 않은 하네스 변경.
 - 복사본이 원본보다 5분 이상 낡음 → INFO 1줄 집계(건수·최대 지연). WARNING 이 아닌 이유:
@@ -35,6 +41,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +57,10 @@ JSON_RE = re.compile(r"^(\d+)\.json$")
 KEY_RE = re.compile(r"^(\d+)\.[0-9a-f]{64}\.key$")
 EXPECTED_PEER_PROTOCOL = 1
 STALE_THRESHOLD_S = 300.0
+# lib 의 GRACE_SEC_DEFAULT·HEADLESS_ENTRYPOINTS 와 같아야 같은 판정을 한다. 유예는 lib 기본값
+# (훅 런타임의 `CC_SESSION_BRIDGE_GRACE_SEC` override 는 미반영 — state_dir 과 같은 원칙).
+GRACE_SEC = 120.0
+HEADLESS_ENTRYPOINTS = ("sdk-cli",)
 
 
 def state_dir(home: Path) -> Path:
@@ -195,6 +206,26 @@ def _read_record(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def is_headless(data: dict[str, Any] | None) -> bool:
+    """헤드리스(`claude -p`) 레코드 — lib 의 브리지 대상 밖. 판정 보류(None)·모르는 값은 False."""
+    return data is not None and data.get("entrypoint") in HEADLESS_ENTRYPOINTS
+
+
+def session_age(data: dict[str, Any] | None, key: Path, now: float) -> float | None:
+    """lib 의 session_age 미러 — `startedAt`(epoch ms), 없으면 `.key` mtime(시작 때 한 번만 쓰인다).
+
+    `.json` mtime 은 하네스가 세션 내내 다시 써서 쓰지 않는다. 모르면 None — 호출측은 유예를 주지
+    않는다(경고를 숨기는 쪽으로 틀리지 않게).
+    """
+    sa = data.get("startedAt") if data is not None else None
+    if isinstance(sa, (int, float)) and not isinstance(sa, bool) and sa > 0:
+        return max(0.0, now - sa / 1000.0)
+    try:
+        return max(0.0, now - key.stat().st_mtime)
+    except OSError:
+        return None
+
+
 @dataclass
 class _Original:
     pid: int
@@ -272,10 +303,15 @@ class SessionBridgeCheck:
                 )
             )
 
+        # 헤드리스도 원본 쌍이다 — 위 형식 가드는 그대로 센다(인식했으니 형식은 멀쩡). 판정에서만 뺀다.
+        now = time.time()
         protocols: Counter[str] = Counter()
         for o in originals:
             if not pid_alive(o.pid):
                 continue  # 죽은 원본은 다음 reconcile 몫
+            data = _read_record(o.json_path)
+            if is_headless(data):
+                continue  # claude -p — lib 가 잇지 않는 세션(가시성·peerProtocol 판정 밖)
             missing = [
                 q
                 for q in active
@@ -285,10 +321,11 @@ class SessionBridgeCheck:
                     and (sessions_dir(home, q) / o.key_name).is_file()
                 )
             ]
-            data = _read_record(o.json_path)
             name = data.get("name") if data else None
             label = f"'{name}'" if isinstance(name, str) and name else "(이름 없음)"
-            if missing:
+            # 유예 안의 누락은 '다음 sync 대기'(lib 의 pending) — 보고하지 않는다
+            age = session_age(data, o.json_path.parent / o.key_name, now) if missing else None
+            if missing and (age is None or age >= GRACE_SEC):
                 results.append(
                     CheckResult(
                         check_name=self.name,

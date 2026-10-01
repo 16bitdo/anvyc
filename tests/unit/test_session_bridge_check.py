@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Final
 from unittest.mock import patch
@@ -23,6 +24,11 @@ _MOD = "anvyc.checks.session_bridge"
 LIB = "/opt/cc/lib/session_bridge.py"
 KEY_HEX = "ab" * 32  # 64 hex — 하네스 key 파일명 `<pid>.<sha256>.key`
 _ABSENT: Final = object()
+_STARTED_LONG_AGO: Final = object()  # _record 기본값 — 1시간 전 시작(유예 밖의 자리 잡은 세션)
+
+
+def _now_ms(offset_s: float = 0.0) -> int:
+    return int((time.time() + offset_s) * 1000)
 
 
 def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -48,13 +54,33 @@ def _profile(home: Path, name: str, *, wired: bool = True) -> Path:
 
 
 def _record(
-    home: Path, profile: str, pid: int, name: str = "s", proto: object = 1
+    home: Path,
+    profile: str,
+    pid: int,
+    name: str = "s",
+    proto: object = 1,
+    *,
+    started: object = _STARTED_LONG_AGO,
+    entrypoint: str | None = None,
 ) -> tuple[Path, Path]:
-    """하네스가 쓰는 원본 레코드 쌍. proto=_ABSENT → `peerProtocol` 필드 자체가 없음."""
+    """하네스가 쓰는 원본 레코드 쌍. proto=_ABSENT → `peerProtocol` 필드 자체가 없음.
+
+    started: 기본은 1시간 전(`startedAt`, epoch ms) — 유예 밖이라 다른 단언은 '자리 잡은 세션' 을
+    본다. epoch ms 를 주면 그 값, _ABSENT 면 필드 없음(나이는 `.key` mtime 으로 잰다).
+    kind 는 실측 모양대로 늘 interactive — 헤드리스(`claude -p`)도 그렇게 찍혀 판별은 entrypoint 몫이다.
+    """
     d = home / f".{profile}" / "sessions"
-    data: dict[str, Any] = {"pid": pid, "name": name, "sessionId": f"sid-{pid}"}
+    data: dict[str, Any] = {
+        "pid": pid, "name": name, "sessionId": f"sid-{pid}", "kind": "interactive",
+    }
     if proto is not _ABSENT:
         data["peerProtocol"] = proto
+    if started is _STARTED_LONG_AGO:
+        data["startedAt"] = _now_ms(-3600)
+    elif started is not _ABSENT:
+        data["startedAt"] = started
+    if entrypoint is not None:
+        data["entrypoint"] = entrypoint
     js = d / f"{pid}.json"
     key = d / f"{pid}.{KEY_HEX}.key"
     js.write_text(json.dumps(data), encoding="utf-8")
@@ -358,3 +384,106 @@ def test_stale_copies_are_one_info_line(
     assert res[0].severity is Severity.INFO
     assert "1 건" in res[0].message and "10분" in res[0].message
     assert res[0].suggestion is not None and "sync" in res[0].suggestion
+
+
+# ── 갓 생긴 세션 유예 — lib `status --check` 와 같은 판정 ───────────────
+
+
+@pytest.mark.parametrize(("age_s", "warned"), [(5, False), (115, False), (125, True)])
+def test_missing_session_within_grace_is_not_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age_s: int, warned: bool
+) -> None:
+    """시작 120s 미만의 누락은 '다음 sync 대기' 다 — sync 는 SessionStart/End 훅에서만 돌고 하네스는
+    `.key` 를 먼저·`.json` 을 나중에 쓴다. 보고하지 않는다. 유예가 지나면 실제 공백이라 WARNING."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _record(home, "claude-a", 101, name="fresh", started=_now_ms(-age_s))
+    _manifest(home, [])
+    res = _run(alive={101})
+    if warned:
+        assert [r.severity for r in res] == [Severity.WARNING]
+        assert "fresh" in res[0].message
+    else:
+        assert res == []
+
+
+def test_age_falls_back_to_key_mtime_without_started_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`startedAt` 이 없으면 `.key` mtime(시작 때 한 번만 쓰인다)으로 잰다. `.json` mtime 은 하네스가
+    세션 내내 다시 써서 쓰지 않는다 — 여기서 json 은 방금 썼으므로, json 으로 재면 오래된 key 단언이 깨진다."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _, key = _record(home, "claude-a", 101, started=_ABSENT)
+    _manifest(home, [])
+    assert _run(alive={101}) == []  # 새 key → 유예
+    old = time.time() - 3600
+    os.utime(key, (old, old))
+    assert [r.severity for r in _run(alive={101})] == [Severity.WARNING]
+
+
+# ── 헤드리스(`claude -p`) — lib 가 잇지 않는 세션 ───────────────────────
+
+
+def test_headless_session_missing_is_not_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """entrypoint=sdk-cli 는 lib 가 미러하지 않는다(브리지 대상 아님) — 자리 잡은 세션이어도 미가시가 아니다."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _record(home, "claude-a", 101, name="t-a3", entrypoint="sdk-cli")
+    _manifest(home, [])
+    assert _run(alive={101}) == []
+
+
+@pytest.mark.parametrize("entrypoint", ["cli", None, "sdk-ts"])
+def test_non_headless_entrypoints_still_warn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str | None
+) -> None:
+    """sdk-cli 가 아니면 대화형으로 본다 — 필드가 없거나 모르는 값이어도(경고를 숨기는 쪽으로 틀리지 않게)."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _record(home, "claude-a", 101, name="ctl", entrypoint=entrypoint)
+    _manifest(home, [])
+    res = _run(alive={101})
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "ctl" in res[0].message
+
+
+def test_headless_record_is_outside_peer_protocol_tally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """브리지 대상이 아니므로 peerProtocol 집계에서도 뺀다. 앵커: 같은 조건의 대화형은 집계된다."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _record(home, "claude-a", 101, name="t-a3", proto=_ABSENT, entrypoint="sdk-cli")
+    _record(home, "claude-a", 102, name="inter", proto=_ABSENT)
+    rows: list[dict[str, Any]] = []
+    _mirror(home, "claude-a", "claude-b", 102, rows)  # 대화형은 가시 — 미가시 경고를 배제
+    _manifest(home, rows)
+    res = _run(alive={101, 102})
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "peerProtocol" in res[0].message and "1 건" in res[0].message
+
+
+def test_live_headless_original_satisfies_format_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """복사본이 있고 남은 원본이 헤드리스뿐이어도 '형식 변경 의심' 이 아니다 — 원본 쌍을 인식했으니
+    형식은 멀쩡하다. 헤드리스를 원본 목록에서 걸러 내는 구현이면 이 가드가 거짓 경고를 낸다."""
+    home = _home(tmp_path, monkeypatch)
+    _profile(home, "claude-a")
+    _profile(home, "claude-b")
+    _record(home, "claude-a", 101, name="inter")
+    rows: list[dict[str, Any]] = []
+    _mirror(home, "claude-a", "claude-b", 101, rows)
+    (home / ".claude-a" / "sessions" / "101.json").unlink()  # 대화형 원본만 사라짐 — 복사본·행은 남는다
+    _record(home, "claude-a", 202, name="t-a3", entrypoint="sdk-cli")
+    _manifest(home, rows)
+    res = _run(alive={202})
+    assert not any("형식" in r.message for r in res)
