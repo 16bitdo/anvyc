@@ -80,6 +80,10 @@ age-keygen -o ~/.config/sops/age/keys.txt
 - 게이트는 실행 전 git 의 저장소-지역 환경변수(`git rev-parse --local-env-vars`)를 지웁니다.
   linked worktree 에서 push 하면 git 이 훅에 `GIT_DIR`(그 worktree 의 절대 gitdir)을 넘기는데,
   그대로 물려주면 테스트 픽스처의 git 명령이 임시 저장소가 아니라 이 저장소의 설정을 바꿉니다.
+- pytest 자신도 같은 변수를 지웁니다(`tests/conftest.py` 가 import 시점에 1회). 게이트 밖에서도 linked
+  worktree 에서 git 이 띄운 pytest — pre-commit 훅, `git rebase -x pytest`, `git bisect run pytest`, `!` alias —
+  는 같은 `GIT_DIR`(pre-commit 이면 `GIT_INDEX_FILE` 도)을 받고, 그 아래 픽스처의 `commit`·`add` 는 그
+  worktree 의 브랜치·인덱스에까지 씁니다. git 이 없으면 건너뜁니다.
 - **SoT**: `scripts/hooks/pre-push.sh` (git 추적). 수동 재설치:
   `bash scripts/install-git-hooks.sh`.
 - `.venv/bin/pytest` 가 없으면 hook 은 graceful skip — 셋업 직후 첫 push 가
@@ -221,6 +225,7 @@ pytest -q tests/integration/test_sops_*.py  # SOPS 영역
 
 ### 3.1 회귀 안전망
 
+- `tests/unit/test_conftest_git_env_isolation.py` — 저장소-지역 git 환경변수가 샌 채 pytest 를 띄워도 그 저장소 무오염
 - `tests/unit/test_smoke.py` — import / cli 로드
 - `tests/unit/test_scanner.py` — secret 패턴 + op:// downgrade
 - `tests/unit/test_cross_user_classify.py` — cross-user 분류 로직
