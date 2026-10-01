@@ -81,6 +81,13 @@ done
 
 cd "$REPO_ROOT"
 
+# git 은 훅에 저장소-지역 환경변수를 export 한다(githooks(5)). linked worktree 에서 push 하면 GIT_DIR 이
+# 그 worktree 의 절대 gitdir 이라(일반 체크아웃에서는 export 되지 않는다), 그대로 물려받은 pytest 의 픽스처
+# `git -C <tmp> init`·`config` 가 임시 저장소가 아니라 이 저장소의 공용 config 에 core.bare=true·user.* 를
+# 썼다(2026-10-01). 게이트는 cwd 만 쓰므로 githooks(5) 가 권하는 대로 지운다.
+# shellcheck disable=SC2046  # 변수 이름 목록을 단어로 나눠 unset 에 넘긴다
+unset $(git rev-parse --local-env-vars)
+
 fail() {
   # $1: 단계 라벨, $2: 로컬 재현 명령
   echo "" >&2

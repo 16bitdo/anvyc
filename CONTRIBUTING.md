@@ -77,6 +77,9 @@ age-keygen -o ~/.config/sops/age/keys.txt
   → `pytest -m "not integration"` 순서로 실행하는 fast-fail gate. 앞 단계 실패 시
   즉시 차단합니다. CI 의 `Lint and type-check` · `Pytest (unit, fast-fail gate)` step
   과 동일 명령이라 결과가 일관됩니다. 의도적 우회: `git push --no-verify`.
+- 게이트는 실행 전 git 의 저장소-지역 환경변수(`git rev-parse --local-env-vars`)를 지웁니다.
+  linked worktree 에서 push 하면 git 이 훅에 `GIT_DIR`(그 worktree 의 절대 gitdir)을 넘기는데,
+  그대로 물려주면 테스트 픽스처의 git 명령이 임시 저장소가 아니라 이 저장소의 설정을 바꿉니다.
 - **SoT**: `scripts/hooks/pre-push.sh` (git 추적). 수동 재설치:
   `bash scripts/install-git-hooks.sh`.
 - `.venv/bin/pytest` 가 없으면 hook 은 graceful skip — 셋업 직후 첫 push 가
