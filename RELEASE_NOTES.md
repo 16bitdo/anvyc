@@ -81,8 +81,8 @@ pre-push 가드(`anvyc guard install` 이 설치하는 블록)가 이제 이 pus
   그대로 온다. `symbolic-ref` 로 실제 브랜치를 푼다(detached 면 검사하지 않는다).
 - **안내는 upstream 만 지우게 한다** — `git branch --unset-upstream <br> && git push -u <remote> <spec>`.
 
-설계는 bare 원격 샌드박스의 24케이스(HEAD push 변형 · 태그 · detached · triangular · rename ·
-fork 첫 push 등)로 두드렸다. #219 는 13/24(오탐 9 · 미탐 2), 최종 구현은 24/24.
+설계는 bare 원격 샌드박스의 24케이스(HEAD push 변형 · 태그 · detached · triangular ·
+autoSetupRemote · 로컬 upstream 등)로 두드렸다. #219 는 13/24(오탐 9 · 미탐 2), 최종 구현은 24/24.
 
 함께 바뀐 것 둘:
 
