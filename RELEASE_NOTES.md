@@ -1,5 +1,157 @@
 # anvyc 릴리즈 노트
 
+## v0.23.0 — 2026-10-06 (minor — worktree 격리의 빈틈 · 머지된 브랜치 부활 차단 · session-bridge 관측)
+
+v0.22.1 이후 9 커밋(feat 3 · fix 5 · chore 1)을 모은 릴리스. 축은 셋이다 — **① worktree 에서
+돌린 것이 원본 저장소에 쓰지 않게**, **② 머지된 브랜치가 push 로 되살아나지 않게**, **③ 프로필
+경계 세션 메시징(session-bridge)을 doctor 로 관측**.
+
+공통점은 **결함이 생긴 자리에서는 아무 신호가 없었다**는 것이다. `GIT_DIR` 누수는 원본 체크아웃이
+깨지고 나서야 드러났고, 되살아난 브랜치는 push 가 성공한 뒤 브랜치를 정리할 때에야 보였고, 새
+worktree 의 pre-push 게이트는 `.venv` 가 없어 조용히 건너뛰어졌다.
+
+### worktree 에서 git 이 띄운 테스트가 원본 저장소에 썼다 (#222 · #224)
+
+linked worktree 에서 git 이 실행하는 명령 — 훅(pre-commit · pre-push · post-checkout),
+`git rebase -x`, `git bisect run`, `!` alias — 은 그 worktree 의 **절대 `GIT_DIR`** 을 받는다
+(pre-commit 은 절대 `GIT_INDEX_FILE` 까지). 일반 체크아웃에서는 export 되지 않는다. 그 아래에서
+테스트 픽스처가 `git -C <tmp> init` 을 하면 `-C` 는 cwd 만 바꾸고 절대 `GIT_DIR` 이 이긴다 —
+`init`·`config` 는 원본 저장소의 공용 config 에, `commit` 은 그 worktree 의 브랜치에, `add` 는
+그 인덱스에 쓴다.
+
+2026-10-01 에 실제로 일어났다. `.venv` 가 있는 worktree 에서 push 하자 pre-push 게이트의 pytest 가
+원본 config 에 `core.bare=true` · `user.name/email` · `core.hooksPath` 를 썼다. main 체크아웃은
+"must be run in a work tree" 로 깨졌고, 게이트는 48 failed + 27 errors 로 push 를 막았다 — 같은
+worktree 에서 `GIT_DIR` 없이 돌리면 통과하는 스위트였다.
+
+- **pre-push 게이트 (#222)** — 게이트 실행 전에 `unset $(git rev-parse --local-env-vars)`.
+  githooks(5) 가 권하는 방식이다. `GIT_DIR` 만 지우면 `GIT_INDEX_FILE` 이 남고, `GIT_*` 를
+  일괄로 지우면 `GIT_CONFIG_GLOBAL` 같은 격리 설정까지 사라진다.
+- **pytest 자체 (#224)** — 게이트 밖 경로(pre-commit 훅 · `rebase -x` · `bisect run`)도 막도록
+  `tests/conftest.py` 가 **import 시점에 한 번** 같은 목록을 `os.environ` 에서 지운다. function
+  scope autouse + `monkeypatch.delenv` 는 teardown 마다 새어 든 값을 되살리고 상위 scope 픽스처 ·
+  collection 보다 늦게 돌아 택하지 않았다. git 이 없으면 건너뛰고(샐 곳이 없다), git 이 있는데
+  목록을 못 얻으면 예외를 올린다 — 조용히 넘어가면 위험이 열린 채 스위트가 돈다.
+
+두 회귀 테스트 모두 버리는 샌드박스(저장소 + linked worktree)에 누수 환경을 실제로 만들고 원본
+무오염을 단언한다. 역검증 — scrub 제거 · `GIT_DIR` 만 지움 · unset 을 pytest 뒤로 옮김 · git 부재
+처리 제거가 각각 FAIL 로 잡힌다.
+
+anvyc 저장소의 개발 환경에 한정된 변경이다 — 배포본의 동작은 바뀌지 않는다.
+
+### `worktree add` 가 다시 만들어야 할 것을 알린다 (#225)
+
+`anvyc worktree add` 는 `.venv` · `.direnv` 를 링크하지 않는다 — 안에 절대경로가 박혀 있어
+링크하면 깨진다. 그런데 아무 말도 하지 않아, 새 worktree 의 첫 커밋이 pre-commit 훅에서
+`Executable .venv/bin/ruff not found` 로 막히고 pre-push 게이트는 조용히 건너뛰어졌다. 링크 제외
+목록 `SKIP_TARGETS` 는 정의만 있고 어디서도 쓰이지 않는 상수였다.
+
+이제 원본에 있을 때만 `note` 로 알린다(없으면 침묵 — 링크·생성은 하지 않는다).
+
+```
+  .venv: note 링크하지 않는다(내부 절대경로) — 이 worktree 에서 bash scripts/dev-install.sh
+```
+
+- `.venv` — worktree 에 `scripts/dev-install.sh` 가 있으면 그 명령을, 없으면(다른 저장소를
+  `--origin` 으로 지정한 경우) 일반 안내를 준다. 없는 명령을 대지 않는다.
+- `.direnv` — `direnv allow` 가 이 worktree 에 새로 만든다고 알린다.
+
+`dev-install.sh` 는 linked worktree 에서 돌려도 전역 래퍼(내용이 같으면 교체 생략)와 공용 훅(`.git`
+이 파일이라 설치 단계 생략)을 건드리지 않는다.
+
+### 머지된 브랜치가 push 로 되살아나지 않게 (#219 · #220)
+
+`delete_branch_on_merge=true` 저장소에서 PR 을 머지하면 GitHub 이 1~2초 뒤 원격 브랜치를 지운다.
+로컬 세션이 그 브랜치에 남아 커밋하고 push 하면 **브랜치가 되살아난다.** PR 은 이미 닫혔으므로 그
+커밋은 어느 PR 에도 속하지 않아 `refs/pull/<n>/head` 의 보호를 받지 못한다. push 시점에는 에러가
+없고 나중에 브랜치를 정리할 때만 드러난다 — 실측 2건, 머지 3분 · 9분 뒤에 얹힌 커밋이었다.
+
+pre-push 가드(`anvyc guard install` 이 설치하는 블록)가 이제 이 push 를 막는다.
+
+- **판별은 네트워크 없이 upstream 으로.** 훅 stdin 의 `<remote sha>` 가 0 인 경우는 신규 브랜치의
+  첫 push 와 부활 push 둘이다. **push 하는 로컬 브랜치의 upstream 이 push 대상과 같고 같은
+  원격일 때만** 부활로 본다. `git push -u` 는 push 가 성공한 **뒤에** upstream 을 기록하므로 첫
+  push 는 걸리지 않는다. gh 인증도 필요 없다.
+- **#220 이 #219 의 오탐을 고쳤다.** git 기본값 `branch.autoSetupMerge=true` 는 원격 추적 ref 에서
+  브랜치를 따는 순간(`git switch -c X origin/main`, `git worktree add -b X <p> origin/main`)
+  upstream 을 `main` 으로 박는다. #219 는 「upstream 이 있으면 부활」로 봐서 이 첫 push 를 막았고,
+  안내 문구가 `--no-verify` 를 권해 같은 훅의 다른 검사까지 건너뛰게 했다. #219 의 픽스처는 fetch
+  를 하지 않아 원격 추적 ref 자체가 없었다 — 이 부류는 테스트로 표현조차 불가능했다.
+- **`git push origin HEAD`** 에서는 훅 stdin 의 local ref 가 `refs/heads/X` 로 풀리지 않고 `HEAD`
+  그대로 온다. `symbolic-ref` 로 실제 브랜치를 푼다(detached 면 검사하지 않는다).
+- **안내는 upstream 만 지우게 한다** — `git branch --unset-upstream <br> && git push -u <remote> <spec>`.
+
+설계는 bare 원격 샌드박스의 24케이스(HEAD push 변형 · 태그 · detached · triangular ·
+autoSetupRemote · 로컬 upstream 등)로 두드렸다. #219 는 13/24(오탐 9 · 미탐 2), 최종 구현은 24/24.
+
+함께 바뀐 것 둘:
+
+- 블록이 이제 `push_to_main_allowed=true` 저장소에서도 stdin 을 소비한다 — 부활 검사는 그 정책과
+  무관하게 돌아야 하기 때문이다. stdin 을 읽는 기존 훅에는 `guard install` 이 원래부터 블록을 넣지
+  않는다(`skipped-stdin-consumer`).
+- anvyc 자신의 `scripts/hooks/pre-push.sh` 는 `render_guard_block` 출력을 byte-identical 로 품는다.
+  #219 의 첫 커밋이 render 만 고치고 이 사본을 빠뜨렸는데 전체 스위트가 초록이었다 — 이 불변조건을
+  테스트로 묶었다.
+
+### doctor: `session-bridge` check (#218 · #223)
+
+ccinspector 의 session-bridge 는 Claude Code 프로필(`~/.claude*`)마다 따로 쌓이는 세션 레코드를
+다른 프로필의 `sessions/` 에 복사해, 프로필 경계를 넘어 세션끼리 메시지를 주고받게 한다. 이 check 는
+그 복사가 **실제로 보이는지**를 L2 read-only 로 본다 — `settings.json` 배선 · 세션 레코드 쌍
+(json + key) · bridge manifest 만 읽고, subprocess 도 수정도 없다. 조치는 ccinspector 몫이다.
+
+| 상태 | 판정 |
+|---|---|
+| 어느 프로필에도 배선 없음 | 침묵 (ccinspector 미설치 · 모듈 off) |
+| 활성 프로필 일부만 배선 | WARNING |
+| 살아 있는 세션이 다른 프로필에 json + key 쌍으로 없음 | 세션당 WARNING |
+| 원본 `peerProtocol≠1` (부재 포함) | 값별 집계 WARNING |
+| 복사본은 있는데 인식되는 원본 쌍이 0 | WARNING — 레코드 형식 변경 의심 |
+| manifest 파싱 실패 | WARNING |
+| 복사본이 원본보다 5분 이상 낡음 | INFO 1줄 (건수 · 최대 지연) |
+
+- **낡은 복사본은 WARNING 이 아니라 INFO 다.** 복사본은 SessionStart/End 훅에서만 갱신되는데 원본은
+  상태(busy/idle)가 바뀔 때마다 다시 써진다. 정상 운영에서도 늘 낡고(42건 중 6건이 5분 초과, 최대
+  10분) key 는 바뀌지 않아 주소 지정에는 무해하다. WARNING 이면 `doctor --strict` 차단과 statusline
+  ⚠️ 가 상시 켜진다.
+- **#223 — lib 의 판정에 맞췄다.** session-bridge lib 의 `status --check` 가 drift 로 세지 않는 두
+  경우를 이 check 만 WARNING 으로 냈다. 시작 120초 미만의 세션은 다음 sync 를 기다리는 중이고
+  (하네스는 `.key` 를 먼저, `.json` 을 나중에 쓴다), 헤드리스 세션(`claude -p`, entrypoint
+  `sdk-cli`)은 브리지 대상 밖이다. 형식 변경 가드는 여전히 헤드리스를 포함한 원본 전체를 센다.
+
+doctor 의 등록 check 는 28 → **29**. 단독 실행: `anvyc doctor --only session-bridge`.
+
+### 그 밖에
+
+- **DESIGN 의 doctor check 표에 drift guard (#217)** — DESIGN §27.1.1 표가 등록된 28개 중 5개를
+  빠뜨린 채 v0.17.0 부터 누적돼 있었다. 표를 재생성하고 레지스트리와 **이름 집합으로** 대조하는
+  테스트를 세웠다 — 계수만 보면 하나 빠지고 하나 느는 교체를 통과시킨다. 헤더 계수와 README ·
+  `docs/mcp-integration.md` · DESIGN 예시 출력의 계수도 함께 잠근다. 바로 다음 PR(#218)이 이
+  가드에 걸려 문서를 29 로 맞췄다.
+- **personal-config-guard 동기화 (#221)** — 이 저장소의 tracked pre-commit 가드가 SoT 보다
+  뒤처져, AWS 콘솔이 내려주는 `rootkey.csv` · `accessKeys.csv` 형태가 staging 을 통과했다.
+  `(rootkey|accessKeys|new_user_credentials|credentials).csv` 를 차단 목록에 더했다.
+
+### 업그레이드
+
+```bash
+brew update && brew upgrade anvyc     # 또는: uv tool upgrade anvyc
+```
+
+breaking change 는 없다. 다만 업그레이드만으로 바뀌지 않는 것이 둘 있다.
+
+- **pre-push 가드를 설치해 둔 저장소** — 이미 설치된 가드 블록은 저절로 새 버전이 되지 않는다.
+  다시 설치하면 블록만 교체된다(`updated` — 블록 밖 본문은 그대로). doctor 의
+  `project-branch-protection` 은 블록이 **있는지**만 보므로, 옛 블록이어도 신호가 없다.
+
+  ```bash
+  anvyc guard install --dry-run     # 대상 확인
+  anvyc guard install               # 등록 roots 전체 — 한 저장소만: --project <path>
+  ```
+
+- **anvyc 저장소 기여자** — 설치된 `.git/hooks/pre-push` 는 tracked SoT 의 복사본이다.
+  `bash scripts/install-git-hooks.sh` 로 갱신해야 #222 의 env scrub 과 부활 가드가 들어간다.
+
 ## v0.22.1 — 2026-09-02 (patch — 배포본이 실행되지 않던 문제 + doctor 가 회귀 명령을 안내하던 문제)
 
 v0.22.0 당일 발행 직후 실동작 확인에서 드러난 두 결함을 고친 patch. 둘 다 **설치·안내는
