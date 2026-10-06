@@ -31,7 +31,8 @@ LINK_TARGETS: tuple[str, ...] = (".cursor/rules", ".cursor/skills", "CLAUDE.md")
 # direnv 승인은 경로별 보안 경계다. 자동으로 열지 않고 안내만 한다.
 NOTICE_TARGETS: tuple[str, ...] = (".envrc",)
 
-# 절대경로가 내부에 박혀 있어 링크하면 깨진다.
+# 절대경로가 내부에 박혀 있어 링크하면 깨진다. 원본에 있으면 이 worktree 에서 다시 만드는
+# 방법만 알린다 — `.venv` 가 없으면 첫 커밋이 pre-commit 훅의 `.venv/bin/*` 에서 막힌다.
 SKIP_TARGETS: tuple[str, ...] = (".venv", ".direnv")
 
 
@@ -142,7 +143,30 @@ def link_rules(origin: Path, worktree: Path) -> list[LinkResult]:
                 LinkResult(name, "notice", "direnv 는 경로별 승인이라 자동으로 열지 않는다")
             )
 
+    # 원본에 없으면 침묵한다 — venv 를 쓰지 않는 저장소에 알리면 소음이다.
+    for name in SKIP_TARGETS:
+        if (origin / name).exists():
+            results.append(LinkResult(name, "notice", _skip_notice(name, worktree)))
+
     return results
+
+
+def _skip_notice(name: str, worktree: Path) -> str:
+    """링크하지 않는 대상을 이 worktree 에서 다시 만드는 방법.
+
+    `--origin` 으로 다른 저장소에도 쓰이므로 설치 스크립트는 그 worktree 에 있을 때만 이름을
+    댄다 — 없는 명령을 알려 주면 안내가 없는 것보다 나쁘다. `scripts/dev-install.sh` 는 linked
+    worktree 에서 돌려도 전역 래퍼(내용이 같으면 교체 생략)·공용 훅(`.git` 이 파일이라 설치 단계
+    skip)을 건드리지 않는다(2026-10-06 sandbox·실제 worktree 실측).
+    """
+    head = "링크하지 않는다(내부 절대경로) — "
+    if name == ".direnv":
+        return head + "direnv allow 가 이 worktree 에 새로 만든다"
+    if name == ".venv" and (worktree / "scripts" / "dev-install.sh").is_file():
+        return head + "이 worktree 에서 bash scripts/dev-install.sh"
+    if name == ".venv":
+        return head + "이 worktree 에서 새로 만든다(커밋 훅·pre-push 게이트가 .venv/bin 을 찾는다)"
+    return head + "이 worktree 에서 새로 만든다"
 
 
 def missing_rule_links(worktree: Path) -> tuple[str, ...]:

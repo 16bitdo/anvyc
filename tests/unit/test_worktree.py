@@ -102,6 +102,61 @@ class TestLinkRules:
         assert envrc[0].status == "notice"
         assert not (wt / ".envrc").exists()
 
+    def test_venv_is_notice_with_dev_install_hint(self, tmp_path: Path) -> None:
+        """`.venv` 는 링크하지 않는다 — 안에 절대경로가 박혀 있어 링크하면 깨진다.
+
+        대신 이 worktree 에서 새로 만들라고 알린다. 모르고 지나치면 첫 커밋이 pre-commit 훅의
+        `.venv/bin/ruff` 에서 막히고, pre-push 게이트는 조용히 skip 된다(2026-10-06 실측).
+        worktree 에 `scripts/dev-install.sh` 가 있으면 그 명령을 알려 준다 — worktree 에서 돌려도
+        전역 래퍼·공용 훅을 건드리지 않는다(같은 날 sandbox·실제 worktree 에서 실측).
+        """
+        origin, wt = _origin(tmp_path), tmp_path / "wt"
+        (origin / ".venv" / "bin").mkdir(parents=True)
+        (wt / "scripts").mkdir(parents=True)
+        (wt / "scripts" / "dev-install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+
+        venv = [r for r in link_rules(origin, wt) if r.name == ".venv"]
+
+        assert len(venv) == 1
+        assert venv[0].status == "notice"
+        assert "bash scripts/dev-install.sh" in venv[0].detail
+        assert not (wt / ".venv").exists()
+        assert not (wt / ".venv").is_symlink()
+
+    def test_venv_hint_does_not_name_a_script_the_repo_lacks(self, tmp_path: Path) -> None:
+        """`--origin` 으로 다른 저장소(anvyx·rbr 등)에도 쓰인다 — 없는 스크립트를 안내하지 않는다."""
+        origin, wt = _origin(tmp_path), tmp_path / "wt"
+        (origin / ".venv" / "bin").mkdir(parents=True)
+        wt.mkdir()
+
+        venv = [r for r in link_rules(origin, wt) if r.name == ".venv"]
+
+        assert len(venv) == 1
+        assert venv[0].status == "notice"
+        assert "dev-install.sh" not in venv[0].detail
+
+    def test_no_venv_in_origin_means_no_venv_notice(self, tmp_path: Path) -> None:
+        """원본이 venv 를 쓰지 않으면 침묵한다 — `.envrc` 와 같은 규칙."""
+        origin, wt = _origin(tmp_path), tmp_path / "wt"
+        wt.mkdir()
+
+        names = {r.name for r in link_rules(origin, wt)}
+
+        assert ".venv" not in names
+
+    def test_direnv_is_notice_only(self, tmp_path: Path) -> None:
+        """`.direnv` 도 절대경로가 박혀 있다 — `direnv allow` 가 이 worktree 에 새로 만든다."""
+        origin, wt = _origin(tmp_path), tmp_path / "wt"
+        (origin / ".direnv").mkdir()
+        wt.mkdir()
+
+        direnv = [r for r in link_rules(origin, wt) if r.name == ".direnv"]
+
+        assert len(direnv) == 1
+        assert direnv[0].status == "notice"
+        assert "direnv allow" in direnv[0].detail
+        assert not (wt / ".direnv").exists()
+
     def test_symlink_is_relative(self, tmp_path: Path) -> None:
         """worktree 를 옮겨도 링크가 살아 있도록 상대 경로로 건다."""
         origin, wt = _origin(tmp_path), tmp_path / "wt"
