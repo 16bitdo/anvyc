@@ -4738,6 +4738,10 @@ def worktree_add(
 
     복사가 아니라 symlink 다. 복사본은 만든 순간부터 stale 해진다 — 룰은 격리
     대상이 아니고 항상 원본과 같아야 한다.
+
+    `.venv`·`.direnv` 는 안에 절대경로가 박혀 있어 링크하지 않는다. 원본에 있으면
+    이 worktree 에서 다시 만드는 방법을 `note` 로 알린다 — `.venv` 가 없으면 첫
+    커밋이 pre-commit 훅의 `.venv/bin/*` 에서 막힌다.
     """
     from anvyc.core.worktree import link_rules
 
