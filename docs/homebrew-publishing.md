@@ -113,7 +113,7 @@ be in a tap` 으로 끝난다. tap 클론에 임시 적용해 검증하고 원�
 TAP="$(brew --repository)/Library/Taps/16bitdo/homebrew-anvyc"
 
 cp Formula/anvyc.rb "$TAP/Formula/anvyc.rb"     # 작업본 임시 적용
-brew install --build-from-source anvyc
+HOMEBREW_NO_INSTALL_CLEANUP=1 brew install --build-from-source anvyc   # 아래 참고
 
 # 검증은 버전 문자열이 아니라 기대하는 심볼로 한다 (CONTRIBUTING §2.5)
 /opt/homebrew/bin/anvyc --version               # 릴리스 빌드는 SHA 를 붙이지 않는다
@@ -127,6 +127,28 @@ git -C "$TAP" checkout -- Formula/anvyc.rb      # 원복
 > **절대경로로 확인할 것.** dev wrapper(`~/.local/bin/anvyc`)가 PATH 에 앞서
 > 있으면 `anvyc` 는 그쪽을 가리킨다 — brew 가 `shadowed by` 경고를 낸다.
 > 이 경고를 지나치면 **dev wrapper 를 검증하고 배포본을 검증했다고 착각한다.**
+
+> **검증 설치가 시스템 전역 상태를 바꾼다.** `brew install` 은 anvyc 의 낡은 의존
+> (python@3.13·openssl@3 등)을 먼저 올리고, 마지막 `brew cleanup` 뒤 30일
+> (`HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS`)이 지났으면 **전체 cleanup 을 자동 실행해
+> 옛 버전 keg 와 캐시를 지운다.** 끝의 `brew uninstall` 과 원복은 이것을 되돌리지
+> 않는다. 옛 keg 의 버전 경로(`Cellar/python@3.13/<버전>/…`)를 기반으로 삼은 venv 는
+> 그 순간 실행되지 않는다 — 다른 venv 의 python 으로 만든 venv 는 기반이 이 경로로
+> 기록된다(opt 경로 python 으로 만든 venv 는 `opt/python@3.13` 으로 기록돼 무사하다).
+>
+> **2026-10-06.** v0.23.0 검증 설치가 python@3.13 을 올리고 주기 cleanup 을 깨워 옛
+> keg 둘을 지웠고, 그 경로에 묶여 있던 venv 하나가 깨졌다.
+> `HOMEBREW_NO_INSTALL_CLEANUP=1` 은 설치 직후 cleanup 과 주기 cleanup 을 모두
+> 끈다(`man brew`). 의존 업그레이드는 막지 않지만(정상 동작) 옛 keg 가 남으므로 기존
+> venv 는 그대로 동작한다.
+>
+> 이미 깨진 venv 는 패키지를 유지한 채 opt 경로로 다시 잇는다 — `venv --upgrade`
+> 만으로는 끊긴 링크에서 `No such file or directory` 로 실패한다.
+>
+> ```bash
+> PY=/opt/homebrew/opt/python@3.13/bin/python3.13
+> ln -sfn "$PY" <venv>/bin/python3.13 && "$PY" -m venv --upgrade <venv>
+> ```
 
 ### 6. tap repo 에 push
 
