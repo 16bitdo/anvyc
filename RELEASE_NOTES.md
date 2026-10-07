@@ -1,5 +1,95 @@
 # anvyc 릴리즈 노트
 
+## v0.24.0 — 2026-10-07 (minor — 설치 안내가 설치 방식을 따른다)
+
+v0.23.0 이후 3 커밋(feat 1 · fix 1 · docs 1)을 모은 릴리스. 축은 하나다 — **anvyc 가 알려 주는
+설치·업그레이드 명령이 그 자리에서 실제로 동작하게**.
+
+anvyc 는 PyPI 에 배포된 적이 없다(PyPI 배포는 v1.0 계획). 그런데 문서와 doctor · MCP 오류 · cost
+어댑터는 `pip install 'anvyc[mcp]'` 처럼 **PyPI 에서 이름으로 찾는 명령**을 안내해 왔다. 설치 방식별로
+실행해 보면 이렇다.
+
+| 맥락 | 결과 |
+|---|---|
+| 새 환경 | 실패 — 찾을 패키지가 없다 |
+| 기존 uv tool 설치본 | extras 만 추가되고 버전은 그대로 |
+| 기존 pipx 설치본 (`pipx install --force`) | 실패 |
+| 누군가 같은 이름을 PyPI 에 올렸을 때(시뮬레이션) | 새 설치와 `--upgrade` 형이 **그 패키지를 설치·교체** |
+
+### 설치 안내가 설치 방식을 따른다 (#229)
+
+doctor check 4종(`mcp-extra-importable` · `tui-extra-importable` · `cost-aws-explorer-iam` ·
+`cost-github-pat-scope`), `anvyc extras`, `anvyc serve --mcp` 의 ImportError, cost 어댑터의 의존 누락
+오류가 내는 extras 설치 안내가 **실행 중인 anvyc 의 설치 방식**을 판별해, 그 방식에서 동작하는 명령을
+낸다.
+
+| 설치 방식 | 안내 (예: v0.24.0, 설치된 `mcp` 에 `cost-aws` 추가) |
+|---|---|
+| uv tool (install.sh · wheel URL) | `ANVYC_VERSION=v0.24.0 ANVYC_EXTRAS=mcp,cost-aws bash <(curl -sSL …/install.sh)` |
+| pipx | `ANVYC_METHOD=pipx ANVYC_VERSION=v0.24.0 ANVYC_EXTRAS=mcp,cost-aws bash <(curl -sSL …/install.sh)` |
+| uv tool (로컬 소스) | `uv tool install --force --reinstall --refresh '<소스>[mcp,cost-aws]'` |
+| venv | `<python> -m pip install 'anvyc[mcp,cost-aws] @ https://github.com/16bitdo/anvyc/releases/download/v0.24.0/anvyc-0.24.0-py3-none-any.whl'` |
+| Homebrew | install.sh 명령 + `# Homebrew 설치본은 extras 를 지원하지 않는다 — install.sh 로 옮긴다 …` |
+| 개발 설치 | `ANVYC_EXTRAS=dev,mcp,tui,cost-aws bash <저장소>/scripts/dev-install.sh` |
+| 판별 불가 | install.sh 명령 + `# 설치 방식별: …README §5.7` |
+
+- **이미 설치된 extras 를 함께 적는다.** uv tool · pipx · install.sh 설치본은 재설치가 환경을 그 명령의
+  extras 에 맞춘다 — 명령에서 빠진 extras 는 지워진다.
+- **버전은 지금 버전으로 고정한다.** extras 를 더하는 명령이 업그레이드까지 하지는 않는다(릴리스가 아닌
+  버전이면 고정하지 않는다).
+- **여러 개는 합친 명령 하나로.** 안내는 각자 표시 시점 상태로 계산돼 서로를 모른다 — 차례로 실행하면
+  뒤의 것이 앞의 것을 지운다. `anvyc extras` 는 미설치 extras 가 둘 이상이면, `anvyc doctor` 는 서로 다른
+  extras 안내가 둘 이상이면 합친 명령을 한 줄 더 낸다.
+- **줄 전체를 그대로 붙여 넣어도 된다.** 덧붙인 설명은 셸 주석(`  # …`)이고, 긴 명령은 터미널이 아닌
+  출력(80열)에서도 중간에 줄바꿈되지 않는다.
+- 판별 신호는 소스 체크아웃 · uv tool 설치 기록 · pipx 메타데이터 · Homebrew Cellar 경로 · venv 다. 읽다가
+  실패하면 다음 신호로 넘어간다 — 안내 때문에 doctor 가 멈추지 않는다.
+- 소스 전체(주석 포함)에서 이름 기반 설치 명령이 다시 들어오면 테스트가 실패한다.
+
+`anvyc extras --json` 의 `install_cmd` 값이 설치 방식에 따라 달라진다(필드 이름은 그대로). README 의
+동반 도구 표는 환경과 무관한 install.sh 형을 보여 준다.
+
+### install.sh 가 extras 를 받는다 · 문서의 설치 명령 교체 (#228)
+
+- `ANVYC_EXTRAS=mcp,tui bash <(curl -sSL …/install.sh)` — 검증한 Release wheel 에 extras 를 붙여
+  `uv tool install --force 'anvyc[mcp,tui] @ file://…'` 로 설치한다(pipx 도 같다). 값은 내려받기 전에
+  검증하고(영소문자 · 숫자 · `-` 의 쉼표 목록), 지정하지 않으면 동작이 이전과 같다.
+- install.sh 는 main 에서 내려받으므로 이 기능은 #228 머지 시점부터 이미 쓸 수 있다.
+- 업그레이드는 **같은 명령 재실행**이다. 매번 같은 `ANVYC_EXTRAS` 를 준다 — 빼면 그 extras 가 지워진다.
+- README §5.7 을 새로 썼다(설치 방식별 업그레이드 · extras 표). README · CONTRIBUTING · MCP 연동 ·
+  control-plane 등 문서의 이름 기반 명령을 지웠다.
+- **`uv tool upgrade anvyc` · `pipx upgrade anvyc` 로는 갱신되지 않는다.** 설치 기록이 특정 버전의
+  wheel 을 가리키기 때문이다 — wheel URL 설치본은 "Nothing to upgrade" 로 그대로 끝나고, install.sh
+  설치본은 지워진 임시 파일을 찾다 실패한다. 이전 릴리스 노트의 업그레이드 절에 있던
+  `uv tool upgrade anvyc` 는 이 이유로 동작하지 않는다.
+
+### 그 밖에
+
+- **Homebrew formula 검증 절차 (#227)** — `docs/homebrew-publishing.md` §5 의 검증 설치에
+  `HOMEBREW_NO_INSTALL_CLEANUP=1` 을 붙였다. 검증용 `brew install` 이 30일 주기 cleanup 을 깨워 옛 keg 를
+  지우면, 그 버전 경로를 기반으로 만든 venv 가 실행되지 않는다(v0.23.0 검증 때 실제로 일어났다).
+  릴리스 절차 문서의 변경이라 배포본 동작은 바뀌지 않는다.
+
+### 업그레이드
+
+설치 방식별 정리는 README §5.7.
+
+```bash
+# Homebrew
+brew update && brew upgrade anvyc
+
+# install.sh 설치본 (uv tool · pipx) — 같은 명령을 다시 실행한다. extras 를 쓰면 전부 적는다
+bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_EXTRAS=mcp,tui bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+breaking change 는 없다.
+
+- wheel 을 직접 설치했다면 v0.24.0 wheel URL 로 다시 설치한다(README §5.7).
+- 업그레이드 뒤 `anvyc extras` 가 지금 설치에 맞는 extras 명령을 보여 준다.
+- 실행 중인 `anvyc serve --mcp` 는 업그레이드 뒤에도 옛 코드로 돈다 — IDE · 세션에서 MCP 를 다시
+  연결한다.
+
 ## v0.23.0 — 2026-10-06 (minor — worktree 격리의 빈틈 · 머지된 브랜치 부활 차단 · session-bridge 관측)
 
 v0.22.1 이후 9 커밋(feat 3 · fix 5 · chore 1)을 모은 릴리스. 축은 셋이다 — **① worktree 에서

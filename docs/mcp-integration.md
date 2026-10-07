@@ -46,10 +46,10 @@ error: anvyc MCP server requires the [mcp] extra. Install: <지금 설치 방식
 
 명령은 실행 중인 anvyc 의 설치 방식(개발 설치·uv tool·pipx·Homebrew·venv)을 판별해 만들고,
 이미 설치된 extras 를 함께 적는다(재설치가 빠진 extras 를 지우므로). 예 — install.sh 로 설치한
-v0.23.0:
+v0.24.0:
 
 ```
-error: anvyc MCP server requires the [mcp] extra. Install: ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+error: anvyc MCP server requires the [mcp] extra. Install: ANVYC_VERSION=v0.24.0 ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 ```
 
 `anvyc extras` · `anvyc doctor` 의 안내도 같은 규칙이다.
