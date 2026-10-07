@@ -93,8 +93,11 @@ def detect(*, prefix=None, base_prefix=None, source_repo=_AUTO, executable=None)
     # 인자는 테스트 주입용. 기본값은 sys.prefix / sys.base_prefix / anvyc._source_repo() / sys.executable.
     # 어떤 예외도 밖으로 내지 않는다 — 판별 실패는 "unknown".
 
-def extras_install_command(requested, *, installed=(), ctx=None, version=None) -> str
-    # requested·installed: pip extra 키(mcp, tui, cost-aws …). version 기본값은 anvyc.__version__.
+def extras_install_command(extras, *, ctx=None, version=None) -> str
+    # extras: 이미 합치고 레지스트리 순서로 정렬한 pip extra 키(mcp, tui, cost-aws …).
+    # 합집합·정렬은 core/extras.py 가 한다 — install_method 는 레지스트리를 모른다(core/extras 가
+    # install_method 를 import 하므로 반대 방향 import 는 순환). dev 일 때만 기본값을 앞에 붙이고
+    # 중복을 지운다. version 기본값은 anvyc.__version__.
 
 DEV_INSTALL_DEFAULT_EXTRAS = ("dev", "mcp", "tui")   # scripts/dev-install.sh 기본값과 drift 테스트로 묶는다
 INSTALL_SH_URL = "https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh"
@@ -103,8 +106,9 @@ README_INSTALL_URL = "https://github.com/16bitdo/anvyc#57-업그레이드와-ext
 
 **`core/extras.py` 변경**:
 - `installed_pip_extras() -> tuple[str, ...]` — probe dist 가 설치된 pyextra 의 `pip_extra` 키(레지스트리 순서).
-- `install_hint(name)` — 바이너리는 무변경. pyextra 는 `extras_install_command([req.pip_extra], installed=installed_pip_extras())`.
-- `install_hint_for_extra(pip_extra)` — `pip_extra` 키로 조회(비용 어댑터 오류가 쓴다). 미지 키도 같은 규칙으로 명령을 만든다.
+- `_order_extras(keys) -> list[str]` — 레지스트리 순서, 그 밖의 키는 정렬해 뒤에.
+- `install_hint(name)` — 바이너리는 무변경. pyextra 는 `install_hint_for_extra(req.pip_extra)`.
+- `install_hint_for_extra(pip_extra)` — `extras_install_command(_order_extras({pip_extra, *installed_pip_extras()}))`. 비용 어댑터 오류가 직접 쓴다. 미지 키도 같은 규칙으로 명령을 만든다.
 - pyextra 5종의 정적 `install_cmd` = `ANVYC_EXTRAS=<key> bash <(curl -sSL <install.sh>)` — README 표 전용. 런타임 출력은 쓰지 않는다.
 - `collect_extras_status()` 의 `install_cmd` — pyextra 는 런타임 명령(`extras_install_command`), 바이너리는 지금과 같은 정적 값.
 
@@ -115,14 +119,19 @@ README_INSTALL_URL = "https://github.com/16bitdo/anvyc#57-업그레이드와-ext
 - `cli.py serve` · `mcp/__init__.py` docstring — 이름 기반 명령을 지우고 `anvyc extras` / README §5.7 을 가리킨다.
 - `cli.py` 의 Rich escape 주석(현재 `pip install 'anvyc[cost-aws]'` 를 대괄호 예시로 든다) — 예시를 바꾼다. 아래 drift 가드가 주석까지 본다.
 
+**복붙 가능성 — 긴 명령이 줄바꿈되지 않게**:
+- 새 안내는 120~180자다. `utils/errors.print_error` 는 `soft_wrap` 없이 출력해 비-TTY 80열에서 강제 개행한다 — 복사한 명령이 중간에서 끊긴다. `soft_wrap=True` 로 바꾼다(doctor 렌더링이 이미 같은 이유로 쓰는 설정).
+- `anvyc extras` 표의 설치 명령 칸은 긴 명령을 접는다(`overflow="fold"`). 표 아래에 미설치 행의 명령을 한 줄씩(`soft_wrap=True`) 출력한다 — 표는 개요, 그 아래 줄이 복붙용.
+
 ## 5. 데이터 흐름
 
 ```
 check / 오류 경로 / anvyc extras
   → install_hint(name) ─ binary → 정적 install_cmd (무변경)
-                       └ pyextra → detect()                        → InstallContext
+                       └ pyextra → install_hint_for_extra(key)
                                    installed_pip_extras()          → 이미 설치된 extras
-                                   extras_install_command(...)     → 방식별 템플릿 → 문자열
+                                   _order_extras(...)              → 합집합·레지스트리 순서
+                                   extras_install_command(...)     → detect() → 방식별 템플릿 → 문자열
 README 표: scripts/gen_extras.py → render_extras_markdown() → 정적 install_cmd (환경 무관, 무변경 경로)
 ```
 
@@ -164,6 +173,7 @@ README 표: scripts/gen_extras.py → render_extras_markdown() → 정적 instal
 - 호출부 — 4개 check suggestion · `CostAdapterDepMissingError` · MCP ImportError 메시지가 `install_hint()` 결과를 담는지. 기존 테스트(`test_extras_registry` 의 "pip install" 단언, `test_serve_mcp_error_message`)를 새 계약으로 갱신.
 - drift 가드 — `DEV_INSTALL_DEFAULT_EXTRAS` ↔ `scripts/dev-install.sh` 의 `EXTRAS="${ANVYC_EXTRAS:-…}"`; **`src/` 전체(주석 포함)에 §6 의 이름 기반 설치 꼴이 없다**(파일 텍스트 검색 — 가드가 먼저 실패하는 것을 RED 로 확인).
 - README — 표 재생성, `test_gen_extras` 통과.
+- 복붙 가능성 — `print_error` 가 좁은 콘솔(width 40)에서도 긴 메시지에 개행을 넣지 않는다; `anvyc extras` 가 미설치 행의 명령 전문을 표 아래 한 줄로 낸다.
 - E2E(격리 sandbox) — 브랜치 wheel 을 uv tool·pipx·venv 로 설치하고 dev 소스에서도 실행. mcp 없는 상태에서 `anvyc doctor --only mcp-extra-importable` 이 출력하는 명령을 **그대로 실행**해 mcp 설치 + 기존 extras 보존을 확인한다(명령은 v0.23.0 Release 를 가리킨다).
 
 ## 9. 문서 / 영향
