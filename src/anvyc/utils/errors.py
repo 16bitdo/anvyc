@@ -49,7 +49,9 @@ def print_error(message: object, *, console: Console | None = None) -> None:
     같은 표기가 markup parser 에 strip 되는 사고를 차단한다.
     """
     c = console or _get_console()
-    c.print(f"[red]error[/] {safe_msg(message)}")
+    # soft_wrap: 비-TTY 80열 fallback 의 강제 개행을 막는다 — 오류에 실린 설치 명령이 중간에서
+    # 끊기면 복붙이 실패한다(doctor 렌더링과 같은 이유).
+    c.print(f"[red]error[/] {safe_msg(message)}", soft_wrap=True)
 
 
 def print_blocked_error(

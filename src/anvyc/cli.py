@@ -815,8 +815,13 @@ def extras(
         absent = [r for r in rows if r["relevant"] and not r["installed"]]
         if absent:
             console.print(
-                f"\n[yellow]{len(absent)}개 미설치[/] — 위 '설치 명령' 으로 필요한 기능만 추가하세요."
+                f"\n[yellow]{len(absent)}개 미설치[/] — 필요한 기능의 명령만 골라 실행하세요 "
+                "(현재 설치 방식 기준, 이미 설치된 extras 유지):"
             )
+            # 표 칸은 긴 명령을 접는다 — 복붙용 전문은 여기서 한 줄로(soft_wrap).
+            for r in absent:
+                console.print(f"  [dim]# {escape(r['label'])}[/]")
+                console.print(f"  {escape(r['install_cmd'])}", soft_wrap=True)
         else:
             console.print("\n[green]모든 동반 도구 설치됨[/]")
 

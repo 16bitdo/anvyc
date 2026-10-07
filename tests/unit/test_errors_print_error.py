@@ -40,3 +40,17 @@ def test_print_error_accepts_exception_object() -> None:
     print_error(ValueError("got [DROP] command"), console=c)
     out = buf.getvalue().rstrip()
     assert "got [DROP] command" in out
+
+
+def test_print_error_never_hard_wraps_a_long_command() -> None:
+    """긴 설치 명령이 좁은 비-TTY 콘솔에서도 한 줄로 남아야 복붙된다."""
+    buf = io.StringIO()
+    c = Console(file=buf, force_terminal=False, no_color=True, width=40)
+    cmd = (
+        "ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,cost-aws bash <(curl -sSL "
+        "https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)"
+    )
+    print_error(f"requires the [mcp] extra. Install: {cmd}", console=c)
+    out = buf.getvalue()
+    assert cmd in out
+    assert out.count("\n") == 1
