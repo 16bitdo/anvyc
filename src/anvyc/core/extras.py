@@ -18,8 +18,10 @@ from __future__ import annotations
 import importlib.metadata as _md
 import platform
 import shutil
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from anvyc.core.install_method import INSTALL_SH_URL, extras_install_command
@@ -252,27 +254,66 @@ def install_hint_for_extras(pip_extras: Iterable[str]) -> str:
 
 
 def missing_pip_extras() -> tuple[str, ...]:
-    """probe dist 가 없는 pyextra 의 pip extra 키(레지스트리 순서)."""
-    installed = set(installed_pip_extras())
+    """import 할 수 없는 pyextra 의 pip extra 키(레지스트리 순서) — check 와 같은 기준.
+
+    installed_pip_extras(이 환경에 직접 설치된 것)의 여집합이 아니다 — 전역 site-packages 로
+    import 되는 extra 는 check 가 통과시키므로 '없음' 이 아니다.
+    """
     out: list[str] = []
     for req in EXTRAS_REGISTRY:
-        if req.kind == "pyextra" and req.pip_extra and req.pip_extra not in installed:
+        if req.kind == "pyextra" and req.pip_extra and _pyextra_version(req) is None:
             out.append(req.pip_extra)
     return tuple(out)
 
 
 def installed_pip_extras() -> tuple[str, ...]:
-    """probe dist 가 설치된 pyextra 의 pip extra 키(레지스트리 순서).
+    """이 설치본에 설치된 pyextra 의 pip extra 키(레지스트리 순서) — 재설치·이전 안내가 보존할 것.
 
-    probe 는 전이 의존으로도 깔린다(httpx·cryptography 는 mcp 가 끌어온다) — 과대 추정은
-    이미 있는 의존을 한 번 더 적을 뿐 무해하다. 과소 추정은 재설치가 그 extras 를 지우므로
-    그쪽을 피하는 판정이다.
+    probe dist 가 **이 환경에 직접** 설치됐을 때만 센다(_installed_here). probe 는 전이 의존으로도
+    깔린다(httpx·cryptography 는 mcp 가 끌어온다) — 과대 추정은 이미 있는 의존을 한 번 더 적을 뿐
+    무해하다. 과소 추정은 재설치가 그 extras 를 지우므로 그쪽을 피하는 판정이다.
     """
     out: list[str] = []
     for req in EXTRAS_REGISTRY:
-        if req.kind == "pyextra" and req.pip_extra and _pyextra_version(req) is not None:
+        if req.kind == "pyextra" and req.pip_extra and _installed_here(req):
             out.append(req.pip_extra)
     return tuple(out)
+
+
+def _installed_here(
+    req: ExtraReq, *, prefix: str | None = None, base_prefix: str | None = None
+) -> bool:
+    """req 의 probe dist 중 하나가 실행 중인 환경에 직접 설치됐는지(_in_this_env)."""
+    for name in req.probe:
+        try:
+            dist = _md.distribution(name)
+        except _md.PackageNotFoundError:
+            continue
+        if _in_this_env(dist, prefix=prefix, base_prefix=base_prefix):
+            return True
+    return False
+
+
+def _in_this_env(
+    dist: _md.Distribution, *, prefix: str | None = None, base_prefix: str | None = None
+) -> bool:
+    """dist 가 실행 중인 환경 자체에 설치됐는지 — venv 에 비친 전역 site-packages 는 제외.
+
+    `--system-site-packages` venv(Homebrew formula 의 venv 가 이렇다)는 전역 패키지도 import
+    한다. 그것은 이 설치본의 extras 가 아니다 — v0.24.0 brew 검증(2026-10-07)에서 brew python
+    전역의 httpx·cryptography 가 cost-github·encryption 으로 잡혀 이전 안내에 섞였다.
+    venv 가 아니면(시스템 python·`--user`) 보이는 것이 곧 이 환경이다. 위치를 알 수 없으면
+    센다 — 과소 판정은 재설치가 그 extras 를 지운다.
+    """
+    prefix = sys.prefix if prefix is None else prefix
+    base_prefix = sys.base_prefix if base_prefix is None else base_prefix
+    if prefix == base_prefix:
+        return True
+    try:
+        where = Path(str(dist.locate_file(""))).resolve()
+        return where.is_relative_to(Path(prefix).resolve())
+    except (OSError, RuntimeError, NotImplementedError, TypeError, ValueError):
+        return True
 
 
 def _order_extras(keys: Iterable[str]) -> list[str]:

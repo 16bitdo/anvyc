@@ -27,10 +27,15 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 @pytest.fixture(autouse=True)
 def uv_tool_without_extras(monkeypatch: pytest.MonkeyPatch) -> None:
-    """재설치형 설치(uv tool), extras 없음 — check 가 안내를 낸 extra 는 실제로도 미설치다."""
+    """재설치형 설치(uv tool), extras 없음 — check 가 안내를 낸 extra 는 실제로도 미설치다.
+
+    '없음'(missing_pip_extras)은 check 와 같은 import 가능 여부로, 안내의 합집합은
+    installed_pip_extras 로 판정한다 — 둘 다 비운다.
+    """
     monkeypatch.setattr(im, "detect", lambda: InstallContext("uv-tool", "/py"))
     monkeypatch.setattr(anvyc, "__version__", "0.23.0")
     monkeypatch.setattr(ex, "installed_pip_extras", lambda: ())
+    monkeypatch.setattr(ex, "_pyextra_version", lambda req: None)
 
 
 def _report(*findings: tuple[str, str]) -> DoctorReport:
