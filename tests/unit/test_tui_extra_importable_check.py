@@ -11,6 +11,7 @@ import pytest
 
 from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.tui_extra import TuiExtraImportableCheck
+from anvyc.core.extras import install_hint
 
 
 def test_textual_present_returns_empty() -> None:
@@ -27,7 +28,7 @@ def test_textual_absent_emits_info(monkeypatch: pytest.MonkeyPatch) -> None:
     assert r.check_name == "tui-extra-importable"
     assert r.severity == Severity.INFO  # WARNING 아님 — 강등이지 실패 아님
     assert r.suggestion is not None
-    assert "anvyc[tui]" in r.suggestion
+    assert r.suggestion == install_hint("textual")
 
 
 def test_check_registered_in_doctor() -> None:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import install_hint
 
 
 class TuiExtraImportableCheck:
@@ -28,9 +29,6 @@ class TuiExtraImportableCheck:
                     "[tui] extra(textual) 미설치 — `anvyc tools configure` 가 체크박스 TUI "
                     "대신 번호 토글 메뉴로 동작합니다 (기능 동일, 강등 아님)."
                 ),
-                suggestion=(
-                    "체크박스 TUI 사용: pip install 'anvyc[tui]' (또는 uv tool install 'anvyc[tui]'). "
-                    "dev 환경: bash scripts/dev-install.sh (ANVYC_EXTRAS 기본값에 tui 포함)."
-                ),
+                suggestion=install_hint("textual"),
             )
         ]

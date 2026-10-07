@@ -17,6 +17,7 @@ from anvyc.checks.cost_aws_explorer_iam import (
     REQUIRED_ACTION,
     CostAwsExplorerIamCheck,
 )
+from anvyc.core.extras import install_hint
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ def test_boto3_missing_yields_warning(
     assert res[0].check_name == CHECK_NAME
     assert "boto3" in res[0].message
     assert res[0].suggestion is not None
-    assert "anvyc[cost-aws]" in res[0].suggestion
+    assert install_hint("boto3") in res[0].suggestion
 
 
 def test_empty_aws_config_yields_silent(

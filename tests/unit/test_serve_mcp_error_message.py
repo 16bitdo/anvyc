@@ -7,6 +7,7 @@ SystemExit 메시지를 `console.print` 로 표시한다. Rich console 은 `[mcp
 
 본 테스트는 fix (`rich.markup.escape`) 가 제거되지 않도록 회귀를 막는다.
 """
+
 from __future__ import annotations
 
 import sys
@@ -14,24 +15,28 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
+import anvyc
 from anvyc.cli import app
+from anvyc.core import install_method as im
+from anvyc.core.extras import install_hint
+from anvyc.core.install_method import InstallContext
 
 
-def test_serve_mcp_missing_extra_preserves_bracket_notation(
+def test_serve_mcp_missing_extra_prints_install_command_intact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """mcp 패키지 미설치 시 출력에 '[mcp]' 와 "'anvyc[mcp]'" 가 그대로 노출돼야 한다."""
-    # upstream `mcp` 패키지를 import 불가 상태로 만들어 anvyc.mcp.server 의
-    # SystemExit 경로를 강제로 탄다.
+    """mcp 미설치 시 '[mcp] extra' 와 설치 명령 전문이 그대로(대괄호·한 줄) 나와야 한다."""
     for mod in ("mcp", "mcp.server", "mcp.server.stdio", "mcp.types"):
         monkeypatch.setitem(sys.modules, mod, None)
-    # 이미 import 된 anvyc.mcp.server 캐시를 비워 재-import 가 SystemExit 던지도록.
     monkeypatch.delitem(sys.modules, "anvyc.mcp.server", raising=False)
+    # 대괄호가 든 안내(venv 형)로 고정 — Rich markup strip 회귀(PR #71)를 계속 잡는다.
+    monkeypatch.setattr(im, "detect", lambda: InstallContext("venv", "/v/bin/python"))
+    monkeypatch.setattr(anvyc, "__version__", "0.23.0")
+    hint = install_hint("mcp")
+    assert "'anvyc[" in hint and " @ https://" in hint
 
-    runner = CliRunner()
-    result = runner.invoke(app, ["serve", "--mcp"])
+    result = CliRunner().invoke(app, ["serve", "--mcp"])
 
     assert result.exit_code == 1
-    # Rich markup strip 회귀 방지 — 대괄호 표기가 그대로 보존돼야 한다.
     assert "[mcp] extra" in result.output, f"missing '[mcp] extra' in: {result.output!r}"
-    assert "'anvyc[mcp]'" in result.output, f"missing \"'anvyc[mcp]'\" in: {result.output!r}"
+    assert hint in result.output, f"missing install command in: {result.output!r}"

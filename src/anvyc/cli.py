@@ -637,7 +637,7 @@ def _render_finding_group(
 ) -> None:
     """단일 check 그룹 출력 — 헤더(글리프+이름+건수) + finding 줄 + remediation.
 
-    escape(): message/suggestion/location 은 데이터(예: `pip install 'anvyc[cost-aws]'`)
+    escape(): message/suggestion/location 은 데이터(예: `'anvyc[cost-aws] @ https://…'`)
     이므로 Rich markup 으로 먹히면 안 된다 — `[cost-aws]` 가 태그로 해석돼 깨지면 사용자가
     복붙해 실패한다. 의도된 style 태그(severity 색/[dim])만 escape 밖에 둔다.
     soft_wrap=True: 비-TTY 80열 fallback 의 강제 개행을 차단(개행은 터미널/pager 에 위임).
@@ -2158,7 +2158,7 @@ def serve(
     현재 지원: `--mcp` (stdio Model Context Protocol).
     Claude Code / Cursor 등이 mcp.json 으로 anvyc 의 5 read-only tool 호출.
 
-    requires: `pip install 'anvyc[mcp]'` 또는 `uv tool install 'anvyc[mcp]'`.
+    requires: `[mcp]` extra — 설치 방식별 명령은 `anvyc extras` (README §5.7).
     상세: docs/mcp-integration.md
     """
     if not mcp:

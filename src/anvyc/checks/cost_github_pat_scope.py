@@ -9,7 +9,7 @@ Enhanced Billing user endpoint 호출 가능 권한 (OAuth/classic `user` scope
 응답 헤더 `X-Accepted-Oauth-Scopes: user` 로만 확인된다 (#192).
 
 severity:
-  * httpx 미설치 → WARNING (graceful skip — `pip install 'anvyc[cost-github]'`)
+  * httpx 미설치 → WARNING (graceful skip — 설치 방식별 명령, `install_hint("httpx")`)
   * gh CLI 미설치 → INFO (silent — 사용자가 gh 미사용)
   * hosts.yml 자체 부재 → result 없음 (silent)
   * 권한 OK (HTTP 200) → result 없음 (silent — noise 최소화)
@@ -34,6 +34,7 @@ import subprocess
 from datetime import UTC, datetime
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import install_hint
 from anvyc.utils.gh_hosts import (
     discover_gh_accounts,
     select_config_dir_for_user,
@@ -128,9 +129,8 @@ class CostGithubPatScopeCheck:
                         "(cost-github optional dep)"
                     ),
                     suggestion=(
-                        # --user 미사용 (venv 안에서 실패) — pipx/uv/brew/venv 어디서든
-                        # 복붙 가능하도록 plain install. cost_aws_explorer_iam 와 동일.
-                        "pip install 'anvyc[cost-github]' "
+                        # 설치 방식별 명령 — cost_aws_explorer_iam 와 같은 근거.
+                        f"{install_hint('httpx')}  "
                         "(설치 후 `anvyc cost collect --source github` 가능)"
                     ),
                 )

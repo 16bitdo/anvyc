@@ -397,3 +397,11 @@ def test_build_registry_excludes_aws_when_boto3_missing(
     registry = _build_registry()
     assert "aws" not in registry
     assert "anthropic" in registry
+
+
+def test_dep_missing_error_names_the_install_command() -> None:
+    from anvyc.core.extras import install_hint_for_extra
+
+    err = CostAdapterDepMissingError("aws", "cost-aws")
+    assert f"install with: {install_hint_for_extra('cost-aws')}" in str(err)
+    assert (err.source, err.group) == ("aws", "cost-aws")

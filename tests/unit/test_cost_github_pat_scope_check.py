@@ -12,6 +12,7 @@ from anvyc.checks.cost_github_pat_scope import (
     CHECK_NAME,
     CostGithubPatScopeCheck,
 )
+from anvyc.core.extras import install_hint
 
 
 def _mock_one_account(user: str = "16bitdo", config_dir: str = "/tmp/gh") -> Any:
@@ -53,7 +54,7 @@ def test_httpx_missing_yields_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res[0].check_name == CHECK_NAME
     assert "httpx" in res[0].message
     assert res[0].suggestion is not None
-    assert "anvyc[cost-github]" in res[0].suggestion
+    assert install_hint("httpx") in res[0].suggestion
 
 
 def test_no_accounts_yields_silent(monkeypatch: pytest.MonkeyPatch) -> None:

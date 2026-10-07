@@ -12,6 +12,7 @@ import pytest
 
 from anvyc.checks.base import CheckContext, Severity
 from anvyc.checks.mcp_extra_importable import McpExtraImportableCheck
+from anvyc.core.extras import install_hint
 
 
 def test_mcp_present_returns_empty() -> None:
@@ -30,6 +31,5 @@ def test_mcp_absent_emits_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     assert r.severity == Severity.WARNING
     assert "mcp" in r.message.lower()
     assert r.suggestion is not None
-    # 설치 명령이 사용자에게 정확히 노출 — PR #71 에서 fix 한 [mcp] 누락 회귀와 같은
-    # 정확성 보장
-    assert "anvyc[mcp]" in r.suggestion
+    # 설치 방식별 명령(core/install_method) — 이름 기반 `pip install` 이 아니다.
+    assert r.suggestion == install_hint("mcp")

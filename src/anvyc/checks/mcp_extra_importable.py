@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import install_hint
 
 
 class McpExtraImportableCheck:
@@ -30,10 +31,8 @@ class McpExtraImportableCheck:
                     "`anvyc serve --mcp` 가 동작하지 않아 Claude Code / Cursor 의 "
                     "MCP 연결이 실패합니다."
                 ),
-                suggestion=(
-                    # 명령 우선 한 줄 — 복붙 동작이 첫 토큰. 대안(uv)·dev 경로는 괄호 주석.
-                    "pip install 'anvyc[mcp]' "
-                    "(uv: uv tool install 'anvyc[mcp]' · dev: bash scripts/dev-install.sh)"
-                ),
+                # 설치 방식별 명령 — anvyc 는 PyPI 에 없고 PATH 의 pip 는 uv tool·pipx·
+                # Homebrew 설치본과 다른 환경이다(2026-10-07 실측). 명령이 곧 suggestion 이다.
+                suggestion=install_hint("mcp"),
             )
         ]
