@@ -113,6 +113,9 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 
 > 위 표는 [`scripts/gen_extras.py`](./scripts/gen_extras.py) 가 `EXTRAS_REGISTRY`
 > (단일 SoT, `src/anvyc/core/extras.py`) 에서 생성한다 (CI 의 `--check` 가 drift 차단).
+>
+> `pip extra` 행의 `pip install` 은 **anvyc 가 이미 설치된 그 환경의 pip** 로 실행할 때만
+> extras 를 더한다 — anvyc 는 PyPI 에 없다. 설치 방식별 방법은 [§5.7](#57-업그레이드와-extras-추가-설치-방식별).
 
 ---
 
@@ -123,6 +126,9 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 ```bash
 curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh | bash
 
+# extras 함께 (예: MCP server · TUI):
+ANVYC_EXTRAS=mcp,tui bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+
 # 특정 버전:
 ANVYC_VERSION=v0.20.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
@@ -130,8 +136,10 @@ ANVYC_VERSION=v0.20.0 bash <(curl -sSL https://raw.githubusercontent.com/16bitdo
 ANVYC_METHOD=pipx bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 ```
 
-- GitHub Release wheel + `SHA256SUMS` 자동 검증
+- GitHub Release wheel + `SHA256SUMS` 자동 검증 — extras 도 그 검증한 wheel 에 붙여 설치
 - `uv tool` 또는 `pipx` 자동 감지 (없으면 명시 안내)
+- **업그레이드 = 같은 명령 재실행.** `ANVYC_EXTRAS` 도 매번 같은 값으로 — 빠뜨리면 extras 의존이
+  제거된다. `uv tool upgrade` · `pipx upgrade` 로는 갱신되지 않는다([§5.7](#57-업그레이드와-extras-추가-설치-방식별)).
 
 ### 5.2 Homebrew tap (v0.7.1+)
 
@@ -182,8 +190,8 @@ write 영역 (`backup` / `apply` / `restore` / `snapshot restore` / `creds rotat
 `sync push/pull`) 은 의도적 미포함 — agent 가 destructive 실행 불가.
 
 ```bash
-# 1) [mcp] extra 설치
-uv tool install --upgrade 'anvyc[mcp]'
+# 1) [mcp] extra 설치 — install.sh(§5.1) 설치본 기준. 다른 설치 방식은 §5.7
+ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
 # 2) mcp.json 자동 등록 (v0.16.0+) — 기존 다른 server entry 보존, atomic write
 anvyc mcp install --ide both --apply --yes
@@ -220,6 +228,32 @@ bash scripts/dev-install.sh
 > 주입해 `python -m anvyc` 로 실행하므로 이 트랩을 회피합니다. 원인·수동
 > 대응은 [docs/troubleshooting-macos.md](./docs/troubleshooting-macos.md)
 > 참고. 일반 사용자 (`uv tool install` / `pipx`) 는 영향 없음.
+
+### 5.7 업그레이드와 extras 추가 (설치 방식별)
+
+anvyc 는 **PyPI 에 배포하지 않는다**(v1.0 계획). 그래서 `pip install 'anvyc[mcp]'` ·
+`uv tool install 'anvyc[mcp]'` 처럼 **이름으로 찾는 명령은 쓰지 않는다** — 새 환경에서는
+실패하고, 누군가 그 이름을 PyPI 에 올리면 그 패키지를 설치한다(`--upgrade` 형은 기존
+설치본까지 교체한다).
+
+| 설치 방식 | 업그레이드 | extras 추가 |
+|---|---|---|
+| install.sh ([§5.1](#51-one-liner-설치-권장-v071)) | 같은 명령 재실행 | `ANVYC_EXTRAS=mcp,tui` 를 붙여 재실행 — 매번 같은 값 |
+| Homebrew ([§5.2](#52-homebrew-tap-v071)) | `brew update && brew upgrade anvyc` | 미지원(formula 는 기본 의존만) — install.sh 로 설치 |
+| wheel 직접 ([§5.3](#53-github-release-의-wheel-직접-설치)) | 새 버전 wheel URL 로 다시 설치 | wheel URL 에 extras 를 붙여 다시 설치(아래) |
+| 개발 설치 ([§5.6](#56-개발-설치-contributor)) | `git pull` — [CONTRIBUTING §2.5](./CONTRIBUTING.md) | `ANVYC_EXTRAS="dev,mcp,tui,cost-aws" bash scripts/dev-install.sh` |
+
+```bash
+# wheel 직접 설치본에 extras 추가·업그레이드 — 버전은 Releases 의 최신으로 바꾼다
+uv tool install 'anvyc[mcp] @ https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl'
+pipx install --force 'anvyc[mcp] @ https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl'
+```
+
+- **`uv tool upgrade anvyc` · `pipx upgrade anvyc` 로는 갱신되지 않는다.** 설치 기록이 특정
+  버전의 wheel 을 가리키기 때문이다 — URL 설치본은 "Nothing to upgrade" 로 그대로 끝나고,
+  install.sh 설치본은 지워진 임시 파일을 찾다 실패한다.
+- extras 는 누적되지 않는다 — 함께 쓸 extras 는 한 번에 나열한다.
+- 실행 중인 `anvyc serve --mcp` 는 업그레이드 뒤에도 옛 코드로 돈다 — IDE·세션을 재시작한다.
 
 ---
 

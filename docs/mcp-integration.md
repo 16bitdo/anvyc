@@ -16,15 +16,20 @@ core 사용자는 영향 받지 않고, AI agent 가 anvyc 를 호출하려는 �
 의존성 설치.
 
 ```bash
-# uv tool (권장):
-uv tool install --upgrade 'anvyc[mcp]'
+# install.sh (권장) — 검증한 Release wheel 에 extras 를 붙여 설치. 재실행이 곧 업그레이드:
+ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
-# pipx 도 가능:
-pipx install --force 'anvyc[mcp]'
+# wheel 직접 (uv tool / pipx) — 버전은 Releases 의 최신으로 바꾼다:
+uv tool install 'anvyc[mcp] @ https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl'
+pipx install --force 'anvyc[mcp] @ https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl'
 
-# 또는 source 에서:
+# 또는 source 에서 (개발 설치의 dev-install.sh 는 [mcp] 를 기본 포함):
 pip install --upgrade '.[mcp]'
 ```
+
+anvyc 는 PyPI 에 없다 — `uv tool install 'anvyc[mcp]'` 같은 이름 기반 명령은 쓰지 않는다.
+Homebrew 설치본은 extras 를 지원하지 않는다. 설치 방식별 정리:
+[README §5.7](../README.md#57-업그레이드와-extras-추가-설치-방식별).
 
 확인:
 
@@ -38,6 +43,9 @@ anvyc --version           # v0.9.0 이상
 ```
 error: anvyc MCP server requires the [mcp] extra. Install: pip install 'anvyc[mcp]'
 ```
+
+이 안내의 `pip install` 은 anvyc 가 설치된 **그 환경의 pip** 를 전제한다 — 설치 방식별로는
+위의 명령을 쓴다.
 
 ---
 

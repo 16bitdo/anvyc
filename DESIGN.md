@@ -2050,7 +2050,9 @@ Homebrew sandbox install 과 충돌 우려.
 | `anvyc[mcp]` | core + mcp (+ pydantic, anyio, httpx, jsonschema 등) |
 
 Homebrew Formula (`packaging/homebrew/Formula/anvyc.rb`) 는 core 만 build.
-MCP 사용자는 `uv tool install 'anvyc[mcp]'` 별도 path.
+MCP 사용자는 install.sh 의 `ANVYC_EXTRAS=mcp`(검증한 Release wheel 에 extras 를 붙인 PEP 508
+직접 참조로 설치) 별도 path. anvyc 는 PyPI 에 없어 `uv tool install 'anvyc[mcp]'` 같은 이름 기반
+명령은 새 환경에서 실패하고 이름 선점에 노출된다 — 설치 방식별 정리는 README §5.7.
 
 ### 34.3 모듈 구조
 
