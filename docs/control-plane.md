@@ -73,15 +73,19 @@ anvyc cost gc --apply
 ### 2.4 설치 (optional dep)
 
 ```bash
-# AWS Cost Explorer
-uv tool install --upgrade 'anvyc[cost-aws]'    # boto3 자동 포함
+# AWS Cost Explorer (boto3)
+ANVYC_EXTRAS=cost-aws bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
-# GitHub Enhanced Billing
-uv tool install --upgrade 'anvyc[cost-github]' # httpx 자동 포함
+# GitHub Enhanced Billing (httpx)
+ANVYC_EXTRAS=cost-github bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 
-# 둘 다 + MCP
-uv tool install --upgrade 'anvyc[cost-aws,cost-github,mcp]'
+# 둘 다 + MCP — extras 는 누적되지 않으므로 함께 쓸 것은 한 번에 나열한다
+ANVYC_EXTRAS=cost-aws,cost-github,mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
 ```
+
+install.sh 설치본 기준이다. 다른 설치 방식(개발 설치·wheel 직접)은
+[README §5.7](../README.md#57-업그레이드와-extras-추가-설치-방식별) — anvyc 는 PyPI 에 없으므로
+`uv tool install 'anvyc[cost-aws]'` 같은 이름 기반 명령은 쓰지 않는다.
 
 extra 미설치 시 어댑터는 silent skip — anvyc core 동작에는 영향 없음
 (graceful degradation).

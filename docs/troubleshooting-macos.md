@@ -128,14 +128,15 @@ uv pip install -e ".[mcp]" --python .venv/bin/python
 
 | 설치 방식 | 영향 |
 |----------|-----|
-| `uv tool install anvyc` (또는 `anvyc[mcp]`) | ✗ 영향 없음 (격리된 tool venv 안에 일반 install — `.pth` 불사용) |
-| `pipx install anvyc` | ✗ 영향 없음 (동일 이유) |
-| `pip install anvyc` (system / user) | ✗ 영향 없음 |
+| install.sh · `uv tool install <wheel>` (extras 포함) | ✗ 영향 없음 (격리된 tool venv 안에 일반 install — `.pth` 불사용) |
+| `pipx install <wheel>` | ✗ 영향 없음 (동일 이유) |
+| `pip install <wheel>` (system / user) | ✗ 영향 없음 |
 | `pip install -e .` (editable) | ✓ **영향** — Python 3.13.13+ on macOS |
 | `uv pip install -e .` (editable) | ✓ **영향** — 동일 |
 
-→ contributor / dev 환경이 아니라 **사용자 환경에서는 `uv tool install anvyc[mcp]`
-권장** (README §5.1 ~ §5.3). editable 은 anvyc 소스 코드를 직접 수정할 때만.
+→ contributor / dev 환경이 아니라 **사용자 환경에서는 install.sh 권장**(MCP 는
+`ANVYC_EXTRAS=mcp`, README §5.1 · §5.7). anvyc 는 PyPI 에 없으므로 `anvyc[mcp]` 처럼 이름으로
+설치하지 않는다. editable 은 anvyc 소스 코드를 직접 수정할 때만.
 
 ---
 

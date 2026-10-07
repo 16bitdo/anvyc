@@ -147,9 +147,11 @@ bash scripts/dev-install.sh   # venv 재사용 · editable 재설치 · wrapper/
 uv tool install "$HOME/dev/anvyc[mcp,tui]"
 ```
 
-> 릴리스(PyPI·whl)로 설치한 일반 사용자는 이 절차가 아닙니다 — `uv tool install
-> --upgrade 'anvyc[mcp]'` 로 끝납니다([README](./README.md)). 아래 캐시 함정은
-> version 이 그대로인 **로컬 소스** 설치에만 생깁니다.
+> 릴리스(install.sh·Homebrew·whl)로 설치한 일반 사용자는 이 절차가 아닙니다 — 설치 방식별
+> 갱신은 [README §5.7](./README.md#57-업그레이드와-extras-추가-설치-방식별) 입니다. anvyc 는 PyPI 에
+> 없으므로 `uv tool install --upgrade 'anvyc[mcp]'` 같은 이름 기반 명령은 쓰지 않습니다(새 환경에선
+> 실패하고, 이름이 선점되면 그 패키지를 설치합니다). 아래 캐시 함정은 version 이 그대로인
+> **로컬 소스** 설치에만 생깁니다.
 
 이 형태는 설치 시점의 소스를 **복사**합니다 — editable 이 아니므로 이후 `git pull` 로
 소스가 바뀌어도 반영되지 않습니다. 갱신은 재설치로만 됩니다.
