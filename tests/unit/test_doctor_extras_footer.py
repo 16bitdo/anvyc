@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -76,3 +77,52 @@ def test_dev_single_hint_is_not_counted_twice(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(cli, "run_doctor", lambda **_kw: report)
     out = _ANSI.sub("", CliRunner().invoke(app, ["doctor"]).output)
     assert "서로를 지운다" not in out
+
+
+# --- doctor --json 의 extras_install (기계 소비자 — MCP 에이전트 · CI) ---
+
+
+def _json(monkeypatch: pytest.MonkeyPatch, report: DoctorReport) -> dict[str, object]:
+    monkeypatch.setattr(cli, "run_doctor", lambda **_kw: report)
+    out = CliRunner().invoke(app, ["doctor", "--json"]).output
+    data = json.loads(out)
+    assert isinstance(data, dict)
+    return data
+
+
+def test_json_carries_one_combined_command_for_extras_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    """check 별 suggestion 을 차례로 실행하면 서로를 지운다 — 기계 소비자에게도 합친 명령 하나."""
+    report = _report(
+        ("mcp-extra-importable", install_hint("mcp")),
+        ("cost-aws-explorer-iam", f"{install_hint('boto3')}  # 설치 후 `anvyc cost collect` 가능"),
+    )
+    assert _json(monkeypatch, report)["extras_install"] == {
+        "extras": ["mcp", "cost-aws"],
+        "command": install_hint_for_extras(["mcp", "cost-aws"]),
+    }
+
+
+def test_json_single_extras_hint_is_filled_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """사람용 꼬리말(2건+)과 달리 1건부터 채운다 — 'null 이 아니면 command 를 실행' 한 규칙."""
+    report = _report(("mcp-extra-importable", install_hint("mcp")))
+    assert _json(monkeypatch, report)["extras_install"] == {
+        "extras": ["mcp"],
+        "command": install_hint("mcp"),
+    }
+
+
+def test_json_extras_install_is_null_without_extras_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    report = _report(("cross-user", "chmod 700 ~/.ssh"))
+    assert _json(monkeypatch, report)["extras_install"] is None
+
+
+def test_json_ignores_info_level_extras_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """선택 항목(INFO — tui-extra-importable)은 합치지 않는다 — 사람용 꼬리말과 같은 규칙."""
+    r = CheckResult(
+        check_name="tui-extra-importable",
+        severity=Severity.INFO,
+        message="optional",
+        suggestion=install_hint("textual"),
+    )
+    report = DoctorReport(results=[r], runs=[CheckRun(r.check_name, [r])])
+    assert _json(monkeypatch, report)["extras_install"] is None

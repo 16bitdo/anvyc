@@ -427,6 +427,7 @@ CI / 다른 도구 통합용 안정 schema (v0.5.3+). 회귀 테스트로 보장
 anvyc doctor --json                          # 전체
 anvyc doctor --only cross-user --json        # 특정 check 만
 anvyc doctor --strict --json > /dev/null     # CI 게이트: blocking 발견 시 exit 1
+anvyc doctor --json | jq -r '.extras_install.command // empty'   # extras 안내를 합친 명령 (v0.25.0+)
 ```
 
 필드 / 타입 / exit code / jq 활용 예 →

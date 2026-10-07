@@ -179,3 +179,31 @@ def test_missing_extras_follow_importability_not_install_location(
     monkeypatch.setattr(ex, "_pyextra_version", lambda req: None if req.name == "boto3" else "1")
     monkeypatch.setattr(ex, "_installed_here", lambda req: False, raising=False)
     assert ex.missing_pip_extras() == ("cost-aws",)
+
+
+# --- 합친 명령(사람용 꼬리말 · doctor JSON 의 extras_install 공용) ---
+
+
+def test_combined_install_collects_extras_hints(
+    monkeypatch: pytest.MonkeyPatch, uv_tool: None
+) -> None:
+    """extras 안내인 suggestion 만 모아 키(레지스트리 순서)와 합친 명령 하나로."""
+    monkeypatch.setattr(ex, "installed_pip_extras", lambda: ())
+    monkeypatch.setattr(ex, "_pyextra_version", lambda req: None)
+    suggestions = [
+        f"{ex.install_hint('boto3')}  # 설치 후 `anvyc cost collect --source aws` 가능",
+        "chmod 700 ~/.ssh",
+        ex.install_hint("mcp"),
+    ]
+    got = ex.combined_extras_install(suggestions)
+    assert got is not None
+    assert got.extras == ("mcp", "cost-aws")
+    assert got.command == ex.install_hint_for_extras(["mcp", "cost-aws"])
+    assert got.to_dict() == {"extras": ["mcp", "cost-aws"], "command": got.command}
+
+
+def test_combined_install_is_none_without_extras_hints(
+    monkeypatch: pytest.MonkeyPatch, uv_tool: None
+) -> None:
+    monkeypatch.setattr(ex, "_pyextra_version", lambda req: None)
+    assert ex.combined_extras_install(["chmod 700 ~/.ssh", "anvyc guard install"]) is None
