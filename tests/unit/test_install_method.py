@@ -7,12 +7,19 @@ Homebrew 의 Cellar/anvyc prefix)을 따른다.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
 import pytest
 
-from anvyc.core.install_method import InstallContext, detect
+from anvyc.core import install_method as im
+from anvyc.core.install_method import (
+    InstallContext,
+    InstallMethod,
+    detect,
+    extras_install_command,
+)
 
 
 def _receipt(prefix: Path, body: str) -> None:
@@ -115,3 +122,112 @@ def test_venv_when_prefix_differs(tmp_path: Path) -> None:
 
 def test_unknown_when_prefix_is_base(tmp_path: Path) -> None:
     assert _detect(tmp_path, base=tmp_path).method == "unknown"
+
+
+_SH = "bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)"
+_README = "https://github.com/16bitdo/anvyc#57-업그레이드와-extras-추가-설치-방식별"
+_WHEEL = (
+    "https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl"
+)
+
+
+@pytest.mark.parametrize(
+    ("ctx", "expected"),
+    [
+        (
+            InstallContext("dev", "/py", Path("/r/anvyc")),
+            "ANVYC_EXTRAS=dev,mcp,tui,cost-aws bash /r/anvyc/scripts/dev-install.sh",
+        ),
+        (
+            InstallContext("uv-tool", "/py"),
+            f"ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,cost-aws {_SH}",
+        ),
+        (
+            InstallContext("uv-tool-source", "/py", Path("/s/anvyc")),
+            "uv tool install --force --reinstall --refresh '/s/anvyc[mcp,cost-aws]'",
+        ),
+        (
+            InstallContext("pipx", "/py"),
+            f"ANVYC_METHOD=pipx ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,cost-aws {_SH}",
+        ),
+        (
+            InstallContext("homebrew", "/py"),
+            "Homebrew 설치본은 extras 를 지원하지 않습니다 — install.sh 로 옮기세요: "
+            f"ANVYC_EXTRAS=mcp,cost-aws {_SH} (설치 방식별: {_README})",
+        ),
+        (
+            InstallContext("venv", "/v/bin/python"),
+            f"/v/bin/python -m pip install 'anvyc[mcp,cost-aws] @ {_WHEEL}'",
+        ),
+        (
+            InstallContext("unknown", "/py"),
+            f"ANVYC_EXTRAS=mcp,cost-aws {_SH} (설치 방식별: {_README})",
+        ),
+    ],
+    ids=["dev", "uv-tool", "uv-tool-source", "pipx", "homebrew", "venv", "unknown"],
+)
+def test_command_per_method(ctx: InstallContext, expected: str) -> None:
+    assert extras_install_command(["mcp", "cost-aws"], ctx=ctx, version="0.23.0") == expected
+
+
+@pytest.mark.parametrize("version", ["0.0.0+unknown", "0.24.0.dev1"])
+def test_non_release_version_is_not_pinned(version: str) -> None:
+    uv = extras_install_command(["mcp"], ctx=InstallContext("uv-tool", "/py"), version=version)
+    assert uv == f"ANVYC_EXTRAS=mcp {_SH}"
+    venv = extras_install_command(["mcp"], ctx=InstallContext("venv", "/py"), version=version)
+    assert venv == f"ANVYC_EXTRAS=mcp {_SH} (설치 방식별: {_README})"
+
+
+def test_paths_with_spaces_are_quoted() -> None:
+    dev = extras_install_command(
+        ["mcp"], ctx=InstallContext("dev", "/py", Path("/My Repos/anvyc")), version="0.23.0"
+    )
+    assert dev == "ANVYC_EXTRAS=dev,mcp,tui bash '/My Repos/anvyc/scripts/dev-install.sh'"
+    venv = extras_install_command(
+        ["mcp"], ctx=InstallContext("venv", "/My Envs/v/bin/python"), version="0.23.0"
+    )
+    assert venv == f"'/My Envs/v/bin/python' -m pip install 'anvyc[mcp] @ {_WHEEL}'"
+    src = extras_install_command(
+        ["mcp"], ctx=InstallContext("uv-tool-source", "/py", Path("/My Src/anvyc")), version="0.23.0"
+    )
+    assert src == "uv tool install --force --reinstall --refresh '/My Src/anvyc[mcp]'"
+
+
+def test_duplicates_removed_order_kept() -> None:
+    cmd = extras_install_command(
+        ["mcp", "tui", "mcp"], ctx=InstallContext("uv-tool", "/py"), version="0.23.0"
+    )
+    assert cmd == f"ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,tui {_SH}"
+
+
+def test_default_context_and_version_come_from_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(im, "detect", lambda: InstallContext("uv-tool", "/py"))
+    monkeypatch.setattr("anvyc.__version__", "9.8.7")
+    assert extras_install_command(["mcp"]) == f"ANVYC_VERSION=v9.8.7 ANVYC_EXTRAS=mcp {_SH}"
+
+
+def test_dev_install_default_extras_match_script() -> None:
+    script = (Path(__file__).resolve().parents[2] / "scripts" / "dev-install.sh").read_text(
+        encoding="utf-8"
+    )
+    m = re.search(r'EXTRAS="\$\{ANVYC_EXTRAS:-([a-z0-9,-]+)\}"', script)
+    assert m, "dev-install.sh 의 EXTRAS 기본값 줄을 찾지 못했다"
+    assert tuple(m[1].split(",")) == im.DEV_INSTALL_DEFAULT_EXTRAS
+
+
+_METHODS: tuple[InstallMethod, ...] = (
+    "dev",
+    "uv-tool",
+    "uv-tool-source",
+    "pipx",
+    "homebrew",
+    "venv",
+    "unknown",
+)
+
+
+@pytest.mark.parametrize("method", _METHODS)
+def test_no_generated_command_resolves_the_name_on_pypi(method: InstallMethod) -> None:
+    ctx = InstallContext(method, "/py", Path("/s/anvyc"))
+    cmd = extras_install_command(["mcp"], ctx=ctx, version="0.23.0")
+    assert not re.search(r"(?<![\w/.-])anvyc\[[^\]]*\](?!\s*@)", cmd), cmd

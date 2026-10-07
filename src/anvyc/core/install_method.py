@@ -12,8 +12,11 @@ stdlib 만 쓴다 — `mcp` 미설치 ImportError 경로(anvyc.mcp.server)에서
 from __future__ import annotations
 
 import enum
+import re
+import shlex
 import sys
 import tomllib
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
@@ -134,3 +137,67 @@ def _is_homebrew(prefix: Path) -> bool:
         part == "Cellar" and i + 1 < len(parts) and parts[i + 1] == "anvyc"
         for i, part in enumerate(parts)
     )
+
+
+_RELEASE_VERSION: Final = re.compile(r"\d+\.\d+\.\d+")
+
+
+def extras_install_command(
+    extras: Sequence[str],
+    *,
+    ctx: InstallContext | None = None,
+    version: str | None = None,
+) -> str:
+    """extras 를 현재 설치 방식으로 설치하는 명령 한 줄.
+
+    `extras` 는 호출자(core/extras)가 이미 설치된 것과 합치고 레지스트리 순서로 정렬한 pip
+    extra 키다 — uv tool·pipx 재설치는 요구 문자열의 extras 로 환경을 맞추므로 빠진 extras 의
+    의존이 제거된다(install.sh E2E 실측). 명령은 PyPI 에서 이름으로 찾지 않는다.
+    """
+    ctx = ctx if ctx is not None else detect()
+    if version is None:
+        import anvyc
+
+        version = anvyc.__version__
+    release = version if _RELEASE_VERSION.fullmatch(version) else None
+
+    if ctx.method == "dev" and ctx.source_dir is not None:
+        keys = ",".join(_dedup([*DEV_INSTALL_DEFAULT_EXTRAS, *extras]))
+        script = shlex.quote(str(ctx.source_dir / "scripts" / "dev-install.sh"))
+        return f"ANVYC_EXTRAS={keys} bash {script}"
+
+    csv = ",".join(_dedup(extras))
+    if ctx.method == "uv-tool-source" and ctx.source_dir is not None:
+        spec = shlex.quote(f"{ctx.source_dir}[{csv}]")
+        return f"uv tool install --force --reinstall --refresh {spec}"
+    if ctx.method == "uv-tool":
+        return _install_sh(csv, version=release)
+    if ctx.method == "pipx":
+        return _install_sh(csv, version=release, method="pipx")
+    if ctx.method == "homebrew":
+        return (
+            "Homebrew 설치본은 extras 를 지원하지 않습니다 — install.sh 로 옮기세요: "
+            f"{_install_sh(csv, version=None)} (설치 방식별: {README_INSTALL_URL})"
+        )
+    if ctx.method == "venv" and release is not None:
+        spec = shlex.quote(f"anvyc[{csv}] @ {RELEASE_WHEEL_URL.format(v=release)}")
+        return f"{shlex.quote(ctx.python)} -m pip install {spec}"
+    return f"{_install_sh(csv, version=None)} (설치 방식별: {README_INSTALL_URL})"
+
+
+def _install_sh(csv: str, *, version: str | None, method: str | None = None) -> str:
+    env = [f"ANVYC_METHOD={method}"] if method else []
+    if version:
+        env.append(f"ANVYC_VERSION=v{version}")
+    env.append(f"ANVYC_EXTRAS={csv}")
+    return f"{' '.join(env)} bash <(curl -sSL {INSTALL_SH_URL})"
+
+
+def _dedup(keys: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for key in keys:
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
