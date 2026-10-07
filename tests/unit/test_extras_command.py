@@ -39,8 +39,6 @@ def test_extras_table_renders() -> None:
     assert "SOPS" in out
     # 종류 열 라벨.
     assert "pip extra" in out
-    # install_cmd 의 'anvyc[...]' 대괄호가 rich 마크업으로 삼켜지지 않고 보존돼야 한다.
-    assert "anvyc[" in out
 
 
 def test_extras_missing_filter_runs() -> None:
@@ -77,3 +75,69 @@ def test_check_fails_when_required_missing(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(cli, "collect_extras_status", lambda: _fake_rows(git_installed=False))
     result = CliRunner().invoke(app, ["extras", "--check"])
     assert result.exit_code == 1
+
+
+def test_missing_rows_print_full_command_on_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """표 칸은 긴 명령을 접는다 — 미설치 행의 명령 전문은 표 아래 한 줄로 나와야 복붙된다.
+
+    대괄호가 든 명령으로 Rich markup strip 회귀(PR #71)도 함께 잡는다.
+    """
+    cmd = (
+        "/v/bin/python -m pip install 'anvyc[mcp,cost-aws] @ "
+        "https://github.com/16bitdo/anvyc/releases/download/v0.23.0/anvyc-0.23.0-py3-none-any.whl'"
+    )
+    row = {
+        "name": "mcp",
+        "kind": "pyextra",
+        "label": "mcp (MCP SDK)",
+        "purpose": "MCP server 모드",
+        "installed": False,
+        "version": None,
+        "install_cmd": cmd,
+        "install_url": None,
+        "pip_extra": "mcp",
+        "required": False,
+        "platform": None,
+        "relevant": True,
+    }
+    monkeypatch.setattr(cli, "collect_extras_status", lambda: [row])
+    result = CliRunner().invoke(app, ["extras"])
+    assert result.exit_code == 0, result.output
+    out = _ANSI.sub("", result.output)
+    assert any(line.strip() == cmd for line in out.splitlines()), out
+
+
+def _pyextra_row(name: str, key: str) -> dict[str, object]:
+    return {
+        "name": name,
+        "kind": "pyextra",
+        "label": name,
+        "purpose": "x",
+        "installed": False,
+        "version": None,
+        "install_cmd": f"CMD-{key}",
+        "install_url": None,
+        "pip_extra": key,
+        "required": False,
+        "platform": None,
+        "relevant": True,
+    }
+
+
+def test_two_missing_extras_also_print_one_combined_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """행별 명령은 서로를 대체한다(재설치형 설치) — 2개 이상이면 합산 명령을 함께 낸다(리뷰 I-1)."""
+    rows = [_pyextra_row("mcp", "mcp"), _pyextra_row("boto3", "cost-aws")]
+    monkeypatch.setattr(cli, "collect_extras_status", lambda: rows)
+    monkeypatch.setattr(cli, "install_hint_for_extras", lambda keys: "COMBINED " + ",".join(keys))
+    out = _ANSI.sub("", CliRunner().invoke(app, ["extras"]).output)
+    assert "COMBINED mcp,cost-aws" in [line.strip() for line in out.splitlines()], out
+    assert "서로를 대체" in out
+
+
+def test_single_missing_extra_has_no_combined_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "collect_extras_status", lambda: [_pyextra_row("mcp", "mcp")])
+    monkeypatch.setattr(cli, "install_hint_for_extras", lambda keys: "COMBINED " + ",".join(keys))
+    out = _ANSI.sub("", CliRunner().invoke(app, ["extras"]).output)
+    assert "COMBINED" not in out

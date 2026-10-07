@@ -29,9 +29,11 @@ try:
     from mcp.server.stdio import stdio_server
     from mcp.types import TextContent, Tool
 except ImportError as e:  # pragma: no cover - import-time error path
+    # 설치 방식별 명령 — core.extras 는 mcp 없이도 import 된다.
+    from anvyc.core.extras import install_hint
+
     raise SystemExit(
-        "anvyc MCP server requires the [mcp] extra. "
-        "Install: pip install 'anvyc[mcp]' or uv tool install 'anvyc[mcp]'"
+        f"anvyc MCP server requires the [mcp] extra. Install: {install_hint('mcp')}"
     ) from e
 
 

@@ -531,8 +531,8 @@ class AdapterMeta:
 
 anvyc 의 일부 기능은 PATH 의 **외부 CLI 바이너리**(sops/age/op/aws-vault/gh/…) 또는
 **pip extras**(boto3/httpx/textual/mcp/cryptography)가 있어야 동작한다. 이 의존성 메타와
-설치 안내(`brew install …` / `pip install 'anvyc[…]'`)의 단일 SoT 는
-`src/anvyc/core/extras.py` 의 `EXTRAS_REGISTRY` 다 (AdapterMeta(§11.1)와 동형 패턴).
+설치 안내의 단일 SoT 는 `src/anvyc/core/extras.py` 의 `EXTRAS_REGISTRY` 다
+(AdapterMeta(§11.1)와 동형 패턴).
 
 ```python
 @dataclass(frozen=True)
@@ -549,6 +549,16 @@ class ExtraReq:
     platform: str | None = None     # 'darwin' (pbcopy/security)
 ```
 
+pyextra 의 런타임 안내는 설치 방식을 따른다 — `core/install_method.py` 가 실행 중인 anvyc 의
+설치 방식(dev·uv tool·uv tool 로컬 소스·pipx·Homebrew·venv)을 판별하고(`detect`), 이미 설치된
+extras 를 합친 목록으로 그 방식의 명령을 만든다(`extras_install_command`). 경로는
+`install_hint` → `install_hint_for_extra` → `install_hint_for_extras` 하나다. 재설치형 설치본은
+extras 가 쌓이지 않아 따로 계산한 안내를 차례로 실행하면 앞의 것을 지우므로, `anvyc extras` 와
+doctor 는 안내가 둘 이상이면 합산 명령을 따로 낸다. anvyc 는 PyPI 에 없어 이름으로 찾는 설치는 새
+환경에서 실패하고 이름 선점에 노출되므로 쓰지 않는다(`test_no_pypi_name_install_hints` 가 src 전체를
+막는다). 정적 `install_cmd` 는 README 표용 install.sh 형이다. spec:
+`docs/superpowers/specs/2026-10-07-install-method-aware-extras-hints-design.md`.
+
 헬퍼 `is_available(name)` / `install_hint(name)` / `installed_version(name)` /
 `collect_extras_status()` 를 제공한다. 과거 `shutil.which`+`brew install …` 안내가
 `core/sops.py`·`core/secrets.py`·`checks/sops_keys.py`·`checks/op_references.py`·`cli.py`
@@ -556,7 +566,8 @@ class ExtraReq:
 소비처: 위 call site(설치 여부·안내) + `anvyc extras` 명령(설치 상태·잠금 기능·설치법
 표, `--json`/`--missing`/`--check`) + README 동반 도구 표(`scripts/gen_extras.py` 생성,
 `render_extras_markdown`). 정합성은 `test_extras_registry`(필수 필드·kind 허용값·핵심 도구
-존재·헬퍼 계약), `test_extras_command`(JSON/표/--check), `test_gen_extras`(README↔SoT 동기)로 강제한다.
+존재·헬퍼 계약), `test_extras_command`(JSON/표/--check), `test_gen_extras`(README↔SoT 동기), `test_install_method`(판별·방식별 명령),
+`test_extras_install_hints`(합집합·경로), `test_no_pypi_name_install_hints`(src 가드)로 강제한다.
 
 ---
 

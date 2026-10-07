@@ -104,18 +104,23 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 | Git | CLI | anvyc init --from-git (원격 .anvyc clone) | `xcode-select --install  (또는 brew install git)` |
 | macOS security (keychain) | CLI | keychain secret backend | `(macOS 기본 제공 — 별도 설치 불필요)` |
 | pbcopy | CLI | secret get 클립보드 복사 | `(macOS 기본 제공 — 별도 설치 불필요)` |
-| mcp (MCP SDK) | pip extra | MCP server 모드 (anvyc serve --mcp) | `pip install 'anvyc[mcp]'` |
-| textual (TUI) | pip extra | tools configure 체크박스 TUI | `pip install 'anvyc[tui]'` |
-| boto3 (AWS) | pip extra | AWS Cost Explorer 수집 (cost --source aws) | `pip install 'anvyc[cost-aws]'` |
-| httpx (GitHub cost) | pip extra | GitHub Billing 수집 (cost --source github) | `pip install 'anvyc[cost-github]'` |
-| cryptography | pip extra | SOPS 복호화 보조 | `pip install 'anvyc[encryption]'` |
+| mcp (MCP SDK) | pip extra | MCP server 모드 (anvyc serve --mcp) | `ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)` |
+| textual (TUI) | pip extra | tools configure 체크박스 TUI | `ANVYC_EXTRAS=tui bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)` |
+| boto3 (AWS) | pip extra | AWS Cost Explorer 수집 (cost --source aws) | `ANVYC_EXTRAS=cost-aws bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)` |
+| httpx (GitHub cost) | pip extra | GitHub Billing 수집 (cost --source github) | `ANVYC_EXTRAS=cost-github bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)` |
+| cryptography | pip extra | SOPS 복호화 보조 | `ANVYC_EXTRAS=encryption bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)` |
 <!-- END companion-tools -->
 
 > 위 표는 [`scripts/gen_extras.py`](./scripts/gen_extras.py) 가 `EXTRAS_REGISTRY`
 > (단일 SoT, `src/anvyc/core/extras.py`) 에서 생성한다 (CI 의 `--check` 가 drift 차단).
 >
-> `pip extra` 행의 `pip install` 은 **anvyc 가 이미 설치된 그 환경의 pip** 로 실행할 때만
-> extras 를 더한다 — anvyc 는 PyPI 에 없다. 설치 방식별 방법은 [§5.7](#57-업그레이드와-extras-추가-설치-방식별).
+> `pip extra` 행의 명령은 install.sh 설치본 기준이다. 지금 쓰는 설치 방식(개발 설치·uv tool·
+> pipx·Homebrew·venv)에 맞춘 명령은 `anvyc extras` 와 `anvyc doctor` 가 이미 설치된 extras 까지
+> 반영해 보여 준다 — anvyc 는 PyPI 에 없다. 설치 방식별 정리는 [§5.7](#57-업그레이드와-extras-추가-설치-방식별).
+>
+> extras 는 누적되지 않는다 — uv tool·pipx·install.sh 설치본은 재설치 때 그 명령에 적힌 extras 만
+> 남긴다. 여러 개가 필요하면 위 명령을 하나씩 실행하지 말고 `ANVYC_EXTRAS=mcp,tui` 처럼 한 번에
+> 적는다(`anvyc extras` 는 미설치가 둘 이상이면 합산 명령을 따로 보여 준다).
 
 ---
 

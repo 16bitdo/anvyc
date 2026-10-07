@@ -12,8 +12,8 @@ doctor 진입 cwd walk-up)로 한정한다. 프로젝트가 AWS profile 미사�
 profile). human/strict/json/MCP 모든 doctor 경로 공통(기본 동작).
 
 severity:
-  * boto3 미설치 → WARNING (graceful skip, suggestion 으로 `pip install
-    'anvyc[cost-aws]'` 안내)
+  * boto3 미설치 → WARNING (graceful skip, suggestion 으로 설치 방식별 명령 —
+    `install_hint("boto3")`)
   * profile 자체가 ~/.aws/config 에 없음 → result 없음 (silent)
   * SimulatePrincipalPolicy 결과 = "implicitDeny" / "explicitDeny" → WARNING
     + 정책 JSON 경로 안내
@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
+from anvyc.core.extras import install_hint
 from anvyc.utils.aws_config import load_aws_profile_names
 
 CHECK_NAME = "cost-aws-explorer-iam"
@@ -78,11 +79,11 @@ class CostAwsExplorerIamCheck:
                         "(cost-aws optional dep)"
                     ),
                     suggestion=(
-                        # --user 미사용: venv 안에서 `User site-packages are not
-                        # visible in this virtualenv` 로 실패한다. pipx/uv/brew/venv
-                        # 어디서든 복붙 가능하도록 plain install 로 안내.
-                        "pip install 'anvyc[cost-aws]' "
-                        "(설치 후 `anvyc cost collect --source aws` 가능)"
+                        # 설치 방식별 명령 — PATH 의 pip 는 uv tool·pipx·Homebrew 설치본과
+                        # 다른 환경이고 anvyc 는 PyPI 에 없다(2026-10-07 실측). 덧붙임은 셸 주석 —
+                        # 줄을 통째로 붙여 넣어도 문법이 맞는다.
+                        f"{install_hint('boto3')}  "
+                        "# 설치 후 `anvyc cost collect --source aws` 가능"
                     ),
                 )
             ]

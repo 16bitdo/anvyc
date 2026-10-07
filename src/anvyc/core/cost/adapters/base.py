@@ -43,9 +43,12 @@ class CostAdapterDepMissingError(RuntimeError):
     """optional dep 부재 graceful skip — doctor `cost-<src>-dep-missing` 이 catch."""
 
     def __init__(self, source: str, group: str) -> None:
+        # 지연 import — 어댑터 모듈 로드가 extras 레지스트리·설치 방식 판별을 끌어오지 않게.
+        from anvyc.core.extras import install_hint_for_extra
+
         super().__init__(
             f"cost adapter {source!r} requires optional dep group {group!r}; "
-            f"install with: pip install 'anvyc[{group}]'"
+            f"install with: {install_hint_for_extra(group)}"
         )
         self.source = source
         self.group = group

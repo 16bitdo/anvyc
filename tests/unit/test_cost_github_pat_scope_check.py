@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from anvyc.checks.cost_github_pat_scope import (
     CHECK_NAME,
     CostGithubPatScopeCheck,
 )
+from anvyc.core.extras import install_hint
 
 
 def _mock_one_account(user: str = "16bitdo", config_dir: str = "/tmp/gh") -> Any:
@@ -53,7 +55,19 @@ def test_httpx_missing_yields_warning(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res[0].check_name == CHECK_NAME
     assert "httpx" in res[0].message
     assert res[0].suggestion is not None
-    assert "anvyc[cost-github]" in res[0].suggestion
+    assert install_hint("httpx") in res[0].suggestion
+
+
+def test_httpx_missing_suggestion_is_one_pasteable_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """suggestion 줄을 통째로 붙여 넣어도 bash 문법이 맞는다 — 덧붙인 설명은 셸 주석."""
+    monkeypatch.setattr(
+        "anvyc.checks.cost_github_pat_scope._httpx_available",
+        lambda: False,
+    )
+    (r,) = CostGithubPatScopeCheck().run(CheckContext())
+    assert r.suggestion is not None
+    proc = subprocess.run(["bash", "-n", "-c", r.suggestion], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_no_accounts_yields_silent(monkeypatch: pytest.MonkeyPatch) -> None:

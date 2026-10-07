@@ -20,6 +20,7 @@ from anvyc.core.extras import (
     installed_version,
     is_available,
 )
+from anvyc.core.install_method import INSTALL_SH_URL
 
 _ALL = list(EXTRAS_REGISTRY)
 
@@ -43,7 +44,9 @@ def test_required_fields(req: ExtraReq) -> None:
 def test_kind_specific_invariants(req: ExtraReq) -> None:
     if req.kind == "pyextra":
         assert req.pip_extra, f"{req.name}: pyextra 는 pip_extra 필수"
-        assert "pip install" in req.install_cmd, f"{req.name}: pyextra install_cmd 이상"
+        # README 표용 정적 명령 = install.sh 설치본 기준. 런타임 안내는 install_hint 가 만든다.
+        expected = f"ANVYC_EXTRAS={req.pip_extra} bash <(curl -sSL {INSTALL_SH_URL})"
+        assert req.install_cmd == expected, f"{req.name}: pyextra install_cmd 이상"
     else:  # binary
         assert req.pip_extra is None, f"{req.name}: binary 는 pip_extra 없어야 함"
 
