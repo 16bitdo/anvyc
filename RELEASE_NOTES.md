@@ -1,5 +1,58 @@
 # anvyc 릴리즈 노트
 
+## v0.25.0 — 2026-10-07 (minor — doctor JSON · MCP 에 extras 안내를 합친 명령)
+
+v0.24.1 이후 1 커밋(feat 1). doctor 를 기계가 읽는 두 경로 — `anvyc doctor --json` 과 MCP `doctor`
+tool — 에 extras 설치 안내를 합친 명령을 더했다.
+
+### doctor JSON · MCP 에 `extras_install` (#233)
+
+v0.24.0 부터 사람용 `anvyc doctor` 는 extras 설치 안내가 둘 이상이면 합친 명령을 한 줄 더 보여 준다.
+check 별 안내는 각자 표시 시점 상태로 계산돼 서로를 모르므로, uv tool · pipx · install.sh 설치본에서
+차례로 실행하면 재설치가 앞의 extras 를 지우기 때문이다. 그런데 JSON 을 읽는 CI 와 MCP `doctor` tool 을
+쓰는 에이전트에는 그 신호가 없었다 — 에이전트가 suggestion 을 하나씩 실행하면 같은 일이 생긴다.
+
+이제 두 출력 모두 최상위에 `extras_install` 을 낸다.
+
+```json
+"extras_install": {
+  "extras": ["mcp", "cost-github"],
+  "command": "ANVYC_VERSION=v0.25.0 ANVYC_EXTRAS=mcp,cost-github bash <(curl -sSL …/install.sh)"
+}
+```
+
+- **`null` 이 아니면 check 별 extras suggestion 대신 `command` 하나를 실행한다.** `command` 는 실행 중인
+  anvyc 의 설치 방식에 맞추고, 이미 설치된 extras 를 함께 적는다.
+- blocking(warning* · critical) 결과의 extras 안내만 합친다. 선택 항목(info — 예: `tui-extra-importable`)은
+  `results` 에만 있다.
+- extras 안내가 1건이어도 채운다(그때 `command` 는 그 suggestion 의 명령과 같다) — 기계 소비자에게는
+  "`null` 이 아니면 실행" 한 규칙을 준다. 사람용 출력의 합산 줄은 그대로 2건부터다.
+- MCP `doctor` tool 의 설명에도 이 규칙을 적었다 — MCP 클라이언트는 tool 설명을 읽는다.
+
+**호환** — 필드 추가다. `results` · `summary` · Result 객체는 그대로라 jq · 일반 파서는 바꿀 것이 없다.
+최상위 키 집합을 정확히 고정한 검증기만 `extras_install` 을 더하면 된다. 스키마는
+`docs/doctor-json-schema.md` §5.2.
+
+```bash
+anvyc doctor --json | jq -r '.extras_install.command // empty'
+```
+
+### 업그레이드
+
+설치 방식별 정리는 README §5.7.
+
+```bash
+# Homebrew
+brew update && brew upgrade anvyc
+
+# install.sh 설치본 (uv tool · pipx) — 같은 명령을 다시 실행한다. extras 를 쓰면 전부 적는다
+bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_EXTRAS=mcp,tui bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+breaking change 는 없다(위 필드 추가뿐). 실행 중인 `anvyc serve --mcp` 는 업그레이드 뒤에도 옛 코드로
+돈다 — MCP `doctor` 결과에 `extras_install` 이 보이려면 IDE · 세션에서 MCP 를 다시 연결한다.
+
 ## v0.24.1 — 2026-10-07 (patch — Homebrew 설치본의 extras 안내 정정)
 
 v0.24.0 이후 1 커밋(fix 1). v0.24.0 의 Homebrew 배포본을 검증하다 드러난 문제를 고친 패치다.
