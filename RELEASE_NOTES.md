@@ -1,5 +1,51 @@
 # anvyc 릴리즈 노트
 
+## v0.24.1 — 2026-10-07 (patch — Homebrew 설치본의 extras 안내 정정)
+
+v0.24.0 이후 1 커밋(fix 1). v0.24.0 의 Homebrew 배포본을 검증하다 드러난 문제를 고친 패치다.
+
+### Homebrew 설치본의 extras 안내에 고른 적 없는 extras 가 섞였다 (#231)
+
+v0.24.0 은 extras 설치 안내에 **이미 설치된 extras** 를 함께 적는다 — uv tool · pipx · install.sh
+설치본은 재설치가 명령에 없는 extras 를 지우기 때문이다. 그런데 Homebrew formula 의 venv 는
+`--system-site-packages` 로 만들어져 brew python 전역의 패키지도 import 한다. v0.24.0 검증 설치에서
+전역의 httpx · cryptography 가 cost-github · encryption 으로 잡혀, mcp 하나를 안내하는 명령이 이렇게
+나왔다.
+
+```
+ANVYC_EXTRAS=mcp,cost-github,encryption bash <(curl -sSL …/install.sh)  # Homebrew 설치본은 …
+```
+
+- 이제 "이미 설치된 extras" 는 **그 설치본의 환경에 직접 설치된 것**만 센다 — venv 에서는 패키지가
+  그 venv 안에 있을 때만 센다. 위 경우 안내는 `ANVYC_EXTRAS=mcp …` 다.
+- venv 가 아니면(시스템 python · `--user`) 이전처럼 보이는 것을 모두 센다. 패키지 위치를 알 수
+  없으면 센다 — 빠뜨리면 재설치가 그 extras 를 지운다.
+- 설치 여부 표시는 그대로다. check 와 `anvyc extras` 는 import 할 수 있는지를 보므로, 전역 패키지로
+  실제 동작하는 기능은 계속 '설치됨' 으로 보인다. doctor 가 합친 명령을 낼 때 쓰는 '없음' 도 같은
+  기준이다.
+- 영향은 `--system-site-packages` venv(Homebrew 설치본, 그렇게 만든 venv)의 안내뿐이다. uv tool ·
+  pipx · 개발 설치 · 일반 venv 는 결과가 같다.
+
+Homebrew 에서 install.sh 로 옮길 때, 전역 패키지 덕에 동작하던 extras(위 예의 cost-github ·
+encryption)는 따라가지 않는다. 새 설치본에서 `anvyc extras` 가 미설치로 보여 주니 필요하면 그때
+추가한다.
+
+### 업그레이드
+
+설치 방식별 정리는 README §5.7.
+
+```bash
+# Homebrew
+brew update && brew upgrade anvyc
+
+# install.sh 설치본 (uv tool · pipx) — 같은 명령을 다시 실행한다. extras 를 쓰면 전부 적는다
+bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+ANVYC_EXTRAS=mcp,tui bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+breaking change 는 없다. 실행 중인 `anvyc serve --mcp` 는 업그레이드 뒤에도 옛 코드로 돈다 —
+IDE · 세션에서 MCP 를 다시 연결한다.
+
 ## v0.24.0 — 2026-10-07 (minor — 설치 안내가 설치 방식을 따른다)
 
 v0.23.0 이후 3 커밋(feat 1 · fix 1 · docs 1)을 모은 릴리스. 축은 하나다 — **anvyc 가 알려 주는
