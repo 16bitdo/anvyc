@@ -8,6 +8,7 @@ Homebrew 의 Cellar/anvyc prefix)을 따른다.
 from __future__ import annotations
 
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -152,8 +153,8 @@ _WHEEL = (
         ),
         (
             InstallContext("homebrew", "/py"),
-            "Homebrew 설치본은 extras 를 지원하지 않습니다 — install.sh 로 옮기세요: "
-            f"ANVYC_EXTRAS=mcp,cost-aws {_SH} (설치 방식별: {_README})",
+            f"ANVYC_EXTRAS=mcp,cost-aws {_SH}  # Homebrew 설치본은 extras 를 지원하지 않는다 — "
+            f"install.sh 로 옮긴다. 설치 방식별: {_README}",
         ),
         (
             InstallContext("venv", "/v/bin/python"),
@@ -161,7 +162,7 @@ _WHEEL = (
         ),
         (
             InstallContext("unknown", "/py"),
-            f"ANVYC_EXTRAS=mcp,cost-aws {_SH} (설치 방식별: {_README})",
+            f"ANVYC_EXTRAS=mcp,cost-aws {_SH}  # 설치 방식별: {_README}",
         ),
     ],
     ids=["dev", "uv-tool", "uv-tool-source", "pipx", "homebrew", "venv", "unknown"],
@@ -175,7 +176,7 @@ def test_non_release_version_is_not_pinned(version: str) -> None:
     uv = extras_install_command(["mcp"], ctx=InstallContext("uv-tool", "/py"), version=version)
     assert uv == f"ANVYC_EXTRAS=mcp {_SH}"
     venv = extras_install_command(["mcp"], ctx=InstallContext("venv", "/py"), version=version)
-    assert venv == f"ANVYC_EXTRAS=mcp {_SH} (설치 방식별: {_README})"
+    assert venv == f"ANVYC_EXTRAS=mcp {_SH}  # 설치 방식별: {_README}"
 
 
 def test_paths_with_spaces_are_quoted() -> None:
@@ -231,3 +232,15 @@ def test_no_generated_command_resolves_the_name_on_pypi(method: InstallMethod) -
     ctx = InstallContext(method, "/py", Path("/s/anvyc"))
     cmd = extras_install_command(["mcp"], ctx=ctx, version="0.23.0")
     assert not re.search(r"(?<![\w/.-])anvyc\[[^\]]*\](?!\s*@)", cmd), cmd
+
+
+@pytest.mark.parametrize("method", _METHODS)
+def test_whole_hint_line_is_valid_bash(method: InstallMethod) -> None:
+    """한 줄을 통째로 붙여 넣어도 셸 문법 오류가 없다 — 안내는 그 자체로 복붙용 줄이다.
+
+    리뷰(2026-10-07): `… (설치 방식별: URL)` 꼴은 붙여 넣으면 `syntax error near '('` 였다.
+    """
+    ctx = InstallContext(method, "/py", Path("/s/anvyc"))
+    cmd = extras_install_command(["mcp"], ctx=ctx, version="0.23.0")
+    r = subprocess.run(["bash", "-n", "-c", cmd], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

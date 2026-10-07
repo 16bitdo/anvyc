@@ -552,7 +552,9 @@ class ExtraReq:
 pyextra 의 런타임 안내는 설치 방식을 따른다 — `core/install_method.py` 가 실행 중인 anvyc 의
 설치 방식(dev·uv tool·uv tool 로컬 소스·pipx·Homebrew·venv)을 판별하고(`detect`), 이미 설치된
 extras 를 합친 목록으로 그 방식의 명령을 만든다(`extras_install_command`). 경로는
-`install_hint` → `install_hint_for_extra` 하나다. anvyc 는 PyPI 에 없어 이름으로 찾는 설치는 새
+`install_hint` → `install_hint_for_extra` → `install_hint_for_extras` 하나다. 재설치형 설치본은
+extras 가 쌓이지 않아 따로 계산한 안내를 차례로 실행하면 앞의 것을 지우므로, `anvyc extras` 와
+doctor 는 안내가 둘 이상이면 합산 명령을 따로 낸다. anvyc 는 PyPI 에 없어 이름으로 찾는 설치는 새
 환경에서 실패하고 이름 선점에 노출되므로 쓰지 않는다(`test_no_pypi_name_install_hints` 가 src 전체를
 막는다). 정적 `install_cmd` 는 README 표용 install.sh 형이다. spec:
 `docs/superpowers/specs/2026-10-07-install-method-aware-extras-hints-design.md`.

@@ -117,6 +117,10 @@ anvyc는 이 문제들을 **도구별 safe adapter** + **secret 기본 제외** 
 > `pip extra` 행의 명령은 install.sh 설치본 기준이다. 지금 쓰는 설치 방식(개발 설치·uv tool·
 > pipx·Homebrew·venv)에 맞춘 명령은 `anvyc extras` 와 `anvyc doctor` 가 이미 설치된 extras 까지
 > 반영해 보여 준다 — anvyc 는 PyPI 에 없다. 설치 방식별 정리는 [§5.7](#57-업그레이드와-extras-추가-설치-방식별).
+>
+> extras 는 누적되지 않는다 — uv tool·pipx·install.sh 설치본은 재설치 때 그 명령에 적힌 extras 만
+> 남긴다. 여러 개가 필요하면 위 명령을 하나씩 실행하지 말고 `ANVYC_EXTRAS=mcp,tui` 처럼 한 번에
+> 적는다(`anvyc extras` 는 미설치가 둘 이상이면 합산 명령을 따로 보여 준다).
 
 ---
 

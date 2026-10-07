@@ -67,3 +67,14 @@ def test_collect_status_pyextra_command_is_runtime_hint(
             req = ex.find(row["name"])
             assert req is not None
             assert row["install_cmd"] == req.install_cmd
+
+
+def test_hint_for_several_extras_merges_with_installed(
+    monkeypatch: pytest.MonkeyPatch, uv_tool: None
+) -> None:
+    """행별 명령은 표시 시점 상태로 계산돼 서로를 모른다 — 여러 개는 합산 명령 하나로(리뷰 I-1)."""
+    monkeypatch.setattr(ex, "installed_pip_extras", lambda: ("tui",))
+    assert ex.install_hint_for_extras(["cost-aws", "mcp"]) == (
+        f"ANVYC_VERSION=v1.2.3 ANVYC_EXTRAS=mcp,tui,cost-aws {_SH}"
+    )
+    assert ex.install_hint_for_extra("mcp") == ex.install_hint_for_extras(["mcp"])

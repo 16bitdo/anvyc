@@ -80,9 +80,10 @@ class CostAwsExplorerIamCheck:
                     ),
                     suggestion=(
                         # 설치 방식별 명령 — PATH 의 pip 는 uv tool·pipx·Homebrew 설치본과
-                        # 다른 환경이고 anvyc 는 PyPI 에 없다(2026-10-07 실측).
+                        # 다른 환경이고 anvyc 는 PyPI 에 없다(2026-10-07 실측). 덧붙임은 셸 주석 —
+                        # 줄을 통째로 붙여 넣어도 문법이 맞는다.
                         f"{install_hint('boto3')}  "
-                        "(설치 후 `anvyc cost collect --source aws` 가능)"
+                        "# 설치 후 `anvyc cost collect --source aws` 가능"
                     ),
                 )
             ]

@@ -40,7 +40,14 @@ from anvyc.core.creds import (
 )
 from anvyc.core.diff import compute_diff
 from anvyc.core.doctor import CheckRun, DoctorReport, run_doctor
-from anvyc.core.extras import collect_extras_status, install_hint, is_available
+from anvyc.core.extras import (
+    collect_extras_status,
+    install_hint,
+    install_hint_for_extra,
+    install_hint_for_extras,
+    is_available,
+    missing_pip_extras,
+)
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
 from anvyc.core.snapshot import (
@@ -704,6 +711,7 @@ def _print_summary(report: DoctorReport) -> None:
         return
     _print_doctor_header("anvyc doctor", report.results, runs=report.runs)
     _print_findings(report.results, cap=_SUMMARY_GROUP_CAP)
+    _print_extras_footer(report.results)
     console.print(
         "\n[dim]전체 finding: [/][cyan]anvyc doctor --verbose[/]"
         "   [dim]· 기계 출력: [/][cyan]anvyc doctor --json[/]",
@@ -719,6 +727,32 @@ def _print_verbose(report: DoctorReport) -> None:
     _print_check_list(report.runs)
     if report.results:
         _print_findings(report.results, cap=None)
+        _print_extras_footer(report.results)
+
+
+def _print_extras_footer(results: list[CheckResult]) -> None:
+    """화면에 나간 extras 설치 안내가 2건 이상이면 합산 명령을 한 줄 더 낸다.
+
+    행별 안내는 표시 시점 상태로 계산돼 서로를 모른다 — 재설치형 설치(uv tool·pipx·install.sh)
+    에서 차례로 실행하면 뒤 명령이 앞 extra 를 지운다(2026-10-07 리뷰 실측). 안내는 blocking 만
+    화면에 나가므로 그것만 센다. 안내 하나는 키 하나로만 센다 — dev 설치에서는 기본 extras 에 든
+    키들의 안내가 같은 문자열이라 한 안내가 여러 키에 맞는다.
+    """
+    shown = [r.suggestion for r in results if r.severity.is_blocking and r.suggestion]
+    hints = [(key, install_hint_for_extra(key)) for key in missing_pip_extras()]
+    keys: list[str] = []
+    for suggestion in shown:
+        key = next((k for k, hint in hints if suggestion.startswith(hint)), None)
+        if key is not None and key not in keys:
+            keys.append(key)
+    if len(keys) < 2:
+        return
+    console.print(
+        f"\n[yellow]extras 설치 안내 {len(keys)}건[/] — 하나씩 실행하면 서로를 지운다"
+        "(uv tool·pipx·install.sh 설치본). 한 번에:",
+        soft_wrap=True,
+    )
+    console.print(f"  {escape(install_hint_for_extras(keys))}", soft_wrap=True)
 
 
 def _render_project_doctor(report: ProjectDoctorReport) -> None:
@@ -815,13 +849,21 @@ def extras(
         absent = [r for r in rows if r["relevant"] and not r["installed"]]
         if absent:
             console.print(
-                f"\n[yellow]{len(absent)}개 미설치[/] — 필요한 기능의 명령만 골라 실행하세요 "
-                "(현재 설치 방식 기준, 이미 설치된 extras 유지):"
+                f"\n[yellow]{len(absent)}개 미설치[/] — 필요한 기능의 명령을 실행하세요(현재 설치 "
+                "방식 기준, 이미 설치된 extras 유지). 행별 명령은 서로를 대체하니 여러 개면 맨 아래 "
+                "합산 명령을 쓰세요:",
+                soft_wrap=True,
             )
             # 표 칸은 긴 명령을 접는다 — 복붙용 전문은 여기서 한 줄로(soft_wrap).
             for r in absent:
                 console.print(f"  [dim]# {escape(r['label'])}[/]")
                 console.print(f"  {escape(r['install_cmd'])}", soft_wrap=True)
+            # 행별 명령은 표시 시점 상태로 계산돼 서로를 모른다 — 재설치형 설치(uv tool·pipx·
+            # install.sh)에서 차례로 실행하면 뒤 명령이 앞 extra 를 지운다(리뷰 실측).
+            keys = [str(r["pip_extra"]) for r in absent if r["kind"] == "pyextra" and r["pip_extra"]]
+            if len(keys) >= 2:
+                console.print("  [dim]# 여러 개를 한 번에[/]")
+                console.print(f"  {escape(install_hint_for_extras(keys))}", soft_wrap=True)
         else:
             console.print("\n[green]모든 동반 도구 설치됨[/]")
 

@@ -238,7 +238,27 @@ def install_hint(name: str) -> str:
 
 def install_hint_for_extra(pip_extra: str) -> str:
     """pip extra 키 하나를 현재 설치 방식으로 더하는 명령 — 이미 설치된 extras 를 보존한다."""
-    return extras_install_command(_order_extras({pip_extra, *installed_pip_extras()}))
+    return install_hint_for_extras([pip_extra])
+
+
+def install_hint_for_extras(pip_extras: Iterable[str]) -> str:
+    """pip extra 키 여럿을 한 명령으로 — 이미 설치된 extras 와 합친다.
+
+    행별 명령은 표시 시점 상태로 계산돼 서로를 모른다. uv tool·pipx·install.sh 설치본은 재설치가
+    요구 문자열의 extras 로 환경을 맞추므로, 두 명령을 차례로 실행하면 뒤 명령이 앞 extra 를
+    지운다(2026-10-07 리뷰 실측). 여러 개가 필요하면 이 합산 명령을 쓴다.
+    """
+    return extras_install_command(_order_extras({*pip_extras, *installed_pip_extras()}))
+
+
+def missing_pip_extras() -> tuple[str, ...]:
+    """probe dist 가 없는 pyextra 의 pip extra 키(레지스트리 순서)."""
+    installed = set(installed_pip_extras())
+    out: list[str] = []
+    for req in EXTRAS_REGISTRY:
+        if req.kind == "pyextra" and req.pip_extra and req.pip_extra not in installed:
+            out.append(req.pip_extra)
+    return tuple(out)
 
 
 def installed_pip_extras() -> tuple[str, ...]:

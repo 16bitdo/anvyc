@@ -175,14 +175,15 @@ def extras_install_command(
     if ctx.method == "pipx":
         return _install_sh(csv, version=release, method="pipx")
     if ctx.method == "homebrew":
+        # 안내는 명령 + 셸 주석 꼴 — 줄을 통째로 붙여 넣어도 문법이 맞는다(괄호 안내는 syntax error).
         return (
-            "Homebrew 설치본은 extras 를 지원하지 않습니다 — install.sh 로 옮기세요: "
-            f"{_install_sh(csv, version=None)} (설치 방식별: {README_INSTALL_URL})"
+            f"{_install_sh(csv, version=None)}  # Homebrew 설치본은 extras 를 지원하지 않는다 — "
+            f"install.sh 로 옮긴다. 설치 방식별: {README_INSTALL_URL}"
         )
     if ctx.method == "venv" and release is not None:
         spec = shlex.quote(f"anvyc[{csv}] @ {RELEASE_WHEEL_URL.format(v=release)}")
         return f"{shlex.quote(ctx.python)} -m pip install {spec}"
-    return f"{_install_sh(csv, version=None)} (설치 방식별: {README_INSTALL_URL})"
+    return f"{_install_sh(csv, version=None)}  # 설치 방식별: {README_INSTALL_URL}"
 
 
 def _install_sh(csv: str, *, version: str | None, method: str | None = None) -> str:

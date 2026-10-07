@@ -105,3 +105,39 @@ def test_missing_rows_print_full_command_on_one_line(monkeypatch: pytest.MonkeyP
     assert result.exit_code == 0, result.output
     out = _ANSI.sub("", result.output)
     assert any(line.strip() == cmd for line in out.splitlines()), out
+
+
+def _pyextra_row(name: str, key: str) -> dict[str, object]:
+    return {
+        "name": name,
+        "kind": "pyextra",
+        "label": name,
+        "purpose": "x",
+        "installed": False,
+        "version": None,
+        "install_cmd": f"CMD-{key}",
+        "install_url": None,
+        "pip_extra": key,
+        "required": False,
+        "platform": None,
+        "relevant": True,
+    }
+
+
+def test_two_missing_extras_also_print_one_combined_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """행별 명령은 서로를 대체한다(재설치형 설치) — 2개 이상이면 합산 명령을 함께 낸다(리뷰 I-1)."""
+    rows = [_pyextra_row("mcp", "mcp"), _pyextra_row("boto3", "cost-aws")]
+    monkeypatch.setattr(cli, "collect_extras_status", lambda: rows)
+    monkeypatch.setattr(cli, "install_hint_for_extras", lambda keys: "COMBINED " + ",".join(keys))
+    out = _ANSI.sub("", CliRunner().invoke(app, ["extras"]).output)
+    assert "COMBINED mcp,cost-aws" in [line.strip() for line in out.splitlines()], out
+    assert "서로를 대체" in out
+
+
+def test_single_missing_extra_has_no_combined_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "collect_extras_status", lambda: [_pyextra_row("mcp", "mcp")])
+    monkeypatch.setattr(cli, "install_hint_for_extras", lambda keys: "COMBINED " + ",".join(keys))
+    out = _ANSI.sub("", CliRunner().invoke(app, ["extras"]).output)
+    assert "COMBINED" not in out

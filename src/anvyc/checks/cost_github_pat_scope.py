@@ -131,7 +131,7 @@ class CostGithubPatScopeCheck:
                     suggestion=(
                         # 설치 방식별 명령 — cost_aws_explorer_iam 와 같은 근거.
                         f"{install_hint('httpx')}  "
-                        "(설치 후 `anvyc cost collect --source github` 가능)"
+                        "# 설치 후 `anvyc cost collect --source github` 가능"
                     ),
                 )
             ]

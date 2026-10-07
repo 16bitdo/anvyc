@@ -6,6 +6,7 @@ sts/iam client 동작 교체.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -56,6 +57,20 @@ def test_boto3_missing_yields_warning(
     assert "boto3" in res[0].message
     assert res[0].suggestion is not None
     assert install_hint("boto3") in res[0].suggestion
+
+
+def test_boto3_missing_suggestion_is_one_pasteable_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """suggestion 줄을 통째로 붙여 넣어도 bash 문법이 맞는다 — 덧붙인 설명은 셸 주석."""
+    monkeypatch.setattr(
+        "anvyc.checks.cost_aws_explorer_iam._boto3_available",
+        lambda: False,
+    )
+    (r,) = CostAwsExplorerIamCheck().run(CheckContext())
+    assert r.suggestion is not None
+    proc = subprocess.run(["bash", "-n", "-c", r.suggestion], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_empty_aws_config_yields_silent(
