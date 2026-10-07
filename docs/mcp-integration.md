@@ -41,11 +41,18 @@ anvyc --version           # v0.9.0 이상
 `anvyc[mcp]` 미설치 환경에서 `anvyc serve --mcp` 실행 시:
 
 ```
-error: anvyc MCP server requires the [mcp] extra. Install: pip install 'anvyc[mcp]'
+error: anvyc MCP server requires the [mcp] extra. Install: <지금 설치 방식에 맞춘 명령>
 ```
 
-이 안내의 `pip install` 은 anvyc 가 설치된 **그 환경의 pip** 를 전제한다 — 설치 방식별로는
-위의 명령을 쓴다.
+명령은 실행 중인 anvyc 의 설치 방식(개발 설치·uv tool·pipx·Homebrew·venv)을 판별해 만들고,
+이미 설치된 extras 를 함께 적는다(재설치가 빠진 extras 를 지우므로). 예 — install.sh 로 설치한
+v0.23.0:
+
+```
+error: anvyc MCP server requires the [mcp] extra. Install: ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp bash <(curl -sSL https://raw.githubusercontent.com/16bitdo/anvyc/main/install.sh)
+```
+
+`anvyc extras` · `anvyc doctor` 의 안내도 같은 규칙이다.
 
 ---
 
