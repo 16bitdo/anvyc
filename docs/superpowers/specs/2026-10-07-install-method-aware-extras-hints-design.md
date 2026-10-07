@@ -172,6 +172,7 @@ README 표: scripts/gen_extras.py → render_extras_markdown() → 정적 instal
 
 - `detect()` 는 receipt TOML·pipx JSON 파싱 실패, 권한 오류 등 어떤 예외도 삼키고 다음 신호로 넘어간다 — 안내 문구가 doctor 를 죽이면 안 된다.
 - `installed_pip_extras()` 는 probe dist 로 판정하므로 과대 추정할 수 있다(`httpx`·`cryptography` 는 mcp 의 전이 의존). 과대 포함은 이미 있는 의존을 다시 요청할 뿐 무해하고, 과소 포함만 extras 를 지운다 — 그래서 probe 기반을 택한다.
+  - **보강(2026-10-07, v0.24.0 brew 검증 후속)**: venv 에서는 **이 환경에 직접 설치된** probe dist 만 센다. Homebrew formula venv 는 `--system-site-packages` 라 brew python 전역의 httpx·cryptography 가 cost-github·encryption 으로 잡혀, 사용자가 고른 적 없는 extras 가 이전 안내에 섞였다. 위치를 알 수 없으면 센다(과소 판정 회피), venv 가 아니면 보이는 것을 모두 센다. check·`anvyc extras` 의 설치 여부와 `missing_pip_extras` 는 import 가능 여부 그대로다.
 - `dev` 의 pip 는 extras 를 지우지 않지만(`pip install -e` 는 제거하지 않는다), venv 재생성 시를 위해 기본값을 포함한다.
 - uv tool 설치본에는 `uv` 가 반드시 있으므로 install.sh 의 auto 가 uv 를 고른다. pipx 는 uv 도 있을 수 있어 `ANVYC_METHOD=pipx` 를 명시한다.
 - `bash <(…)` 는 bash·zsh 용이다. fish 등은 범위 밖(README 와 동일).
