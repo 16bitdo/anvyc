@@ -554,7 +554,9 @@ pyextra 의 런타임 안내는 설치 방식을 따른다 — `core/install_met
 extras 를 합친 목록으로 그 방식의 명령을 만든다(`extras_install_command`). 경로는
 `install_hint` → `install_hint_for_extra` → `install_hint_for_extras` 하나다. 재설치형 설치본은
 extras 가 쌓이지 않아 따로 계산한 안내를 차례로 실행하면 앞의 것을 지우므로, `anvyc extras` 와
-doctor 는 안내가 둘 이상이면 합산 명령을 따로 낸다. 합치는 "이미 설치된 extras" 는 **이 환경에
+doctor 는 안내가 둘 이상이면 합산 명령을 따로 낸다. doctor `--json` 과 MCP `doctor` 는 같은 규칙
+(`DoctorReport.extras_install` → `combined_extras_install`, blocking 만)으로 `extras_install` 을 1건부터
+낸다(doctor-json-schema §5.2). 합치는 "이미 설치된 extras" 는 **이 환경에
 직접 설치된** probe dist 로 센다(`installed_pip_extras` · `_in_this_env`) — Homebrew formula venv 처럼
 `--system-site-packages` 인 venv 에 비친 전역 패키지는 넣지 않는다. 반면 check · `anvyc extras` 의
 설치 여부와 doctor 꼬리말의 '없음'(`missing_pip_extras`)은 import 가능 여부로 본다. anvyc 는 PyPI 에

@@ -101,6 +101,32 @@ def test_dispatch_doctor() -> None:
     result = _dispatch("doctor", {"only": ["venv-hidden-flag"]})
     assert "results" in result
     assert isinstance(result["results"], list)
+    assert "extras_install" in result
+
+
+def test_dispatch_doctor_carries_combined_extras_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MCP 에이전트가 check 별 suggestion 을 차례로 실행하지 않게 — 합친 명령을 함께 준다."""
+    import anvyc.core.doctor as doctor_mod
+    from anvyc.checks.base import CheckResult, Severity
+    from anvyc.core import extras as ex
+    from anvyc.core.doctor import CheckRun, DoctorReport
+    from anvyc.mcp.server import _dispatch
+
+    monkeypatch.setattr(ex, "installed_pip_extras", lambda: ())
+    monkeypatch.setattr(ex, "_pyextra_version", lambda req: None)
+    results = [
+        CheckResult(check_name="mcp-extra-importable", severity=Severity.WARNING,
+                    message="missing", suggestion=ex.install_hint("mcp")),
+        CheckResult(check_name="cost-github-pat-scope", severity=Severity.WARNING,
+                    message="missing", suggestion=ex.install_hint("httpx")),
+    ]
+    report = DoctorReport(results=results, runs=[CheckRun(r.check_name, [r]) for r in results])
+    monkeypatch.setattr(doctor_mod, "run_doctor", lambda **_kw: report)
+    result = _dispatch("doctor", {})
+    assert result["extras_install"] == {
+        "extras": ["mcp", "cost-github"],
+        "command": ex.install_hint_for_extras(["mcp", "cost-github"]),
+    }
 
 
 def test_dispatch_tools_list() -> None:

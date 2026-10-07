@@ -43,10 +43,8 @@ from anvyc.core.doctor import CheckRun, DoctorReport, run_doctor
 from anvyc.core.extras import (
     collect_extras_status,
     install_hint,
-    install_hint_for_extra,
     install_hint_for_extras,
     is_available,
-    missing_pip_extras,
 )
 from anvyc.core.list import list_backups
 from anvyc.core.restore import run_restore
@@ -535,9 +533,12 @@ def doctor(
     report = run_doctor(config_path=config, only=only or None, skip=skip or None)
 
     if json_out:
+        combined = report.extras_install()
         payload = {
             "results": [r.to_dict() for r in report.results],
             "summary": _summary_counts(report),
+            # check 별 extras suggestion 을 차례로 실행하면 서로를 지운다 — 합친 명령 하나(없으면 null)
+            "extras_install": combined.to_dict() if combined else None,
         }
         typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
     elif verbose:
@@ -711,7 +712,7 @@ def _print_summary(report: DoctorReport) -> None:
         return
     _print_doctor_header("anvyc doctor", report.results, runs=report.runs)
     _print_findings(report.results, cap=_SUMMARY_GROUP_CAP)
-    _print_extras_footer(report.results)
+    _print_extras_footer(report)
     console.print(
         "\n[dim]전체 finding: [/][cyan]anvyc doctor --verbose[/]"
         "   [dim]· 기계 출력: [/][cyan]anvyc doctor --json[/]",
@@ -727,32 +728,26 @@ def _print_verbose(report: DoctorReport) -> None:
     _print_check_list(report.runs)
     if report.results:
         _print_findings(report.results, cap=None)
-        _print_extras_footer(report.results)
+        _print_extras_footer(report)
 
 
-def _print_extras_footer(results: list[CheckResult]) -> None:
+def _print_extras_footer(report: DoctorReport) -> None:
     """화면에 나간 extras 설치 안내가 2건 이상이면 합산 명령을 한 줄 더 낸다.
 
     행별 안내는 표시 시점 상태로 계산돼 서로를 모른다 — 재설치형 설치(uv tool·pipx·install.sh)
-    에서 차례로 실행하면 뒤 명령이 앞 extra 를 지운다(2026-10-07 리뷰 실측). 안내는 blocking 만
-    화면에 나가므로 그것만 센다. 안내 하나는 키 하나로만 센다 — dev 설치에서는 기본 extras 에 든
-    키들의 안내가 같은 문자열이라 한 안내가 여러 키에 맞는다.
+    에서 차례로 실행하면 뒤 명령이 앞 extra 를 지운다(2026-10-07 리뷰 실측). 모으는 규칙은
+    `--json` 의 `extras_install` 과 같다(DoctorReport.extras_install) — 1건이면 그 안내가 곧
+    합친 명령이라 화면에는 2건부터 낸다.
     """
-    shown = [r.suggestion for r in results if r.severity.is_blocking and r.suggestion]
-    hints = [(key, install_hint_for_extra(key)) for key in missing_pip_extras()]
-    keys: list[str] = []
-    for suggestion in shown:
-        key = next((k for k, hint in hints if suggestion.startswith(hint)), None)
-        if key is not None and key not in keys:
-            keys.append(key)
-    if len(keys) < 2:
+    combined = report.extras_install()
+    if combined is None or len(combined.extras) < 2:
         return
     console.print(
-        f"\n[yellow]extras 설치 안내 {len(keys)}건[/] — 하나씩 실행하면 서로를 지운다"
+        f"\n[yellow]extras 설치 안내 {len(combined.extras)}건[/] — 하나씩 실행하면 서로를 지운다"
         "(uv tool·pipx·install.sh 설치본). 한 번에:",
         soft_wrap=True,
     )
-    console.print(f"  {escape(install_hint_for_extras(keys))}", soft_wrap=True)
+    console.print(f"  {escape(combined.command)}", soft_wrap=True)
 
 
 def _render_project_doctor(report: ProjectDoctorReport) -> None:

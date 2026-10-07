@@ -253,6 +253,37 @@ def install_hint_for_extras(pip_extras: Iterable[str]) -> str:
     return extras_install_command(_order_extras({*pip_extras, *installed_pip_extras()}))
 
 
+@dataclass(frozen=True)
+class CombinedExtrasInstall:
+    """여러 extras 안내를 합친 명령 — 사람용 doctor 꼬리말과 doctor JSON 의 `extras_install` 공용."""
+
+    extras: tuple[str, ...]  # 합친 안내의 pip extra 키(레지스트리 순서)
+    command: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"extras": list(self.extras), "command": self.command}
+
+
+def combined_extras_install(suggestions: Iterable[str]) -> CombinedExtrasInstall | None:
+    """extras 설치 안내인 suggestion 들을 명령 하나로 합친다 — 하나도 없으면 None.
+
+    안내는 표시 시점 상태로 따로 계산돼 서로를 모른다 — 재설치형 설치(uv tool·pipx·install.sh)에서
+    차례로 실행하면 뒤 명령이 앞 extra 를 지운다(2026-10-07 리뷰 실측). suggestion 은 미설치 extra
+    의 안내로 시작하는지로 알아본다(뒤에 붙은 셸 주석 허용). 안내 하나는 키 하나로만 센다 — dev
+    설치에서는 기본 extras 에 든 키들의 안내가 같은 문자열이라 한 안내가 여러 키에 맞는다.
+    """
+    hints = [(key, install_hint_for_extra(key)) for key in missing_pip_extras()]
+    keys: list[str] = []
+    for suggestion in suggestions:
+        key = next((k for k, hint in hints if suggestion.startswith(hint)), None)
+        if key is not None and key not in keys:
+            keys.append(key)
+    if not keys:
+        return None
+    ordered = _order_extras(keys)
+    return CombinedExtrasInstall(extras=tuple(ordered), command=install_hint_for_extras(ordered))
+
+
 def missing_pip_extras() -> tuple[str, ...]:
     """import 할 수 없는 pyextra 의 pip extra 키(레지스트리 순서) — check 와 같은 기준.
 

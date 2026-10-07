@@ -64,7 +64,7 @@ def test_design_section_header_states_actual_count() -> None:
 # 달라 하나의 정규식으로는 못 잡으므로 지점별로 명시한다 — 새 언급을 추가하면 여기도.
 _DOC_COUNT_MENTIONS = (
     ("README.md", r"환경 진단 \((\d+) check"),
-    ("docs/mcp-integration.md", r"`\{results\}` \((\d+) check\)"),
+    ("docs/mcp-integration.md", r"`\{results, extras_install\}` \((\d+) check\)"),
     ("DESIGN.md", r"✓ \d+/(\d+) checks clean"),
 )
 

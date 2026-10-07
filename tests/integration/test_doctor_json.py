@@ -37,7 +37,13 @@ def test_doctor_json_parses(tmp_path: Path) -> None:
     assert proc.returncode in (0, 1), proc.stderr
     data = json.loads(proc.stdout)
     assert isinstance(data, dict)
-    assert set(data.keys()) == {"results", "summary"}, data.keys()
+    assert set(data.keys()) == {"results", "summary", "extras_install"}, data.keys()
+    ei = data["extras_install"]
+    assert ei is None or (
+        set(ei) == {"extras", "command"}
+        and all(isinstance(k, str) for k in ei["extras"])
+        and isinstance(ei["command"], str)
+    ), ei
 
 
 def test_doctor_json_result_schema(tmp_path: Path) -> None:

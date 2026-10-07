@@ -38,6 +38,7 @@ from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.checks.work_cwd_track import WorkCwdTrackWiredCheck
 from anvyc.core.config import build_check_context, load_config
+from anvyc.core.extras import CombinedExtrasInstall, combined_extras_install
 
 
 @dataclass
@@ -84,6 +85,15 @@ class DoctorReport:
 
     def has_blocking(self) -> bool:
         return any(r.severity.is_blocking for r in self.results)
+
+    def extras_install(self) -> CombinedExtrasInstall | None:
+        """blocking 결과의 extras 안내를 합친 명령 — 사람용 꼬리말 · `--json` · MCP 공용.
+
+        선택 항목(INFO — 예: tui-extra-importable)은 합치지 않는다. 사람용 요약도 blocking 만 보인다.
+        """
+        return combined_extras_install(
+            r.suggestion for r in self.results if r.severity.is_blocking and r.suggestion
+        )
 
 
 _REGISTRY: dict[str, Check] = {
