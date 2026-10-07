@@ -1360,7 +1360,7 @@ git commit -m "docs: MCP 오류 인용과 DESIGN §11.2 를 설치 방식 판별
 ### Task 7: E2E · 게이트 · PR
 
 **Files:**
-- Create (scratchpad, 커밋 안 함): `/private/tmp/claude-501/-Users-edward-dev-anvyc/b36ba525-8031-465c-a1a1-e126df82d27f/scratchpad/e2e-extras-hints.sh`
+- Create (scratchpad, 커밋 안 함): `<scratchpad>/e2e-extras-hints.sh`
 
 **Interfaces:**
 - Consumes: 전체 브랜치
@@ -1368,14 +1368,14 @@ git commit -m "docs: MCP 오류 인용과 DESIGN §11.2 를 설치 방식 판별
 
 - [ ] **Step 1: E2E 스크립트 작성 — 격리 sandbox, 생성된 안내 명령을 그대로 실행**
 
-`/private/tmp/claude-501/-Users-edward-dev-anvyc/b36ba525-8031-465c-a1a1-e126df82d27f/scratchpad/e2e-extras-hints.sh`:
+`<scratchpad>/e2e-extras-hints.sh`:
 
 ```bash
 #!/usr/bin/env bash
 # 브랜치 wheel 을 uv tool·pipx·venv 로 설치(이미 tui 가 있는 상태)하고, mcp 가 없을 때 doctor 가
 # 내는 안내 명령을 그대로 실행해 mcp 설치 + tui 보존을 확인한다. 실제 ~/.local/bin·uv tool·pipx 무접촉.
 set -uo pipefail
-WT=/Users/edward/worktrees/anvyc-extras-hints
+WT="${WT:?브랜치를 체크아웃한 worktree 경로}"
 S="$(cd "$(dirname "$0")" && pwd)/e2e-hints-$(date +%s)"
 mkdir -p "$S"/{dist,tools,bin,cache,px,pb,shim}
 export UV_CACHE_DIR="$S/cache" UV_NO_PROGRESS=1 NO_COLOR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -1430,12 +1430,12 @@ echo "가드: dev wrapper 불변 = $([ "$B" = "$(shasum -a 256 "$HOME/.local/bin
 
 - [ ] **Step 2: 실행**
 
-Run: `bash /private/tmp/claude-501/-Users-edward-dev-anvyc/b36ba525-8031-465c-a1a1-e126df82d27f/scratchpad/e2e-extras-hints.sh`
+Run: `WT=<worktree> bash <scratchpad>/e2e-extras-hints.sh`
 Expected:
 - uv tool hint `ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,tui bash <(curl …)` → run rc=0, after `mcp=있음 tui=있음`
 - pipx hint `ANVYC_METHOD=pipx ANVYC_VERSION=v0.23.0 ANVYC_EXTRAS=mcp,tui bash <(curl …)` → rc=0, after `mcp=있음 tui=있음`
 - venv hint `<sbx>/venv/bin/python -m pip install 'anvyc[mcp,tui] @ https://…/v0.23.0/…whl'` → rc=0, after `mcp=있음 tui=있음`
-- dev hint `ANVYC_EXTRAS=dev,mcp,tui,… bash ~/worktrees/anvyc-extras-hints/scripts/dev-install.sh` → rc=0
+- dev hint `ANVYC_EXTRAS=dev,mcp,tui,… bash <worktree>/scripts/dev-install.sh` → rc=0
 - `가드: dev wrapper 불변 = yes`
 
 (Homebrew 는 실설치가 의존 업그레이드·cleanup 부수효과를 내므로 E2E 에서 제외 — 단위 테스트로 덮는다.)
