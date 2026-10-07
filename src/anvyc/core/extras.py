@@ -18,8 +18,11 @@ from __future__ import annotations
 import importlib.metadata as _md
 import platform
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
+
+from anvyc.core.install_method import INSTALL_SH_URL, extras_install_command
 
 # ExtraReq.kind 허용값 — drift 방지 (test_extras_registry 가 강제).
 EXTRA_KINDS: frozenset[str] = frozenset({"binary", "pyextra"})
@@ -44,6 +47,11 @@ class ExtraReq:
     install_url: str | None = None
     required: bool = False  # git 등 핵심 vs 선택
     platform: str | None = None  # "darwin" → 해당 OS 에서만 관련 (pbcopy/security)
+
+
+def _install_sh_cmd(pip_extra: str) -> str:
+    """README 표용 정적 명령 — install.sh 설치본 기준(권장 경로). 런타임 안내는 install_hint."""
+    return f"ANVYC_EXTRAS={pip_extra} bash <(curl -sSL {INSTALL_SH_URL})"
 
 
 # 단일 SoT. 순서 = `anvyc extras` / README 표 출력 순서 (binary 먼저, pyextra 다음).
@@ -127,7 +135,7 @@ EXTRAS_REGISTRY: tuple[ExtraReq, ...] = (
         purpose="MCP server 모드 (anvyc serve --mcp)",
         probe=("mcp",),
         pip_extra="mcp",
-        install_cmd="pip install 'anvyc[mcp]'",
+        install_cmd=_install_sh_cmd("mcp"),
     ),
     ExtraReq(
         name="textual",
@@ -136,7 +144,7 @@ EXTRAS_REGISTRY: tuple[ExtraReq, ...] = (
         purpose="tools configure 체크박스 TUI",
         probe=("textual",),
         pip_extra="tui",
-        install_cmd="pip install 'anvyc[tui]'",
+        install_cmd=_install_sh_cmd("tui"),
     ),
     ExtraReq(
         name="boto3",
@@ -145,7 +153,7 @@ EXTRAS_REGISTRY: tuple[ExtraReq, ...] = (
         purpose="AWS Cost Explorer 수집 (cost --source aws)",
         probe=("boto3",),
         pip_extra="cost-aws",
-        install_cmd="pip install 'anvyc[cost-aws]'",
+        install_cmd=_install_sh_cmd("cost-aws"),
     ),
     ExtraReq(
         name="httpx",
@@ -154,7 +162,7 @@ EXTRAS_REGISTRY: tuple[ExtraReq, ...] = (
         purpose="GitHub Billing 수집 (cost --source github)",
         probe=("httpx",),
         pip_extra="cost-github",
-        install_cmd="pip install 'anvyc[cost-github]'",
+        install_cmd=_install_sh_cmd("cost-github"),
     ),
     ExtraReq(
         name="cryptography",
@@ -163,7 +171,7 @@ EXTRAS_REGISTRY: tuple[ExtraReq, ...] = (
         purpose="SOPS 복호화 보조",
         probe=("cryptography",),
         pip_extra="encryption",
-        install_cmd="pip install 'anvyc[encryption]'",
+        install_cmd=_install_sh_cmd("encryption"),
     ),
 )
 
@@ -211,16 +219,50 @@ def installed_version(name: str) -> str | None:
 
 
 def install_hint(name: str) -> str:
-    """안내 문구용 설치 힌트 — "brew install sops (또는 <url>)" 형태.
+    """안내 문구용 설치 힌트. 미지 name 은 빈 문자열.
 
-    미지 name 은 빈 문자열. 분산 call site 가 미설치 메시지의 괄호 안내로 쓴다.
+    바이너리는 정적 문구 — "brew install sops (또는 <url>)". pyextra 는 지금 실행 중인
+    설치본의 방식에 맞춘 명령이다(install_hint_for_extra) — anvyc 는 PyPI 에 없어서 이름으로
+    찾는 설치는 새 환경에서 실패하고, PATH 의 pip 는 uv tool·pipx·Homebrew 설치본과 다른
+    환경이다(2026-10-07 실측).
     """
     req = _BY_NAME.get(name)
     if req is None:
         return ""
+    if req.kind == "pyextra" and req.pip_extra:
+        return install_hint_for_extra(req.pip_extra)
     if req.install_url:
         return f"{req.install_cmd}  (또는 {req.install_url})"
     return req.install_cmd
+
+
+def install_hint_for_extra(pip_extra: str) -> str:
+    """pip extra 키 하나를 현재 설치 방식으로 더하는 명령 — 이미 설치된 extras 를 보존한다."""
+    return extras_install_command(_order_extras({pip_extra, *installed_pip_extras()}))
+
+
+def installed_pip_extras() -> tuple[str, ...]:
+    """probe dist 가 설치된 pyextra 의 pip extra 키(레지스트리 순서).
+
+    probe 는 전이 의존으로도 깔린다(httpx·cryptography 는 mcp 가 끌어온다) — 과대 추정은
+    이미 있는 의존을 한 번 더 적을 뿐 무해하다. 과소 추정은 재설치가 그 extras 를 지우므로
+    그쪽을 피하는 판정이다.
+    """
+    out: list[str] = []
+    for req in EXTRAS_REGISTRY:
+        if req.kind == "pyextra" and req.pip_extra and _pyextra_version(req) is not None:
+            out.append(req.pip_extra)
+    return tuple(out)
+
+
+def _order_extras(keys: Iterable[str]) -> list[str]:
+    """레지스트리 순서, 그 밖의 키는 정렬해 뒤에 — 안내 문자열이 결정적이게."""
+    wanted = set(keys)
+    order: list[str] = []
+    for req in EXTRAS_REGISTRY:
+        if req.pip_extra is not None and req.pip_extra in wanted:
+            order.append(req.pip_extra)
+    return order + sorted(wanted.difference(order))
 
 
 def _is_relevant(req: ExtraReq) -> bool:
@@ -245,7 +287,11 @@ def collect_extras_status() -> list[dict[str, Any]]:
                 "purpose": req.purpose,
                 "installed": is_available(req.name),
                 "version": installed_version(req.name),
-                "install_cmd": req.install_cmd,
+                "install_cmd": (
+                    install_hint_for_extra(req.pip_extra)
+                    if req.kind == "pyextra" and req.pip_extra
+                    else req.install_cmd
+                ),
                 "install_url": req.install_url,
                 "pip_extra": req.pip_extra,
                 "required": req.required,

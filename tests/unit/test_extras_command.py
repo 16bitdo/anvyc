@@ -39,8 +39,6 @@ def test_extras_table_renders() -> None:
     assert "SOPS" in out
     # 종류 열 라벨.
     assert "pip extra" in out
-    # install_cmd 의 'anvyc[...]' 대괄호가 rich 마크업으로 삼켜지지 않고 보존돼야 한다.
-    assert "anvyc[" in out
 
 
 def test_extras_missing_filter_runs() -> None:
