@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -203,3 +205,103 @@ def main_worktree_of(path: Path) -> Path | None:
         if line.startswith("worktree "):
             return Path(line[len("worktree "):].strip())
     return None
+
+
+# ---------- 오래된 잠금 탐지 ----------------------------------------------------
+#
+# Claude 세션은 자기 worktree 를 `git worktree lock` 으로 잠그고, 정리 없이 끝나면 잠금이 그대로
+# 남는다. 잠긴 worktree 는 `remove`·`prune` 이 거부하는데 아무 신호가 없다 — 2026-10-06
+# pulseforge 에서 8/5 세션(pid 89657, 이미 종료)의 잠금이 두 달간 정리를 막았다.
+
+# 사유 원문 예: "claude session phase3b1-web-ui (pid 89657 start Wed Aug  5 06:36:11 2026)"
+_CLAUDE_LOCK_RE = re.compile(
+    r"claude session (?P<session>.+?) \(pid (?P<pid>\d+) start (?P<start>[^)]+)\)"
+)
+
+
+@dataclass(frozen=True)
+class LockedWorktree:
+    """`git worktree list --porcelain` 의 잠긴 항목."""
+
+    path: Path
+    branch: str | None  # None = detached
+    reason: str  # 사유 없이 잠갔으면 ""
+
+
+@dataclass(frozen=True)
+class ClaudeLock:
+    """Claude 세션 형식의 잠금 사유를 푼 것."""
+
+    session: str
+    pid: int
+    start: str  # 사유에 적힌 그대로(C 로캘 `ps -o lstart` 형식)
+
+
+def main_worktree_in(porcelain: str) -> Path | None:
+    """porcelain 출력의 첫 항목 = main worktree (git 문서 보장)."""
+    for line in porcelain.splitlines():
+        if line.startswith("worktree "):
+            return Path(line[len("worktree "):].strip())
+    return None
+
+
+def locked_worktrees(porcelain: str) -> list[LockedWorktree]:
+    """잠긴 worktree 목록. `locked` 줄이 없는 항목(main 포함)은 뺀다."""
+    found: list[LockedWorktree] = []
+    for block in porcelain.split("\n\n"):
+        path: Path | None = None
+        branch: str | None = None
+        reason: str | None = None
+        for line in block.splitlines():
+            if line.startswith("worktree "):
+                path = Path(line[len("worktree "):].strip())
+            elif line.startswith("branch "):
+                branch = line[len("branch "):].removeprefix("refs/heads/")
+            elif line == "locked":
+                reason = ""
+            elif line.startswith("locked "):
+                reason = line[len("locked "):]
+        if path is not None and reason is not None:
+            found.append(LockedWorktree(path, branch, reason))
+    return found
+
+
+def parse_claude_lock(reason: str) -> ClaudeLock | None:
+    """Claude 세션 형식의 사유만 푼다. 사람이 의도로 건 다른 사유는 None — 판정하지 않는다."""
+    m = _CLAUDE_LOCK_RE.fullmatch(reason)
+    if m is None:
+        return None
+    return ClaudeLock(m.group("session"), int(m.group("pid")), m.group("start"))
+
+
+def stale_lock_reason(lock: ClaudeLock, start_of: Callable[[int], str | None]) -> str | None:
+    """잠금을 건 세션이 끝났으면 그 이유, 아직 살아 있으면 None.
+
+    start_of(pid) 는 그 pid 의 현재 시작 시각(없으면 None). pid 만 보면 재사용된 번호를
+    살아 있는 세션으로 오판한다 — 두 달이면 pid 는 얼마든지 돈다.
+    """
+    now = start_of(lock.pid)
+    if now is None:
+        return f"pid {lock.pid} 없음(세션 종료)"
+    current = " ".join(now.split())
+    if current != " ".join(lock.start.split()):
+        return f"pid {lock.pid} 를 다른 프로세스가 쓴다(시작 {current})"
+    return None
+
+
+def process_start(pid: int) -> str | None:
+    """pid 의 시작 시각(C 로캘 `ps -o lstart`, 공백 정규화). 프로세스가 없으면 None.
+
+    로캘을 C 로 고정한다 — ko_KR 의 lstart 는 「2026년 10월  8일 목요일 …」이라 잠금 사유와
+    비교하면 살아 있는 세션이 전부 「다른 프로세스」가 된다(2026-10-07 실측).
+    """
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True, text=True, timeout=10, check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = " ".join(out.stdout.split())
+    return text if out.returncode == 0 and text else None
