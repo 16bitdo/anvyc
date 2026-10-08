@@ -14,20 +14,17 @@ name: CI
 #
 #   공개 여부가 바뀌면 조건이 따라 바뀐다 — 잡을 고칠 필요가 없다.
 #
-# 추가 절감: (1) 문서 전용 변경(**.md, docs/**)은 CI skip, (2) concurrency 로
-# PR 에 push 가 연달아 들어오면 추월된 run 을 취소 (main push 는 항상 완주),
-# (3) timeout-minutes 로 행(hang) 잡의 폭주 과금을 차단.
+# 추가 절감: (1) concurrency 로 PR 에 push 가 연달아 들어오면 추월된 run 을 취소
+# (main push 는 항상 완주), (2) timeout-minutes 로 행(hang) 잡의 폭주 과금을 차단.
+#
+# 문서 전용 변경(**.md, docs/**)도 CI 를 돌린다 — README · DESIGN · docs/*.md 는 테스트가
+# 지킨다(점검 목록 · 계수 대조, README 생성 구간 대조). 경로 필터로 건너뛰면 문서만 고친 PR 이
+# 그 대조를 통째로 우회한다(2026-10-08 전환). 허용 목록으로 되살리지 말 것 — 목록 자체가 drift 한다.
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
 
 concurrency:
   group: ci-${{ github.ref }}
