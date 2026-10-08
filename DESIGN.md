@@ -1213,7 +1213,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (29 check)
+#### 27.1.1 등록된 check 목록 (30 check)
 
 SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 묶음이며,
 `tests/unit/test_doctor_check_registry_drift.py` 가 **이름 집합**으로 정합을 강제한다
@@ -1270,6 +1270,12 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 
 |---|---|---|
 | `ruleset-deploy-drift` | 배포된 `.cursor/rules` 가 role-based-ruleset origin 보다 뒤처졌는지 (스탬프성 신호) | v0.21.0 |
 | `claude-md-freshness` | fleet 의 생성된 `CLAUDE.md` 가 각 repo `.cursor/rules` 와 content-fresh 한지 (per-file 정밀 신호). fresh 일 때는 **재생성됐지만 미커밋인** 구간을 INFO 로 관측 — tracked-only(gitignored repo 는 재생성이 정본이라 침묵), 생성물 판별은 첫 줄 마커. 조치 안내는 2단계(`deploy_cursor_rules` → `generate_claude_md`) — 단독 `--apply` 는 누락 룰을 인덱스에서 drop 한다 | v0.21.0 (미커밋 관측 v0.22.1) |
+
+**worktree 위생** (L2 read-only — 판정만 한다. 잠금 해제·제거는 사용자 몫)
+
+| check_name | 영역 | 추가 |
+|---|---|---|
+| `worktree-stale-locks` | 끝난 Claude 세션이 남긴 `git worktree lock`(사유 `claude session <이름> (pid N start …)`) — pid 부재 또는 **시작 시각 불일치(pid 재사용)** 면 WARN. 다른 형식의 사유는 사람이 의도로 건 잠금이라 침묵, ps 로 자기 자신도 못 보면 판정 안 함(무오탐). 시작 시각은 C 로캘로 비교(ko_KR 의 lstart 는 한글). linked worktree 가 프로젝트로 중복 탐색돼도 저장소당 한 번. 계기: 2026-10-06 pulseforge 의 두 달 된 잠금이 `worktree remove` 를 막음 | v0.26.0 |
 
 **Control plane axes** (각 axis 본문은 [docs/design-axes/](../docs/design-axes/) 참조)
 
@@ -1363,7 +1369,7 @@ doctor:
 
 ```
 anvyc doctor
-  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/29 checks clean
+  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/30 checks clean
 
 조치 필요
   ⚠ project-branch-protection (6)

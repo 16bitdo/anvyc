@@ -37,6 +37,7 @@ from anvyc.checks.tui_extra import TuiExtraImportableCheck
 from anvyc.checks.unused_aws_profiles import UnusedAwsProfilesCheck
 from anvyc.checks.venv_hidden import VenvHiddenFlagCheck
 from anvyc.checks.work_cwd_track import WorkCwdTrackWiredCheck
+from anvyc.checks.worktree_stale_locks import WorktreeStaleLocksCheck
 from anvyc.core.config import build_check_context, load_config
 from anvyc.core.extras import CombinedExtrasInstall, combined_extras_install
 
@@ -126,6 +127,7 @@ _REGISTRY: dict[str, Check] = {
     "container-runtime-health": ContainerRuntimeHealthCheck(),
     "account-identity-actual": AccountIdentityActualCheck(),
     "session-bridge": SessionBridgeCheck(),
+    "worktree-stale-locks": WorktreeStaleLocksCheck(),
 }
 
 

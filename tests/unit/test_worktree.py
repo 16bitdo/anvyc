@@ -11,6 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from anvyc.core.project_info import ProjectInfo
 from anvyc.core.worktree import (
     LINK_TARGETS,
@@ -336,3 +338,108 @@ class TestGitignoreDepthVariants:
         link_rules(root, wt)
 
         assert self._status(root) == before == ""
+
+
+# 2026-10-06 pulseforge 실측 — Claude 세션이 정리 없이 끝나며 남긴 잠금 사유 원문.
+_REAL_CLAUDE_REASON = "claude session phase3b1-web-ui (pid 89657 start Wed Aug  5 06:36:11 2026)"
+
+_PORCELAIN = (
+    "worktree /repo\n"
+    "HEAD 1111111111111111111111111111111111111111\n"
+    "branch refs/heads/main\n"
+    "\n"
+    "worktree /wt/claude\n"
+    "HEAD 2222222222222222222222222222222222222222\n"
+    "branch refs/heads/feat/a\n"
+    f"locked {_REAL_CLAUDE_REASON}\n"
+    "\n"
+    "worktree /wt/plain\n"
+    "HEAD 3333333333333333333333333333333333333333\n"
+    "branch refs/heads/feat/b\n"
+    "\n"
+    "worktree /wt/bare-lock\n"
+    "HEAD 4444444444444444444444444444444444444444\n"
+    "detached\n"
+    "locked\n"
+    "\n"
+    "worktree /wt/gone\n"
+    "HEAD 5555555555555555555555555555555555555555\n"
+    "branch refs/heads/feat/c\n"
+    "locked keep for release\n"
+    "prunable gitdir file points to non-existent location\n"
+    "\n"
+)
+
+
+def _dead_pid() -> int:
+    """방금 끝난 프로세스의 pid — 테스트 동안 재사용될 가능성은 무시할 만하다."""
+    import sys
+
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    return proc.pid
+
+
+class TestStaleLockParsing:
+    """2026-10-06: pulseforge worktree 가 8/5 Claude 세션 잠금(pid 89657 — 이미 종료)으로 두 달간
+    남아 `git worktree remove` 를 막았다. 잠금은 세션이 정리 없이 끝나면 그대로 남고 신호가 없다."""
+
+    def test_locked_worktrees_reads_reason_and_branch(self) -> None:
+        from anvyc.core.worktree import LockedWorktree, locked_worktrees
+
+        assert locked_worktrees(_PORCELAIN) == [
+            LockedWorktree(Path("/wt/claude"), "feat/a", _REAL_CLAUDE_REASON),
+            LockedWorktree(Path("/wt/bare-lock"), None, ""),
+            LockedWorktree(Path("/wt/gone"), "feat/c", "keep for release"),
+        ]
+
+    def test_main_worktree_in_is_first_entry(self) -> None:
+        from anvyc.core.worktree import main_worktree_in
+
+        assert main_worktree_in(_PORCELAIN) == Path("/repo")
+        assert main_worktree_in("") is None
+
+    def test_parse_claude_lock_accepts_only_claude_format(self) -> None:
+        from anvyc.core.worktree import ClaudeLock, parse_claude_lock
+
+        assert parse_claude_lock(_REAL_CLAUDE_REASON) == ClaudeLock(
+            "phase3b1-web-ui", 89657, "Wed Aug  5 06:36:11 2026"
+        )
+        assert parse_claude_lock("claude session my task (pid 7 start Thu Oct  8 09:43:11 2026)") == (
+            ClaudeLock("my task", 7, "Thu Oct  8 09:43:11 2026")
+        )
+        for foreign in ("", "keep for release", "claude session x (pid abc start now)"):
+            assert parse_claude_lock(foreign) is None, foreign
+
+    def test_stale_lock_reason_dead_alive_and_reused_pid(self) -> None:
+        from anvyc.core.worktree import ClaudeLock, stale_lock_reason
+
+        lock = ClaudeLock("s", 89657, "Wed Aug  5 06:36:11 2026")
+        assert "없음" in (stale_lock_reason(lock, lambda pid: None) or "")
+        # 같은 시각이면 살아 있는 세션 — ps 의 공백 차이는 무시한다
+        assert stale_lock_reason(lock, lambda pid: "Wed Aug  5 06:36:11 2026    ") is None
+        # pid 는 살아 있지만 시작 시각이 다르다 = 그 pid 를 다른 프로세스가 재사용
+        assert "다른 프로세스" in (
+            stale_lock_reason(lock, lambda pid: "Thu Oct  8 09:43:11 2026") or ""
+        )
+
+    def test_process_start_is_c_locale_regardless_of_caller(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """2026-10-07 실측: ko_KR 로캘의 `ps -o lstart` 는 「2026년 10월  8일 목요일 …」이다.
+        잠금 사유는 C 로캘 형식이라 그대로 비교하면 살아 있는 세션이 전부 「다른 프로세스」가 된다."""
+        import os
+        import re
+
+        from anvyc.core.worktree import process_start
+
+        monkeypatch.setenv("LANG", "ko_KR.UTF-8")
+        monkeypatch.setenv("LC_ALL", "ko_KR.UTF-8")
+        start = process_start(os.getpid())
+        assert start is not None
+        assert re.fullmatch(r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2} \d{4}", start), start
+
+    def test_process_start_of_finished_process_is_none(self) -> None:
+        from anvyc.core.worktree import process_start
+
+        assert process_start(_dead_pid()) is None
