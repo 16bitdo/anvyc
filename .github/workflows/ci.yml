@@ -2,17 +2,17 @@ name: CI
 
 # main push / PR 마다 lint + type-check + test 를 실행해 회귀를 잡는다.
 #
-# 비용 최적화 (private repo 과금 기준 — public 전환 시 Actions 무료):
-#   GitHub Actions 는 잡당 분 단위 올림 과금 + macOS 10× 배수. 모든 잡이 1분
-#   미만이므로 비용 = Σ(잡 수 × OS 배수)이고, 캐싱 등 속도 최적화는 비용에
-#   영향이 없다. 따라서 macOS 잡 노출 빈도가 핵심 레버다.
+# macOS 잡(test-macos) 노출은 저장소 공개 여부로 정한다(`github.event.repository.private`):
 #
-#     - PR        : lint + ubuntu test 3.11/3.12/3.13      → 4 과금분
-#     - main push : 위 + macOS 3.13 test (실 플랫폼 회귀)   → 14 과금분
+#   - public  : 표준 GitHub-hosted 러너는 무료·무제한 → PR 에서도 macOS 를 돌린다.
+#               anvyc 는 전역 래퍼가 원본 체크아웃(~/dev/anvyc)을 그대로 실행해 main 반영이
+#               곧 배포다 — Linux 가 흉내 못 내는 macOS 실회귀(로캘 · BSD 도구 출력 등)는
+#               병합 전에 잡는다(2026-10-08 전환).
+#   - private : macOS 분당 단가가 Linux 의 약 10배($0.062 vs $0.006, 2026-01~)이고 잡당 분 단위
+#               올림이라, PR 에서는 건너뛰고 main push 에서만 1회 확인한다(2026-05 결정, 78292f3).
+#               테스트가 sys.platform monkeypatch + skipif 로 대부분 Linux 에서도 검증된다.
 #
-#   anvyc 는 macOS 전용 도구지만 테스트가 sys.platform monkeypatch + skipif 로
-#   가드돼 대부분 Linux 에서 동일하게 검증된다. macOS 실회귀는 main 병합 후
-#   1회만 확인하면 충분하므로 PR 단계에서는 macOS 잡(test-macos)을 건너뛴다.
+#   공개 여부가 바뀌면 조건이 따라 바뀐다 — 잡을 고칠 필요가 없다.
 #
 # 추가 절감: (1) concurrency 로 PR 에 push 가 연달아 들어오면 추월된 run 을 취소
 # (main push 는 항상 완주), (2) timeout-minutes 로 행(hang) 잡의 폭주 과금을 차단.
@@ -135,7 +135,8 @@ jobs:
   # macOS 러너는 10× 과금이므로 빈번한 PR 단계에서는 제외 (위 주석 참고).
   test-macos:
     name: Test (macOS, Python 3.13)
-    if: github.event_name == 'push'
+    # public 은 PR 에서도, private 은 main push 에서만 (머리 주석 참조)
+    if: github.event_name == 'push' || !github.event.repository.private
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
