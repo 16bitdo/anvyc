@@ -2198,3 +2198,8 @@ GitHub) 을 동일 `CostReport schema v1` 로 통합. USD 저장 / KRW 표시
 
 상세 (schema v1 / adapter Protocol / cache layout / doctor 5 check / 보안
 경계 / 변경 이력 8 entries) → [CP-13 본문](./docs/design-axes/cp-13-cost.md).
+
+
+## OpenAI 연결 업데이트 (2026-10-11)
+
+Codex adapter를 metadata-only 구현으로 전환. runtime hooks 지원과 trust/wiring을 구분.

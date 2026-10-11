@@ -50,7 +50,7 @@ def test_unified_schema_version_consistent() -> None:
     [
         ("claude_code", True),
         ("cursor", False),
-        ("codex", False),
+        ("codex", True),
     ],
 )
 def test_supports_hooks(name: str, expected: bool) -> None:
@@ -62,25 +62,11 @@ def test_get_agent_unknown_raises_key_error() -> None:
         get_agent("notarealagent")
 
 
-@pytest.mark.parametrize("name", ["codex"])
-def test_stub_discover_session_files_raises(name: str) -> None:
-    """codex 는 v5 시점 여전히 stub — discover 시 NotImplementedError.
-
-    cursor 는 CP-10 (v5) 에서 impl 전환 — tests/unit/test_agents_cursor.py 가 cover.
-    """
-    adapter = get_agent(name)
-    with pytest.raises(NotImplementedError):
-        it = adapter.discover_session_files()
-        if isinstance(it, Iterator):
-            next(it)
-
-
-@pytest.mark.parametrize("name", ["codex"])
-def test_stub_parse_session_raises(name: str, tmp_path: Path) -> None:
-    """codex stub 의 parse_session 도 NotImplementedError (cursor 는 impl)."""
-    adapter = get_agent(name)
-    with pytest.raises(NotImplementedError):
-        adapter.parse_session(tmp_path / "dummy.jsonl")
+def test_codex_empty_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    adapter = get_agent("codex")
+    assert list(adapter.discover_session_files()) == []
+    assert adapter.parse_session(tmp_path / "missing.jsonl") is None
 
 
 def test_claude_code_adapter_delegates_discover(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,13 +144,12 @@ def test_collect_sessions_unknown_agent_raises_key_error() -> None:
         collect_sessions(agent="notarealagent")
 
 
-@pytest.mark.parametrize("name", ["codex"])
-def test_collect_sessions_stub_agent_raises_not_implemented(name: str) -> None:
-    """v5 시점 codex 만 stub — cursor 는 CP-10 으로 impl 전환."""
+def test_collect_sessions_codex_empty_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
     from anvyc.core.activity import collect_sessions
-
-    with pytest.raises(NotImplementedError):
-        collect_sessions(agent=name)
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    assert collect_sessions(agent="codex") == []
 
 
 def test_collect_sessions_roots_and_agent_mutually_exclusive(tmp_path: Path) -> None:
@@ -174,7 +159,7 @@ def test_collect_sessions_roots_and_agent_mutually_exclusive(tmp_path: Path) -> 
         collect_sessions(roots=[tmp_path], agent="claude_code")
 
 
-def test_collect_sessions_union_skips_stub_silently(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_collect_sessions_union_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """agent=None (union) 모드는 stub adapter 의 NotImplementedError 를 silent skip.
 
     v5 이후: claude_code (impl) + cursor (impl, CP-10) + codex (stub) — 모든
@@ -187,6 +172,7 @@ def test_collect_sessions_union_skips_stub_silently(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(activity_mod, "iter_session_files", lambda roots=None: iter([]))
     # cursor 도 격리 — 실머신 SQLite 누설 차단 (v5 CP-10 후 impl 됨).
     monkeypatch.setattr(cursor_mod, "discover_cursor_sqlites", lambda user_dir=None: [])
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     result = activity_mod.collect_sessions()
     assert result == []
 

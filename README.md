@@ -711,3 +711,8 @@ axis 요약 + Cost observability 빠른 사용 / doctor check / cache layout →
 - 기여 가이드: [CONTRIBUTING.md](./CONTRIBUTING.md). 기여자 간 상호작용은 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) ([Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) 기반) 를 따릅니다.
 - 취약점 신고: [SECURITY.md](./SECURITY.md) 의 비공개 채널.
 - 라이선스: [MIT License](./LICENSE) © 2026 edward (16bitdo)
+
+
+## ChatGPT · Codex 지원 (2026-10-11)
+
+Codex rollout의 metadata-only 관측을 지원합니다. CODEX_HOME에 따라 sessions/**/*.jsonl을 읽으며 본문·명령 인자는 반환하지 않습니다. 누적 usage는 중복 가산하지 않으며 비용은 미확인(None)입니다. supports_hooks는 제품 기능이며 배선·신뢰 여부와 구분합니다.
