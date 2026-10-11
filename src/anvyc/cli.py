@@ -3752,6 +3752,8 @@ def runs_summary(
     table.add_row("by exit_reason", _kv(summary["by_exit_reason"]))
     table.add_row("by agent", _kv(summary["by_agent"]))
     table.add_row("by self_status", _kv(summary["by_self_status"]))
+    table.add_row("by completion status", _kv(summary["by_completion_status"]))
+    table.add_row("by reasoning effort", _kv(summary["by_reasoning_effort"]))
     table.add_row("blocked count", str(summary["blocked_count"]))
     table.add_row("p95 duration (s)", str(summary["p95_duration_s"] or "—"))
     table.add_row("p95 cost (USD)", str(summary["p95_cost_usd"] or "—"))

@@ -266,7 +266,7 @@ def aggregate_runs(runs: list[Run]) -> dict[str, Any]:
         if uncached_input + cached_input
         else None,
         "by_completion_status": dict(
-            Counter(r.completion_status for r in runs if r.completion_status)
+            Counter(r.completion_status or "unchecked" for r in runs)
         ),
         "by_reasoning_effort": dict(
             Counter(r.reasoning_effort for r in runs if r.reasoning_effort)

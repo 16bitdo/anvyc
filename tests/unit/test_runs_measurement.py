@@ -56,6 +56,12 @@ def test_real_claude_zero_cost_remains_known() -> None:
     assert result["p95_cost_usd"] == 0.0
 
 
+def test_legacy_process_success_remains_unchecked_task() -> None:
+    result = aggregate_runs([parse()])
+    assert result["by_status"] == {"succeeded": 1}
+    assert result["by_completion_status"] == {"unchecked": 1}
+
+
 def test_invalid_cost_cannot_become_known_zero() -> None:
     for value in (None, True, float("nan"), -1):
         record = parse(cost_usd=value, measurement={"cost_available": True})
