@@ -493,7 +493,9 @@ def test_scanner_skips_sops_encrypted(tmp_path: Path, age_key: dict[str, Any]) -
     assert scan_file(encrypted) == []
 
 
-def test_command_provider_backup_apply_and_rotate(tmp_path, monkeypatch):
+def test_command_provider_backup_apply_and_rotate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Real SOPS uses a command provider without a persistent identity file."""
     import json
     import shlex

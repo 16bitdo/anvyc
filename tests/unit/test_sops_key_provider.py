@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from anvyc.checks.base import CheckContext
 from anvyc.checks.sops_keys import SopsKeysCheck
@@ -11,14 +14,14 @@ from anvyc.core.config import build_check_context, load_anvyc_config, load_confi
 from anvyc.core.sops import decrypt
 
 
-def clean_context(tmp_path, monkeypatch):
+def clean_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CheckContext:
     for name in ("SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("anvyc.checks.sops_keys.is_available", lambda _: True)
     return CheckContext(sops_identity_file=str(tmp_path / "absent"))
 
 
-def test_configured_provider_reaches_doctor(tmp_path, monkeypatch):
+def test_configured_provider_reaches_doctor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     clean_context(tmp_path, monkeypatch)
     cfg=tmp_path / "anvyc.yaml"
     cfg.write_text(f"security:\n  sops:\n    age_identity_file: {tmp_path}/absent\n    age_key_cmd: {sys.executable} -c pass\n")
@@ -28,13 +31,13 @@ def test_configured_provider_reaches_doctor(tmp_path, monkeypatch):
         assert SopsKeysCheck().run(ctx) == []
 
 
-def test_environment_provider_supported(tmp_path, monkeypatch):
+def test_environment_provider_supported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ctx=clean_context(tmp_path, monkeypatch)
     monkeypatch.setenv("SOPS_AGE_KEY_CMD", sys.executable + " -c pass")
     assert SopsKeysCheck().run(ctx) == []
 
 
-def test_missing_or_malformed_provider_warns(tmp_path, monkeypatch):
+def test_missing_or_malformed_provider_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ctx=clean_context(tmp_path, monkeypatch)
     for command in ("/missing/anvyc-op", "'invalid"):
         ctx.sops_key_cmd=command
@@ -42,7 +45,7 @@ def test_missing_or_malformed_provider_warns(tmp_path, monkeypatch):
         assert results and all(x.severity.is_blocking for x in results)
 
 
-def test_custom_identity_and_directory(tmp_path, monkeypatch):
+def test_custom_identity_and_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ctx=clean_context(tmp_path, monkeypatch)
     custom=tmp_path / "identity"
     custom.write_text("# discovery fixture, never used for crypto\n")
@@ -52,7 +55,9 @@ def test_custom_identity_and_directory(tmp_path, monkeypatch):
     assert SopsKeysCheck().run(ctx)
 
 
-def test_decrypt_passes_configured_command_only_to_child(tmp_path, monkeypatch):
+def test_decrypt_passes_configured_command_only_to_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("SOPS_AGE_KEY_CMD", "old-command")
     source=tmp_path / "cipher.sops.json"
     source.write_text("{}")
