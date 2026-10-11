@@ -3755,7 +3755,10 @@ def runs_summary(
     table.add_row("blocked count", str(summary["blocked_count"]))
     table.add_row("p95 duration (s)", str(summary["p95_duration_s"] or "—"))
     table.add_row("p95 cost (USD)", str(summary["p95_cost_usd"] or "—"))
-    table.add_row("total cost (USD)", f"{summary['total_cost_usd']:.4f}")
+    cost_label = f"{summary['total_cost_usd']:.4f}" if summary["cost_observed_runs"] else "unknown"
+    table.add_row("total cost (USD, observed)", cost_label)
+    table.add_row("unknown cost runs", str(summary["cost_unknown_runs"]))
+    table.add_row("unknown / partial usage runs", f"{summary['usage_unknown_runs']} / {summary['usage_partial_runs']}")
     table.add_row("total tokens", str(summary["total_tokens"]))
     table.add_row("total tool calls", str(summary["total_tool_calls"]))
     table.add_row("oldest run", summary["oldest_run_started_at"] or "—")
@@ -3795,7 +3798,7 @@ def runs_list(
             r.status,
             r.agent or "—",
             r.model or "—",
-            f"{r.cost_usd:.4f}",
+            f"{r.cost_usd:.4f}" if r.cost_available else "unknown",
             str(r.tokens_total),
             dur,
             r.started_at or "—",

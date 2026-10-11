@@ -12,6 +12,7 @@ CP-16 P2a: self_status(P0)/gate_blocked/repo 파싱 + self_status 분포·percen
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -44,6 +45,13 @@ class Run:
     repo: str | None = None  # CP-16 P2a: scope(project) 필터
     gate_blocked: bool = False  # CP-16 P2a: blocked_rate 산출
     self_status: str | None = None  # CP-16 P2a: 4-state 자기보고(P0) 분포
+    usage_available: bool = False
+    usage_final: bool = False
+    cost_available: bool = False
+    completion_status: str | None = None
+    reasoning_effort: str | None = None
+    uncached_input: int = 0
+    cached_input: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -60,6 +68,13 @@ class Run:
             "tool_calls": self.tool_calls,
             "cost_usd": self.cost_usd,
             "tokens_total": self.tokens_total,
+            "usage_available": self.usage_available,
+            "usage_final": self.usage_final,
+            "cost_available": self.cost_available,
+            "completion_status": self.completion_status,
+            "reasoning_effort": self.reasoning_effort,
+            "uncached_input": self.uncached_input,
+            "cached_input": self.cached_input,
             "machine_id": self.machine_id,
             "error": self.error,
             "repo": self.repo,
@@ -94,7 +109,32 @@ def _parse_run(obj: dict[str, Any]) -> Run | None:
                 tokens_total += int(val)
 
     cost = obj.get("cost_usd")
-    cost_usd = float(cost) if isinstance(cost, (int, float)) else 0.0
+    valid_cost = (
+        isinstance(cost, (int, float))
+        and not isinstance(cost, bool)
+        and math.isfinite(cost)
+        and cost >= 0
+    )
+    cost_usd = float(cost) if isinstance(cost, (int, float)) and valid_cost else 0.0
+    measurement = obj.get("measurement")
+    measurement = measurement if isinstance(measurement, dict) else {}
+    completion = obj.get("completion")
+    completion = completion if isinstance(completion, dict) else {}
+    # Legacy Codex/Cursor records had no cost source; their zero is not a price.
+    usage_available = measurement.get("usage_available", tokens_total > 0) is True
+    usage_final = (
+        measurement.get("usage_final", usage_available and obj.get("status") == "succeeded") is True
+    )
+    cost_available = (
+        measurement.get(
+            "cost_available",
+            valid_cost and obj.get("agent") not in {"codex", "cursor"},
+        )
+        is True
+        and valid_cost
+    )
+    uncached_input = tokens.get("input", 0) if isinstance(tokens, dict) else 0
+    cached_input = tokens.get("cache_read", 0) if isinstance(tokens, dict) else 0
 
     duration = obj.get("duration_s")
     duration_s = float(duration) if isinstance(duration, (int, float)) else None
@@ -128,6 +168,13 @@ def _parse_run(obj: dict[str, Any]) -> Run | None:
         repo=_opt_str(obj.get("repo")),
         gate_blocked=gate_blocked,
         self_status=_opt_str(obj.get("self_status")),
+        usage_available=usage_available,
+        usage_final=usage_final,
+        cost_available=cost_available,
+        completion_status=_opt_str(completion.get("status")),
+        reasoning_effort=_opt_str(measurement.get("reasoning_effort")),
+        uncached_input=int(uncached_input) if isinstance(uncached_input, (int, float)) else 0,
+        cached_input=int(cached_input) if isinstance(cached_input, (int, float)) else 0,
     )
 
 
@@ -189,16 +236,15 @@ def aggregate_runs(runs: list[Run]) -> dict[str, Any]:
     (optimizer 평가 변수 — timeout_rate 는 by_status/total, blocked_rate 는 blocked_count/total).
     """
     by_status: Counter[str] = Counter(r.status for r in runs)
-    by_exit: Counter[str] = Counter(
-        r.exit_reason for r in runs if r.exit_reason is not None
-    )
+    by_exit: Counter[str] = Counter(r.exit_reason for r in runs if r.exit_reason is not None)
     by_agent: Counter[str] = Counter(r.agent for r in runs if r.agent is not None)
-    by_self_status: Counter[str] = Counter(
-        r.self_status for r in runs if r.self_status is not None
-    )
+    by_self_status: Counter[str] = Counter(r.self_status for r in runs if r.self_status is not None)
     starts = [r.started_at for r in runs if r.started_at]
     durations = [r.duration_s for r in runs if r.duration_s is not None]
-    costs = [r.cost_usd for r in runs]
+    costs = [r.cost_usd for r in runs if r.cost_available]
+    observed = [r for r in runs if r.usage_available]
+    uncached_input = sum(r.uncached_input for r in observed)
+    cached_input = sum(r.cached_input for r in observed)
     blocked = sum(1 for r in runs if r.gate_blocked)
     return {
         "total_runs": len(runs),
@@ -207,8 +253,24 @@ def aggregate_runs(runs: list[Run]) -> dict[str, Any]:
         "by_agent": dict(by_agent),
         "by_self_status": dict(by_self_status),
         "blocked_count": blocked,
-        "total_cost_usd": round(sum(r.cost_usd for r in runs), 6),
-        "total_tokens": sum(r.tokens_total for r in runs),
+        "total_cost_usd": round(sum(costs), 6),
+        "total_tokens": sum(r.tokens_total for r in observed),
+        "cost_observed_runs": len(costs),
+        "cost_unknown_runs": len(runs) - len(costs),
+        "usage_observed_runs": len(observed),
+        "usage_unknown_runs": len(runs) - len(observed),
+        "usage_partial_runs": sum(not r.usage_final for r in observed),
+        "total_uncached_input": uncached_input,
+        "total_cached_input": cached_input,
+        "cache_input_ratio": cached_input / (uncached_input + cached_input)
+        if uncached_input + cached_input
+        else None,
+        "by_completion_status": dict(
+            Counter(r.completion_status for r in runs if r.completion_status)
+        ),
+        "by_reasoning_effort": dict(
+            Counter(r.reasoning_effort for r in runs if r.reasoning_effort)
+        ),
         "total_tool_calls": sum(r.tool_calls for r in runs),
         "p50_duration_s": _percentile(durations, 0.5),
         "p95_duration_s": _percentile(durations, 0.95),

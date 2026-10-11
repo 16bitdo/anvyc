@@ -1,5 +1,7 @@
 # anvyc
 
+실행 원장 집계는 비용 미제공과 확인된 0을 구분합니다. `anvyc runs summary --json`은 `cost_unknown_runs`, `usage_unknown_runs`, `usage_partial_runs`, 비캐시/캐시 입력 합계, 완료 검사·추론 설정 분포를 추가로 제공합니다. 관측 비용이 없는 경우 비용 percentile은 `null`이며 화면에는 `unknown`으로 표시합니다. 기존 C5 원장과 읽기 전용 MCP도 지원합니다.
+
 > **anvyc**는 여러 장치(주로 macOS)에서 개발 도구 설정 정보와 인증 정보를 **안전하게 백업, 비교, 복원, 동기화**하는 CLI 도구다.
 
 상세 설계는 [DESIGN.md](./DESIGN.md)를 참고한다.
