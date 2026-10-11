@@ -1,3 +1,21 @@
+---
+design_version: 0.4
+project: anvyc
+role: devops-engineer
+status: active
+last_updated: 2026-10-12
+scope:
+  in: [environment observation, configuration recovery, read-only run aggregation]
+  out: [agent execution, semantic artifact quality guarantees]
+references:
+  read_first: [README.md]
+  related: [docs/design-axes/cp-13-cost.md]
+quality_gates:
+  requires_security_review: true
+  requires_rollback_plan: true
+  requires_observability_plan: true
+---
+
 # DESIGN.md — anvyc 개발환경 설정 동기화 도구 설계서
 
 > 문서 버전: v0.3
@@ -2203,3 +2221,7 @@ GitHub) 을 동일 `CostReport schema v1` 로 통합. USD 저장 / KRW 표시
 ## OpenAI 연결 업데이트 (2026-10-11)
 
 Codex adapter를 metadata-only 구현으로 전환. runtime hooks 지원과 trust/wiring을 구분.
+
+## C5 실행 관측 확장 (2026-10-12)
+
+`core/runs.py`는 선택적 `measurement`와 `completion`을 읽으며 기존 원장도 지원한다. 비용 미제공 기록은 비용 percentile에서 제외하고 미확인 건수를 별도 보고한다. 사용량은 미수집·부분 관측·최종 관측으로 나누고 비캐시 입력·캐시 입력 및 캐시 비율을 집계한다. 완료 검사 결과와 실제 추론 설정의 분포를 함께 제공한다. 기존 숫자 합계는 유지하되 관측 건수와 함께 해석한다. `run_summary` MCP는 계속 읽기 전용이며 L4 실행 권한을 갖지 않는다. 의미적 품질 평가는 외부 정답·회귀 검사 소관이다.

@@ -1438,7 +1438,7 @@ def sops_decrypt(
         with tempfile.NamedTemporaryFile(delete=False) as tf:
             tmp = Path(tf.name)
         try:
-            sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode)
+            sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
             typer.echo(tmp.read_text(), nl=False)
         except SopsError as e:
             print_error(f"decrypt 실패: {e}")
@@ -1449,7 +1449,7 @@ def sops_decrypt(
         return
 
     try:
-        sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode)
+        sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
     except SopsError as e:
         print_error(f"decrypt 실패: {e}")
         raise typer.Exit(code=1) from e
@@ -1520,7 +1520,7 @@ def sops_rotate_keys(
                 rotated.append(sops_file)
                 continue
             try:
-                rotate_recipients(sops_file, recipients, identity_file=identity_arg, mode=mode)
+                rotate_recipients(sops_file, recipients, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
                 rotated.append(sops_file)
             except SopsError as e:
                 failed.append((sops_file, str(e)))
@@ -3752,10 +3752,15 @@ def runs_summary(
     table.add_row("by exit_reason", _kv(summary["by_exit_reason"]))
     table.add_row("by agent", _kv(summary["by_agent"]))
     table.add_row("by self_status", _kv(summary["by_self_status"]))
+    table.add_row("by completion status", _kv(summary["by_completion_status"]))
+    table.add_row("by reasoning effort", _kv(summary["by_reasoning_effort"]))
     table.add_row("blocked count", str(summary["blocked_count"]))
     table.add_row("p95 duration (s)", str(summary["p95_duration_s"] or "—"))
     table.add_row("p95 cost (USD)", str(summary["p95_cost_usd"] or "—"))
-    table.add_row("total cost (USD)", f"{summary['total_cost_usd']:.4f}")
+    cost_label = f"{summary['total_cost_usd']:.4f}" if summary["cost_observed_runs"] else "unknown"
+    table.add_row("total cost (USD, observed)", cost_label)
+    table.add_row("unknown cost runs", str(summary["cost_unknown_runs"]))
+    table.add_row("unknown / partial usage runs", f"{summary['usage_unknown_runs']} / {summary['usage_partial_runs']}")
     table.add_row("total tokens", str(summary["total_tokens"]))
     table.add_row("total tool calls", str(summary["total_tool_calls"]))
     table.add_row("oldest run", summary["oldest_run_started_at"] or "—")
@@ -3795,7 +3800,7 @@ def runs_list(
             r.status,
             r.agent or "—",
             r.model or "—",
-            f"{r.cost_usd:.4f}",
+            f"{r.cost_usd:.4f}" if r.cost_available else "unknown",
             str(r.tokens_total),
             dur,
             r.started_at or "—",

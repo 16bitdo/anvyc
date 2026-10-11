@@ -189,7 +189,9 @@ def _apply_symlink(entry: FileApplyEntry) -> None:
     os.symlink(entry.symlink_target, target)
 
 
-def _apply_sops(entry: FileApplyEntry, identity_file: Path | None) -> None:
+def _apply_sops(
+    entry: FileApplyEntry, identity_file: Path | None, key_cmd: str | None = None
+) -> None:
     """SOPS 암호화 파일을 복호화해 target 에 평문으로 저장. DESIGN.md §31.6.
 
     entry.encryption 의 끝이 "/inplace" 면 inplace 모드, 그 외엔 binary.
@@ -199,12 +201,14 @@ def _apply_sops(entry: FileApplyEntry, identity_file: Path | None) -> None:
     mode = "inplace" if (entry.encryption or "").endswith("/inplace") else "binary"
     target = entry.target_resolved
     target.parent.mkdir(parents=True, exist_ok=True)
-    sops_decrypt(entry.source_path, target, identity_file=identity_file, mode=mode)
+    sops_decrypt(entry.source_path, target, identity_file=identity_file, mode=mode, key_cmd=key_cmd)
     with contextlib.suppress(OSError):
         target.chmod(entry.mode)
 
 
-def _apply_entry(entry: FileApplyEntry, identity_file: Path | None = None) -> None:
+def _apply_entry(
+    entry: FileApplyEntry, identity_file: Path | None = None, key_cmd: str | None = None
+) -> None:
     """adapter 가 custom apply() 를 제공하면 그것을 호출, 아니면 _default_apply.
 
     symlink entry → os.symlink 분기.
@@ -215,7 +219,7 @@ def _apply_entry(entry: FileApplyEntry, identity_file: Path | None = None) -> No
         _apply_symlink(entry)
         return
     if entry.encryption and entry.encryption.startswith("sops/"):
-        _apply_sops(entry, identity_file=identity_file)
+        _apply_sops(entry, identity_file=identity_file, key_cmd=key_cmd)
         return
 
     # 지연 import — apply.py ↔ backup.py 순환 회피
@@ -302,7 +306,7 @@ def run_apply(
             e.state_after = "skipped"
             continue
         try:
-            _apply_entry(e, identity_file=sops_identity)
+            _apply_entry(e, identity_file=sops_identity, key_cmd=cfg.security.sops.age_key_cmd)
             e.state_after = "applied"
         except (OSError, RuntimeError) as err:
             e.state_after = "error"

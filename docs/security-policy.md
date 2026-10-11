@@ -103,3 +103,24 @@ file 부재를 자동 안내.
 
 SOPS 로 암호화된 파일 (`.sops.json` 또는 `sops:` metadata 보유) 은 secret scan
 통과 — 암호화된 상태에서 base64 가 secret 패턴에 매치되는 false positive 차단.
+
+
+### 2.4 1Password에 보관한 age 키 사용
+
+개인 키를 디스크에 보관하지 않을 때는 `security.sops.age_key_cmd`를 지정한다.
+명령 문자열에는 비밀값을 넣지 않고 1Password 참조만 사용한다.
+
+```yaml
+security:
+  sops:
+    enabled: true
+    age_recipients: ["age1PUBLIC_RECIPIENT"]
+    age_key_cmd: "op read op://Private/anvyc-sops-age/credential"
+```
+
+`apply`, `sops decrypt`, `sops rotate-keys`는 SOPS의 `SOPS_AGE_KEY_CMD`로
+명령을 전달한다. 설정에 지정한 명령이 같은 이름의 환경 변수보다 우선한다.
+기존 키 파일과 `SOPS_AGE_KEY` 환경 변수도 계속 지원한다.
+doctor는 키 공급 수단과 명령 실행 파일의 존재만 확인하며 명령을 실행하지 않는다.
+1Password 인증 및 공개 키와의 일치는 실제 복호화로 별도 확인해야 한다.
+명령이 실패하면 복호화는 실패하고 백업의 암호문은 그대로 보존된다.

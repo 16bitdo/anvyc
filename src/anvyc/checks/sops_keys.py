@@ -7,6 +7,9 @@ DESIGN.md §31.7. sops/age binary 설치 + age identity file 존재 여부 확�
 """
 from __future__ import annotations
 
+import os
+import shlex
+import shutil
 from pathlib import Path
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
@@ -41,16 +44,38 @@ class SopsKeysCheck:
                 )
             )
 
-        if not DEFAULT_AGE_IDENTITY.exists():
+        identity = Path(
+            os.environ.get("SOPS_AGE_KEY_FILE") or ctx.sops_identity_file or DEFAULT_AGE_IDENTITY
+        ).expanduser()
+        command = ctx.sops_key_cmd or os.environ.get("SOPS_AGE_KEY_CMD")
+        command_available = False
+        if command:
+            try:
+                args = shlex.split(command)
+                command_available = bool(args and shutil.which(args[0]))
+            except ValueError:
+                pass
+            if not command_available:
+                results.append(CheckResult(
+                    check_name=self.name,
+                    severity=Severity.WARNING,
+                    message="SOPS age key command 실행 파일 부재 또는 잘못된 명령 형식",
+                    suggestion="security.sops.age_key_cmd 또는 SOPS_AGE_KEY_CMD 설정 확인",
+                ))
+
+        # Provider discovery only: do not execute commands or prompt for secrets in doctor.
+        # A successful decrypt is required to verify authorization and key correspondence.
+        if not (identity.is_file() or os.environ.get("SOPS_AGE_KEY") or command_available):
             results.append(
                 CheckResult(
                     check_name=self.name,
                     severity=Severity.WARNING,
-                    message=f"age identity file 부재: {DEFAULT_AGE_IDENTITY}",
+                    message=f"age identity file 부재: {identity}",
                     suggestion=(
                         "mkdir -p ~/.config/sops/age && "
                         "age-keygen -o ~/.config/sops/age/keys.txt  "
-                        "(public key 는 anvyc.yaml security.sops.age_recipients 에 등록)"
+                        "(public key 는 anvyc.yaml security.sops.age_recipients 에 등록). "
+                        "또는 security.sops.age_key_cmd 로 1Password 키 조회 명령 설정"
                     ),
                 )
             )

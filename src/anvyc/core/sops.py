@@ -97,6 +97,7 @@ def decrypt(
     dst: Path,
     identity_file: Path | None = None,
     mode: str = "binary",
+    key_cmd: str | None = None,
 ) -> None:
     """src(SOPS) 를 복호화해 dst 에 원본 평문 저장.
 
@@ -111,6 +112,8 @@ def decrypt(
     env = os.environ.copy()
     if identity_file is not None:
         env["SOPS_AGE_KEY_FILE"] = str(identity_file)
+    if key_cmd:
+        env["SOPS_AGE_KEY_CMD"] = key_cmd
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     if mode == "inplace":
@@ -147,6 +150,7 @@ def rotate_recipients(
     new_recipients: list[str],
     identity_file: Path | None = None,
     mode: str = "binary",
+    key_cmd: str | None = None,
 ) -> None:
     """SOPS 파일의 recipient 를 new_recipients 로 교체. atomic.
 
@@ -171,7 +175,7 @@ def rotate_recipients(
         plain_tmp = Path(tf.name)
     new_enc_tmp = file.parent / f".{file.name}.rotate-new"
     try:
-        decrypt(file, plain_tmp, identity_file=identity_file, mode=mode)
+        decrypt(file, plain_tmp, identity_file=identity_file, mode=mode, key_cmd=key_cmd)
         # 2) encrypt → new temp
         encrypt(plain_tmp, new_enc_tmp, new_recipients, mode=mode)
         # 3) atomic replace
