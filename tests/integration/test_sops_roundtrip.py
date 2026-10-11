@@ -491,3 +491,32 @@ def test_scanner_skips_sops_encrypted(tmp_path: Path, age_key: dict[str, Any]) -
     assert any(f.severity == "critical" for f in scan_file(plaintext))
     # 암호화 파일은 0 findings (SOPS 인식 → scan skip)
     assert scan_file(encrypted) == []
+
+
+def test_command_provider_backup_apply_and_rotate(tmp_path, monkeypatch):
+    """Real SOPS uses a command provider without a persistent identity file."""
+    import json
+    import shlex
+    import sys
+
+    from anvyc.core.sops import decrypt, rotate_recipients
+
+    key=subprocess.run(["age-keygen"],capture_output=True,text=True,check=True).stdout
+    public=subprocess.run(["age-keygen","-y"],input=key,capture_output=True,text=True,check=True).stdout.strip()
+    monkeypatch.setenv("ANVYC_TEST_IDENTITY", key)
+    command=shlex.join([sys.executable,"-c","import os,sys;sys.stdout.write(os.environ['ANVYC_TEST_IDENTITY'])"])
+    source=tmp_path / "probe.env"
+    original=b"ANVYC_PROBE=harmless-test-value\n"
+    source.write_bytes(original)
+    cfg=tmp_path / "anvyc.yaml"
+    cfg.write_text(json.dumps({"security":{"sops":{"enabled":True,"age_recipients":[public],"age_key_cmd":command,"age_identity_file":str(tmp_path / "absent")}},"tools":{"fixture":{"secret_files":[str(source)]}}}))
+    result=run_backup(root=tmp_path / "store",config_path=cfg,only=["fixture"])
+    encrypted=result.backup_dir / "fixture/sops/probe.env.sops.json"
+    assert original not in encrypted.read_bytes()
+    source.unlink()
+    report=run_apply(root=tmp_path / "store",config_path=cfg,only=["fixture"])
+    assert source.read_bytes()==original
+    assert report.entries[0].state_after=="applied"
+    rotate_recipients(encrypted,[public],key_cmd=command)
+    decrypt(encrypted,tmp_path / "rotated",key_cmd=command)
+    assert (tmp_path / "rotated").read_bytes()==original

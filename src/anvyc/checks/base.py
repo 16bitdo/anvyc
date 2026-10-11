@@ -76,6 +76,8 @@ class CheckContext:
     # owner→gh account(=ssh alias suffix) 매핑. 빈 dict = owner↔alias 라우팅 검증 skip
     # (무오탐 — 기존 동작 불변). anvyc.yaml `doctor.gh_owner_accounts` 에서 주입(rule 25 미러).
     gh_owner_accounts: dict[str, str] = field(default_factory=dict)
+    sops_identity_file: str | None = None
+    sops_key_cmd: str | None = None
 
 
 class Check(Protocol):

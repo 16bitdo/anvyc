@@ -49,6 +49,7 @@ class SopsConfig:
     age_recipients: list[str] = field(default_factory=list)
     age_identity_file: str = "~/.config/sops/age/keys.txt"
     format: str = "binary"   # "binary" (default, byte-for-byte) | "inplace" (yaml/json 의 값만 암호화)
+    age_key_cmd: str | None = None
 
 
 @dataclass
@@ -303,6 +304,7 @@ def load_anvyc_config(path: Path | None = None) -> AnvycConfig:
         age_identity_file=str(
             sops_raw.get("age_identity_file") or "~/.config/sops/age/keys.txt"
         ),
+        age_key_cmd=str(sops_raw["age_key_cmd"]) if sops_raw.get("age_key_cmd") else None,
         format=str(sops_raw.get("format") or "binary"),
     )
     security = SecurityConfig(
@@ -394,11 +396,16 @@ class DoctorOnlyConfig:
     creds_warn_thresholds: dict[str, float] = field(default_factory=dict)
     gh_owner_accounts: dict[str, str] = field(default_factory=dict)
 
+    sops_identity_file: str = "~/.config/sops/age/keys.txt"
+    sops_key_cmd: str | None = None
+
 
 def load_config(path: Path | None = None) -> DoctorOnlyConfig:
     """doctor 모듈 호환용 wrapper. 신규 코드는 load_anvyc_config 사용 권장."""
     cfg = load_anvyc_config(path)
     return DoctorOnlyConfig(
+        sops_identity_file=cfg.security.sops.age_identity_file,
+        sops_key_cmd=cfg.security.sops.age_key_cmd,
         enabled=cfg.doctor.enabled,
         known_user_aliases=cfg.doctor.known_user_aliases,
         scan_targets=cfg.doctor.scan_targets,
@@ -416,6 +423,8 @@ def build_check_context(cfg: DoctorOnlyConfig | DoctorConfig) -> CheckContext:
     from anvyc.core.project_info import resolve_cwd_aws_profiles  # noqa: PLC0415
 
     return CheckContext(
+        sops_identity_file=getattr(cfg, "sops_identity_file", None),
+        sops_key_cmd=getattr(cfg, "sops_key_cmd", None),
         current_user=getpass.getuser(),
         known_user_aliases=cfg.known_user_aliases,
         scan_targets=[Path(p).expanduser() for p in cfg.scan_targets],

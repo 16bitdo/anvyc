@@ -1438,7 +1438,7 @@ def sops_decrypt(
         with tempfile.NamedTemporaryFile(delete=False) as tf:
             tmp = Path(tf.name)
         try:
-            sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode)
+            sops_decrypt_fn(src, tmp, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
             typer.echo(tmp.read_text(), nl=False)
         except SopsError as e:
             print_error(f"decrypt 실패: {e}")
@@ -1449,7 +1449,7 @@ def sops_decrypt(
         return
 
     try:
-        sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode)
+        sops_decrypt_fn(src, output, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
     except SopsError as e:
         print_error(f"decrypt 실패: {e}")
         raise typer.Exit(code=1) from e
@@ -1520,7 +1520,7 @@ def sops_rotate_keys(
                 rotated.append(sops_file)
                 continue
             try:
-                rotate_recipients(sops_file, recipients, identity_file=identity_arg, mode=mode)
+                rotate_recipients(sops_file, recipients, identity_file=identity_arg, mode=mode, key_cmd=cfg.security.sops.age_key_cmd)
                 rotated.append(sops_file)
             except SopsError as e:
                 failed.append((sops_file, str(e)))
