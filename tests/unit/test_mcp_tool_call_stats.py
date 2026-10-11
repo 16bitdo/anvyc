@@ -115,13 +115,14 @@ def test_agent_unknown_raises_key_error(fake_audit_dir: Path) -> None:
         _dispatch("tool_call_stats", {"agent": "alienagent"})
 
 
-def test_agent_stub_raises_not_implemented(fake_audit_dir: Path) -> None:
-    """stub agent 명시는 NotImplementedError — MCP 에서 그대로 전파.
-
-    v5 시점 cursor 는 CP-10 impl — codex 만 stub. 본 테스트는 codex 로 검증.
-    """
-    with pytest.raises(NotImplementedError):
-        _dispatch("tool_call_stats", {"agent": "codex"})
+def test_codex_agent_dispatches_with_isolated_empty_sessions(
+    fake_audit_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex is implemented; an empty isolated rollout root is a valid empty result."""
+    monkeypatch.setenv("CODEX_HOME", str(fake_audit_dir / "codex"))
+    result = _dispatch("tool_call_stats", {"agent": "codex"})
+    assert result["tool_call_ranking"] == []
+    assert result["blocked"]["total_blocks"] == 0
 
 
 def test_agent_arg_filters_blocked(fake_audit_dir: Path, fake_no_sessions: None) -> None:

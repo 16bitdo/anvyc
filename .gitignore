@@ -59,3 +59,10 @@ uv.lock
 
 # hatch_build.py 가 빌드 시 생성 — 산출물이라 추적하지 않는다
 src/anvyc/_build_info.py
+
+# Local role-based-ruleset / OpenAI deployment artifacts
+/AGENTS.md
+/.agents/rbr/
+/.agents/skills/rbr-*/
+/.codex/config.toml
+/.codex/hooks.json

@@ -141,9 +141,9 @@ def _tool_defs() -> list[Tool]:
             name="activity_summary",
             description=(
                 "AI agent session 의 통합 통계 (CP-1 + CP-7 멀티 에이전트). "
-                "기본은 모든 등록 agent union — 현재 Claude Code "
-                "(~/.claude*/projects/*/*.jsonl) 만 impl, Cursor/Codex 는 stub 으로 "
-                "silent skip. `agent` 명시 시 단일 dispatch — stub 명시는 error. "
+                "기본은 등록 agent union (Claude Code / Cursor / Codex). "
+                "Codex는 CODEX_HOME의 rollout metadata만 읽는다. "
+                "`agent` 명시 시 단일 dispatch. "
                 "반환: total_sessions / total_events / total_tool_calls / "
                 "total_duration_seconds / oldest~newest range / tools_used dict."
             ),
