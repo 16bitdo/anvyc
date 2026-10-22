@@ -1818,6 +1818,7 @@ GitHub remote / Pulumi project / dev_env / tool versions) 를 단일 JSON 으로
 | `pulumi` | object | yes | Pulumi project info (Pulumi.yaml 없으면 null) |
 | `dev_env` | object | no | `.envrc` 의 모든 `export KEY=VALUE` — 빈 객체 가능 |
 | `tool_versions` | object | no | python/node/asdf 종합 — 빈 객체 가능 |
+| `ruleset` | object \| null | yes | 생성된 `CLAUDE.md` 헤더의 룰셋 provenance — `role`·`generated_at`·`ruleset_version`·`ruleset_commit` + `.cursor/rules` 의 `.mdc` 수(`cursor_rules`). 손으로 쓴 CLAUDE.md·부재면 `null`. **`project show`(CLI·MCP) 단일 조회에만** `fresh`(true/false/null) 가 덧붙는다 — rbr `generate_claude_md.py --check` 1회 실행, rbr 부재·오류는 null. `project list` 는 비용 때문에 붙이지 않는다 (v0.27.0, rbr 리뷰 2026-10-22 항목 4) |
 
 > **ownership 은 이 schema 에 없다(의도적).** 사람용 출력(`--json` 없이)은
 > `gh_account` 줄 바로 아래에 account-routing manifest(L1)가 선언한 `ownership`
@@ -1947,7 +1948,10 @@ username 이 아니라 **backend** 개념이라 필드명을 `pulumi.backend` �
     "NODE_ENV": "development",
     "GITHUB_TOKEN": "***REDACTED***"
   },
-  "tool_versions": {"python": "3.13", "node": "20.10.0"}
+  "tool_versions": {"python": "3.13", "node": "20.10.0"},
+  "ruleset": {"role": "devops-engineer", "generated_at": "2026-10-23T07:47:00+09:00",
+              "ruleset_version": "v1.0.0-437-g6b32986", "ruleset_commit": "6b32986",
+              "cursor_rules": 53, "fresh": true}
 }
 ```
 

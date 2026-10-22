@@ -147,6 +147,7 @@ def test_show_json_output_unaffected(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "ownership" not in payload
     assert set(payload.keys()) == {
         "path",
+        "ruleset",
         "aws_profile",
         "gh_account",
         "claude_account",

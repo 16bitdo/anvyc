@@ -9,6 +9,7 @@ D11c: dev_env 의 값에 anvyc 의 secret PATTERNS 이 매칭되면 `***REDACTED
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -37,6 +38,9 @@ class ProjectInfo:
     pulumi: dict[str, Any] | None
     dev_env: dict[str, str] = field(default_factory=dict)
     tool_versions: dict[str, str] = field(default_factory=dict)
+    # 2026-10-23 — 생성된 CLAUDE.md 헤더에서 읽은 룰셋 provenance(role·commit·generated_at) +
+    # 배포본 룰 수. 생성물이 아니면(손으로 쓴 CLAUDE.md·부재) None. 신선도는 ruleset_freshness().
+    ruleset: dict[str, Any] | None = None
 
 
 def derive_gh_account(gh_config_dir: str | None) -> str | None:
@@ -287,8 +291,70 @@ def collect_project_info(path: Path, *, redact_secrets: bool = True) -> ProjectI
         pulumi=pulumi,
         dev_env=dev_env,
         tool_versions=_collect_tool_versions(p),
+        ruleset=_collect_ruleset(p),
     )
 
 
 def to_dict(info: ProjectInfo) -> dict[str, Any]:
     return asdict(info)
+
+
+# ── 룰셋 provenance (role-based-ruleset 리뷰 2026-10-22 항목 4) ───────────────────
+#
+# 에이전트가 프로젝트 단위로 "내 룰셋 role·commit·신선도" 를 물을 수단이 CLAUDE.md 헤더
+# 파싱밖에 없었다. claude-md-freshness 는 global doctor 에서 fleet 전체를 한 문자열로 보고한다.
+# 여기서는 헤더만 읽어 provenance 를 구조화하고, 신선도는 비용(rbr 스크립트 1회 실행)이 있어
+# 단일 프로젝트 조회(project show)에서만 ruleset_freshness() 로 덧붙인다 — project list 는 안 한다.
+
+_GENERATED_MARKER = "auto-generated from .cursor/rules/"
+_HEADER_KEYS = ("role", "generated_at", "ruleset_version", "ruleset_commit")
+
+
+def _collect_ruleset(p: Path) -> dict[str, Any] | None:
+    claude_md = p / "CLAUDE.md"
+    if not claude_md.is_file():
+        return None
+    try:
+        with claude_md.open(encoding="utf-8") as fh:
+            first, second = fh.readline(), fh.readline()
+    except OSError:
+        return None
+    if _GENERATED_MARKER not in first:
+        return None  # 손으로 쓴 CLAUDE.md — 룰셋 산출물이 아니다
+    out: dict[str, Any] = {}
+    for part in second.strip().removeprefix("<!--").removesuffix("-->").split("|"):
+        key, _, val = part.strip().partition(":")
+        if key.strip() in _HEADER_KEYS and val.strip():
+            out[key.strip()] = val.strip()
+    rules_dir = p / ".cursor" / "rules"
+    out["cursor_rules"] = len(list(rules_dir.glob("*.mdc"))) if rules_dir.is_dir() else 0
+    return out
+
+
+def _rbr_generate_script() -> Path:
+    return Path.home() / "dev" / "role-based-ruleset" / "scripts" / "generate_claude_md.py"
+
+
+def ruleset_freshness(p: Path) -> bool | None:
+    """생성된 CLAUDE.md 가 그 프로젝트 `.cursor/rules` 와 content-fresh 한지. 모르면 None.
+
+    rbr `generate_claude_md.py --target-dir <p> --check` 를 read-only 로 1회 실행한다(exit 0 fresh /
+    1 stale). rbr 부재·오류·생성물 아님 → None (모름은 stale 이 아니다).
+    """
+    if _collect_ruleset(p) is None:
+        return None
+    script = _rbr_generate_script()
+    if not script.is_file():
+        return None
+    try:
+        proc = subprocess.run(
+            ["python3", str(script), "--target-dir", str(p), "--check"],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    return None
