@@ -264,11 +264,14 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
     args = arguments or {}
 
     if name == "project_show":
-        from anvyc.core.project_info import collect_project_info, to_dict
+        from anvyc.core.project_info import collect_project_info, ruleset_freshness, to_dict
 
         p = Path(args.get("path") or ".")
         info = collect_project_info(p, redact_secrets=not args.get("reveal_secrets", False))
-        return to_dict(info)
+        payload = to_dict(info)
+        if payload.get("ruleset") is not None:
+            payload["ruleset"]["fresh"] = ruleset_freshness(p)  # 단일 조회에서만 (rbr 스크립트 1회)
+        return payload
 
     if name == "project_list":
         from anvyc.core.project_discovery import PROJECT_MARKERS, discover_projects

@@ -2118,10 +2118,12 @@ def project_show(
     if not path.exists():
         console.print(f"[red]error[/] path not found: {path}")
         raise typer.Exit(code=1)
-    from anvyc.core.project_info import collect_project_info, to_dict
+    from anvyc.core.project_info import collect_project_info, ruleset_freshness, to_dict
 
     info = collect_project_info(path, redact_secrets=not reveal_secrets)
     payload = to_dict(info)
+    if payload.get("ruleset") is not None:
+        payload["ruleset"]["fresh"] = ruleset_freshness(path)  # 단일 조회에서만 (rbr 스크립트 1회)
 
     if json_out:
         typer.echo(jsonlib.dumps(payload, ensure_ascii=False, indent=2))
