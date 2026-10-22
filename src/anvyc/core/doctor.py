@@ -13,6 +13,7 @@ from anvyc.checks.aws_account_status import AwsAccountStatusCheck
 from anvyc.checks.aws_profile_status import AwsProfileStatusCheck
 from anvyc.checks.base import Check, CheckContext, CheckResult, Severity
 from anvyc.checks.claude_md_freshness import ClaudeMdFreshnessCheck
+from anvyc.checks.codex_bundle_drift import CodexBundleDriftCheck
 from anvyc.checks.container_runtime import ContainerRuntimeHealthCheck
 from anvyc.checks.cost_aws_explorer_iam import CostAwsExplorerIamCheck
 from anvyc.checks.cost_github_pat_scope import CostGithubPatScopeCheck
@@ -122,6 +123,7 @@ _REGISTRY: dict[str, Check] = {
     "hook-integrity-risk-gate": HookIntegrityRiskGateCheck(),
     "claude-md-freshness": ClaudeMdFreshnessCheck(),
     "ruleset-deploy-drift": RulesetDeployDriftCheck(),
+    "codex-bundle-drift": CodexBundleDriftCheck(),
     "work-cwd-track-wired": WorkCwdTrackWiredCheck(),
     "project-branch-protection": ProjectBranchProtectionCheck(),
     "container-runtime-health": ContainerRuntimeHealthCheck(),

@@ -1231,7 +1231,7 @@ touch src/anvyc/cli.py
 | Cursor symlink 무결성 | `~/.cursor/**` symlink 대상 존재 여부 |
 | Multi-account 환경 (v0.6.1) | `.envrc` ↔ `~/.aws/config` mapping, active profile, ssh/cursor alias |
 
-#### 27.1.1 등록된 check 목록 (30 check)
+#### 27.1.1 등록된 check 목록 (31 check)
 
 SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 묶음이며,
 `tests/unit/test_doctor_check_registry_drift.py` 가 **이름 집합**으로 정합을 강제한다
@@ -1287,6 +1287,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 
 | check_name | 영역 | 추가 |
 |---|---|---|
 | `ruleset-deploy-drift` | 배포된 `.cursor/rules` 가 role-based-ruleset origin 보다 뒤처졌는지 (스탬프성 신호) | v0.21.0 |
+| `codex-bundle-drift` | 프로젝트별 Codex 번들(`.agents/rbr/manifest.json`, `rbr agent bundle --surface codex` 산출)이 SoT 기준 낡았거나 손상됐는지 — `source.commit` 이 rbr clone HEAD 보다 뒤처짐 / 소유 파일 sha256 변경·삭제(`AGENTS.md` 는 managed block 만 비교). manifest 가 한 곳도 없으면 침묵, 모르는 commit 은 "모름" 으로 보고. 계기: 2026-10-22 리뷰 — `.cursor`·`CLAUDE.md` 만 관측돼 Codex 산출물은 낡아도 신호가 없었다 | v0.27.0 |
 | `claude-md-freshness` | fleet 의 생성된 `CLAUDE.md` 가 각 repo `.cursor/rules` 와 content-fresh 한지 (per-file 정밀 신호). fresh 일 때는 **재생성됐지만 미커밋인** 구간을 INFO 로 관측 — tracked-only(gitignored repo 는 재생성이 정본이라 침묵), 생성물 판별은 첫 줄 마커. 조치 안내는 2단계(`deploy_cursor_rules` → `generate_claude_md`) — 단독 `--apply` 는 누락 룰을 인덱스에서 drop 한다 | v0.21.0 (미커밋 관측 v0.22.1) |
 
 **worktree 위생** (L2 read-only — 판정만 한다. 잠금 해제·제거는 사용자 몫)
@@ -1387,7 +1388,7 @@ doctor:
 
 ```
 anvyc doctor
-  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/30 checks clean
+  ✓ 0 critical    ⚠ 2 warning    ℹ 24 info     ·  ✓ 16/31 checks clean
 
 조치 필요
   ⚠ project-branch-protection (6)
