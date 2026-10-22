@@ -114,7 +114,7 @@ def _tool_defs() -> list[Tool]:
                 "project-aws-profile-mapping / aws-profile-status / "
                 "multi-account-detected / unused-aws-profiles / creds-expiry / "
                 "cost-aws-explorer-iam / cost-github-pat-scope / "
-                "hook-integrity-risk-gate / work-cwd-track-wired 등. "
+                "hook-integrity-risk-gate / work-cwd-track-wired / codex-bundle-drift 등. "
                 "결과의 extras_install(null 이 아니면)은 check 별 extras 설치 안내를 합친 명령이다 — "
                 "안내를 하나씩 실행하면 서로를 지우므로 extras_install.command 하나를 실행한다."
             ),
