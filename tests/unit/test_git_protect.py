@@ -2,7 +2,6 @@
 """Unit tests for anvyc.core.git_protect."""
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -18,75 +17,12 @@ from anvyc.core.git_protect import (
     build_ruleset_payload,
     diff_ruleset,
     get_ruleset,
+    ruleset_changes,
 )
-
-# 손으로 더한 규칙 — rbr 의 CI 필수 체크(2026-10-30)와 같은 모양.
-_STATUS_CHECKS_RULE: dict[str, Any] = {
-    "type": "required_status_checks",
-    "parameters": {
-        "strict_required_status_checks_policy": False,
-        "do_not_enforce_on_create": False,
-        "required_status_checks": [{"context": "ci-ok", "integration_id": 15368}],
-    },
-}
-
-
-def _detail(**changes: Any) -> dict[str, Any]:
-    """GET rulesets/{id} 응답 — anvyc 가 만든 뒤 아무도 손대지 않은 ruleset.
-
-    2026-10-30 실제 응답(16bitdo 의 anvyc · okr · reflection · role-based-ruleset 4곳이
-    같았다)과 같은 모양이다. pull_request 의 required_reviewers ·
-    require_extra_approval_for_unattributed_changes · allowed_merge_methods 는 payload 에
-    없고 서버가 채운 기본값이다.
-    """
-    detail: dict[str, Any] = {
-        "id": 7,
-        "name": RULESET_NAME,
-        "target": "branch",
-        "source_type": "Repository",
-        "source": "16bitdo/anvyc",
-        "enforcement": "active",
-        "conditions": {"ref_name": {"exclude": [], "include": ["~DEFAULT_BRANCH"]}},
-        "rules": [
-            {"type": "deletion"},
-            {"type": "non_fast_forward"},
-            {
-                "type": "pull_request",
-                "parameters": {
-                    "required_approving_review_count": 0,
-                    "dismiss_stale_reviews_on_push": False,
-                    "required_reviewers": [],
-                    "require_code_owner_review": False,
-                    "require_last_push_approval": False,
-                    "required_review_thread_resolution": False,
-                    "require_extra_approval_for_unattributed_changes": True,
-                    "allowed_merge_methods": ["merge", "squash", "rebase"],
-                },
-            },
-        ],
-        "node_id": "RRS_test",
-        "created_at": "2026-06-02T12:02:18.028+09:00",
-        "updated_at": "2026-06-02T12:02:18.064+09:00",
-        "bypass_actors": [],
-        "current_user_can_bypass": "never",
-        "_links": {
-            "self": {"href": "https://api.github.com/repos/16bitdo/anvyc/rulesets/7"},
-            "html": {"href": "https://github.com/16bitdo/anvyc/rules/7"},
-        },
-    }
-    detail.update(changes)
-    return detail
-
-
-def _pr_rules(**params: Any) -> list[dict[str, Any]]:
-    """_detail() 의 rules 에서 pull_request 파라미터만 바꾼 사본."""
-    rules: list[dict[str, Any]] = copy.deepcopy(_detail()["rules"])
-    rules[2]["parameters"].update(params)
-    return rules
-
-
-def _listing() -> str:
-    return json.dumps([{"id": 7, "name": RULESET_NAME}])
+from tests.unit._ruleset_fixtures import STATUS_CHECKS_RULE as _STATUS_CHECKS_RULE
+from tests.unit._ruleset_fixtures import listing as _listing
+from tests.unit._ruleset_fixtures import pr_rules as _pr_rules
+from tests.unit._ruleset_fixtures import ruleset_detail as _detail
 
 
 def test_payload_blocks_direct_push_with_pr_rule() -> None:
@@ -254,6 +190,45 @@ def test_diff_reports_each_change_put_would_make(
     lines = diff_ruleset(_detail(**changes), build_ruleset_payload(required_reviews=0))
     assert len(lines) == 1, lines
     assert all(t in lines[0] for t in tokens), lines
+
+
+@pytest.mark.parametrize(
+    ("changes", "tokens"),
+    [
+        ({"enforcement": "disabled"}, ("enforcement",)),
+        (
+            {
+                "bypass_actors": [
+                    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+                ]
+            },
+            ("bypass_actors",),
+        ),
+        ({"rules": [*_detail()["rules"], _STATUS_CHECKS_RULE]}, ("required_status_checks", "삭제")),
+        (
+            {"rules": [r for r in _detail()["rules"] if r["type"] != "deletion"]},
+            ("deletion", "추가"),
+        ),
+        (
+            {"rules": _pr_rules(required_approving_review_count=1)},
+            ("pull_request", "required_approving_review_count"),
+        ),
+        (
+            {"rules": _pr_rules(allowed_merge_methods=["merge"])},
+            ("pull_request", "allowed_merge_methods"),
+        ),
+    ],
+    ids=["top-level", "bypass", "rule-removed", "rule-added", "managed-param", "unsent-param"],
+)
+def test_ruleset_changes_label_names_what_changes(
+    changes: dict[str, Any], tokens: tuple[str, ...]
+) -> None:
+    # doctor 는 한 줄 요약에 label 만 쓴다 — 값 없이도 무엇이 바뀌는지, 규칙이면 사라지는지
+    # 생기는지 알 수 있어야 한다.
+    found = ruleset_changes(_detail(**changes), build_ruleset_payload(required_reviews=0))
+    assert len(found) == 1, found
+    assert all(t in found[0].label for t in tokens), found[0].label
+    assert "{" not in found[0].label  # 값(JSON)은 label 에 싣지 않는다
 
 
 def test_apply_dry_run_would_update_shows_diff() -> None:

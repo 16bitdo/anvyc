@@ -2,26 +2,36 @@
 """project-branch-protection check (spec L3).
 
 등록 프로젝트 중 정책상 보호 대상(push_to_main_allowed=false, 매니페스트 기반)인
-repo 에 대해 ① 서버 ruleset 존재 ② 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
+repo 에 대해 ① 서버 ruleset 존재 ② 서버 ruleset 내용이 anvyc 기준(`guard protect` 가 PUT 할
+payload)과 같은지 ③ 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
 정책 출처가 fallback(=role-based-ruleset 미발견)·정책상 main push 허용·origin 없음·
 **enforce 불가(admin 아님 — private 404 또는 public read-only whatap 등)** → silent(결과 0건).
 
 **archived repo** 는 쓰기가 403 이라 ruleset 설정이 영원히 불가능하므로 그 항목만 silent
 (로컬 pre-push 훅은 archive 와 무관하게 설치 가능하므로 계속 검사한다).
 
-네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 필요 시 repo_admin)
-+ ruleset 미설정으로 판정된 repo 만 repo_archived 1회 추가(정합 repo 에는 없음)
-+ resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
+네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 그다음 ruleset 이 있으면 상세 조회
+get_ruleset_detail · 없으면 repo_admin) + ruleset 미설정으로 판정된 repo 만 repo_archived 1회
+추가(정합 repo 에는 없음) + resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
 `anvyc doctor --skip project-branch-protection`.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.core.branch_policy import resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
-from anvyc.core.git_protect import get_ruleset, gh_auth_state, repo_admin, repo_archived
+from anvyc.core.git_protect import (
+    build_ruleset_payload,
+    get_ruleset,
+    get_ruleset_detail,
+    gh_auth_state,
+    repo_admin,
+    repo_archived,
+    ruleset_changes,
+)
 from anvyc.core.guard_targets import resolve_guard_targets
 from anvyc.utils.git_remote import origin_owner_repo
 
@@ -49,6 +59,43 @@ def _hook_problem(repo_dir: Path) -> tuple[str, str] | None:
             f"{hook} 에 anvyc-pr-guard 블록을 직접 추가 (anvyc 는 tracked 훅을 clobber 하지 않음)",
         )
     return ("로컬 pre-push hook 미설치", "anvyc guard install")
+
+
+def _display_path(path: Path) -> str:
+    """해소책 속 repo 경로 — 홈 아래면 `~` 로 줄인다(위치 표시와 같은 모양).
+
+    `guard protect` 는 --project 를 expanduser 하므로 셸 없이 실행해도 그대로 동작한다.
+    홈 뒤에 `/` 가 이어질 때만 줄인다 — `/Users/edwardX` 를 `~X` 로 바꾸지 않는다.
+    """
+    home, text = str(Path.home()), str(path)
+    return "~" + text[len(home):] if text == home or text.startswith(home + "/") else text
+
+
+def _ruleset_drift(
+    owner: str, name: str, ruleset: dict[str, Any], required_reviews: int, repo_dir: Path
+) -> tuple[str, str] | None:
+    """서버 ruleset 이 anvyc 기준(guard protect 가 PUT 할 payload)과 다르면 (사유, 해소책).
+
+    `guard protect --apply` 는 ruleset 을 payload 로 통째로 덮어쓴다 — 손으로 더한 규칙 ·
+    우회 권한자가 그때 사라진다. --apply 를 돌리기 전에 매일 보이게 한다. 해소책은 이
+    repo 의 dry-run 이다 — 전체 `--apply` 를 권하면 바로 그 덮어쓰기를 부른다.
+    """
+    detail, why = get_ruleset_detail(owner, name, ruleset.get("id"))
+    if detail is None:
+        # 내용을 못 읽었으면 정합인지 알 수 없다 — 정합으로 세면 확인 안 된 repo 가 초록이 된다.
+        return (
+            f"서버 ruleset 상세 조회 실패 — anvyc 기준과 비교하지 못함({why[:80]})",
+            "anvyc doctor --only project-branch-protection 재실행",
+        )
+    changes = ruleset_changes(detail, build_ruleset_payload(required_reviews=required_reviews))
+    if not changes:
+        return None
+    labels = " · ".join(c.label for c in changes)
+    return (
+        f"서버 ruleset 이 anvyc 기준과 다름 {len(changes)}건({labels}) — guard protect --apply 가 덮어쓴다",
+        f"anvyc guard protect --project {_display_path(repo_dir)} 로 차이 확인 — "
+        "남길 규칙은 별도 ruleset 으로 옮긴 뒤 --apply",
+    )
 
 
 class ProjectBranchProtectionCheck:
@@ -104,7 +151,14 @@ class ProjectBranchProtectionCheck:
             # repo 까지 API 를 쓰면 헤더가 선언한 'repo 당 gh api 1~2회' 예산이 깨진다.
             if ruleset is None and not repo_archived(owner, name):
                 problems.append("서버 ruleset(anvyc-pr-required) 미설정")
-                fixes.append("anvyc guard protect --apply")
+                # --project 없는 --apply 는 모든 대상 repo 의 ruleset 을 덮어쓴다 — 다른 repo 의
+                # 손 설정까지 지우지 않게 이 repo 만 지정한다.
+                fixes.append(f"anvyc guard protect --project {_display_path(repo)} --apply")
+            elif ruleset is not None:
+                drift = _ruleset_drift(owner, name, ruleset, policy.pr_reviewers_min, repo)
+                if drift is not None:
+                    problems.append(drift[0])
+                    fixes.append(drift[1])
             # 로컬 훅은 archive 와 무관하게 설치 가능 — archived repo 에서도 계속 검사한다.
             hook_problem = _hook_problem(repo)
             if hook_problem:
@@ -132,7 +186,7 @@ class ProjectBranchProtectionCheck:
                     severity=Severity.INFO,
                     message=(
                         f"branch-protection 정합 repo {len(aligned)}개 "
-                        f"— ruleset + pre-push 가드 일치"
+                        f"— ruleset(내용까지 anvyc 기준과 같음) + pre-push 가드 일치"
                     ),
                 )
             )

@@ -168,8 +168,19 @@ def _show(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _unsent_param_change(rule_type: str, key: str, before: Any) -> str | None:
-    """payload 가 보내지 않는 파라미터가 PUT 뒤 바뀌면 그 한 줄을, 그대로면 None 을 돌려준다.
+@dataclass(frozen=True)
+class RulesetChange:
+    """PUT 으로 바뀌는 것 하나.
+
+    label 은 값 없는 짧은 이름(doctor 한 줄 요약용), line 은 값까지 담은 한 줄(guard protect 출력용).
+    """
+
+    label: str
+    line: str
+
+
+def _unsent_param_change(rule_type: str, key: str, before: Any) -> RulesetChange | None:
+    """payload 가 보내지 않는 파라미터가 PUT 뒤 바뀌면 그 변경을, 그대로면 None 을 돌려준다.
 
     PUT 은 rules 를 통째로 바꾸므로 이 파라미터는 서버 기본값으로 돌아간다. 기본값을 아는
     파라미터는 값이 기본값과 다를 때만 알린다 — 손대지 않은 ruleset 에서 경고가 나면 매번
@@ -179,23 +190,25 @@ def _unsent_param_change(rule_type: str, key: str, before: Any) -> str | None:
     defaults = _SERVER_DEFAULTS.get(rule_type, {})
     name = f"{rule_type}.{key}"
     if key not in defaults:
-        return f"{name}: {_show(before)} → 서버 기본값(값을 모른다 — 바뀔 수 있다)"
+        return RulesetChange(
+            name, f"{name}: {_show(before)} → 서버 기본값(값을 모른다 — 바뀔 수 있다)"
+        )
     if _canon(before) == _canon(defaults[key]):
         return None
-    return f"{name}: {_show(before)} → {_show(defaults[key])}(서버 기본값)"
+    return RulesetChange(name, f"{name}: {_show(before)} → {_show(defaults[key])}(서버 기본값)")
 
 
-def diff_ruleset(existing: dict[str, Any], payload: dict[str, Any]) -> list[str]:
-    """existing(GET rulesets/{id} 응답)을 payload 로 PUT 하면 바뀌는 것을 한 줄씩 돌려준다.
+def ruleset_changes(existing: dict[str, Any], payload: dict[str, Any]) -> list[RulesetChange]:
+    """existing(GET rulesets/{id} 응답)을 payload 로 PUT 하면 바뀌는 것들. 같으면 빈 리스트.
 
-    같으면 빈 리스트. 손으로 더한 규칙 · 우회 권한자 · 비상시 끈 enforcement 처럼 anvyc
-    payload 에 없는 설정은 PUT 이 지운다 — 덮어쓰기 전에 보여 주려는 것이 이것이다.
+    손으로 더한 규칙 · 우회 권한자 · 비상시 끈 enforcement 처럼 anvyc payload 에 없는 설정은
+    PUT 이 지운다 — guard protect 는 덮어쓰기 전에, doctor 는 매일 이것을 보여 준다.
     """
-    lines: list[str] = []
+    changes: list[RulesetChange] = []
     for key in _WRITABLE_TOP_KEYS:
         before, after = existing.get(key), payload.get(key)
         if _canon(before) != _canon(after):
-            lines.append(f"{key}: {_show(before)} → {_show(after)}")
+            changes.append(RulesetChange(key, f"{key}: {_show(before)} → {_show(after)}"))
 
     before_rules = {
         str(r.get("type")): r.get("parameters") or {} for r in existing.get("rules") or []
@@ -203,24 +216,30 @@ def diff_ruleset(existing: dict[str, Any], payload: dict[str, Any]) -> list[str]
     after_rules = {str(r["type"]): r.get("parameters") or {} for r in payload["rules"]}
     for rtype in sorted(before_rules.keys() - after_rules.keys()):
         params = before_rules[rtype]
-        lines.append(f"규칙 삭제: {rtype}" + (f" {_show(params)}" if params else ""))
+        line = f"규칙 삭제: {rtype}" + (f" {_show(params)}" if params else "")
+        changes.append(RulesetChange(f"규칙 삭제 {rtype}", line))
     for rtype in sorted(after_rules.keys() - before_rules.keys()):
-        lines.append(f"규칙 추가: {rtype}")
+        changes.append(RulesetChange(f"규칙 추가 {rtype}", f"규칙 추가: {rtype}"))
     for rtype in sorted(before_rules.keys() & after_rules.keys()):
         before_params, after_params = before_rules[rtype], after_rules[rtype]
         for key in sorted(after_params):
             if _canon(before_params.get(key)) != _canon(after_params[key]):
-                lines.append(
-                    f"{rtype}.{key}: {_show(before_params.get(key))} → {_show(after_params[key])}"
-                )
+                name = f"{rtype}.{key}"
+                line = f"{name}: {_show(before_params.get(key))} → {_show(after_params[key])}"
+                changes.append(RulesetChange(name, line))
         for key in sorted(before_params.keys() - after_params.keys()):
-            line = _unsent_param_change(rtype, key, before_params[key])
-            if line is not None:
-                lines.append(line)
-    return lines
+            change = _unsent_param_change(rtype, key, before_params[key])
+            if change is not None:
+                changes.append(change)
+    return changes
 
 
-def _ruleset_detail(owner: str, repo: str, rid: Any) -> tuple[dict[str, Any] | None, str]:
+def diff_ruleset(existing: dict[str, Any], payload: dict[str, Any]) -> list[str]:
+    """ruleset_changes() 를 값까지 담은 한 줄씩으로 — guard protect 출력용."""
+    return [c.line for c in ruleset_changes(existing, payload)]
+
+
+def get_ruleset_detail(owner: str, repo: str, rid: Any) -> tuple[dict[str, Any] | None, str]:
     """GET rulesets/{id} → (ruleset, ""), 실패면 (None, 사유).
 
     LIST 응답에는 rules · bypass_actors 가 없어서 차이를 보려면 따로 읽어야 한다.
@@ -277,7 +296,7 @@ def apply_ruleset(
     rid = existing.get("id")
     if rid is None:
         return ProtectResult(owner, repo, "error", "ruleset id missing in list response")
-    detail, why = _ruleset_detail(owner, repo, rid)
+    detail, why = get_ruleset_detail(owner, repo, rid)
     if detail is None:
         # 기존 내용을 못 읽으면 무엇이 지워지는지 보여 줄 수 없다 — 덮어쓰지 않는다.
         return ProtectResult(

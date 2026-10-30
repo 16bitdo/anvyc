@@ -54,7 +54,7 @@ quality_gates:
 - **§38 CP-13 Cost** → [docs/design-axes/cp-13-cost.md](./docs/design-axes/cp-13-cost.md)
 - **§39 CP-15 Secret Broker** → [docs/design-axes/cp-15-secret-broker.md](./docs/design-axes/cp-15-secret-broker.md)
 - **§40 CP-14 Run ledger** → [docs/design-axes/cp-14-run-ledger.md](./docs/design-axes/cp-14-run-ledger.md)
-- **§41 Branch policy enforcement** (CP 번호 미배정 — role-based-ruleset roadmap 확정 대기) → [spec](./docs/superpowers/specs/2026-06-01-pr-workflow-enforcement-design.md) · [plan](./docs/superpowers/plans/2026-06-02-pr-workflow-enforcement.md). 16bitdo 16개 repo main 직접 push 차단(PR 강제) + 머지 후 삭제된 브랜치를 push 로 되살리는 것 차단(그 커밋은 `refs/pull` 보호 밖이다): manifest(SoT) + `anvyc guard install`(로컬 pre-push) + `anvyc guard protect`(서버 repository ruleset) + `project-branch-protection` doctor check(drift 관측). 모듈: `core/branch_policy·git_guards·git_protect·guard_targets`. **`guard protect` 는 이미 있는 `anvyc-pr-required` 를 payload 로 통째로 덮어쓴다(PUT)** — 덮어쓰기 전에 바뀌는 것(payload 에 없는 규칙 · 우회 권한자 · enforcement · 조건 · 파라미터, 서버 기본값으로 돌아가는 파라미터 포함)을 경고와 함께 출력한다. 비교 기준은 GET `rulesets/{id}` 상세다(LIST 응답에는 rules 가 없다). dry-run 은 차이가 있으면 `would-update` + 차이, 없으면 `exists`. 기존 내용을 읽지 못하면 무엇이 지워지는지 보여 줄 수 없으므로 덮어쓰지 않는다(error). 저장소별 추가 규칙은 이 ruleset 이 아닌 별도 ruleset 에 둔다(예: role-based-ruleset 의 CI 필수 체크 `ci-required`, 2026-10-30).
+- **§41 Branch policy enforcement** (CP 번호 미배정 — role-based-ruleset roadmap 확정 대기) → [spec](./docs/superpowers/specs/2026-06-01-pr-workflow-enforcement-design.md) · [plan](./docs/superpowers/plans/2026-06-02-pr-workflow-enforcement.md). 16bitdo 16개 repo main 직접 push 차단(PR 강제) + 머지 후 삭제된 브랜치를 push 로 되살리는 것 차단(그 커밋은 `refs/pull` 보호 밖이다): manifest(SoT) + `anvyc guard install`(로컬 pre-push) + `anvyc guard protect`(서버 repository ruleset) + `project-branch-protection` doctor check(drift 관측). 모듈: `core/branch_policy·git_guards·git_protect·guard_targets`. **`guard protect` 는 이미 있는 `anvyc-pr-required` 를 payload 로 통째로 덮어쓴다(PUT)** — 덮어쓰기 전에 바뀌는 것(payload 에 없는 규칙 · 우회 권한자 · enforcement · 조건 · 파라미터, 서버 기본값으로 돌아가는 파라미터 포함)을 경고와 함께 출력한다. 비교 기준은 GET `rulesets/{id}` 상세다(LIST 응답에는 rules 가 없다). dry-run 은 차이가 있으면 `would-update` + 차이, 없으면 `exists`. 기존 내용을 읽지 못하면 무엇이 지워지는지 보여 줄 수 없으므로 덮어쓰지 않는다(error). 저장소별 추가 규칙은 이 ruleset 이 아닌 별도 ruleset 에 둔다(예: role-based-ruleset 의 CI 필수 체크 `ci-required`, 2026-10-30). **doctor `project-branch-protection` 도 같은 비교(`ruleset_changes`)로 매일 본다** — 서버 ruleset 이 anvyc 기준(manifest 의 `pr_reviewers_min` 으로 만든 payload)과 다르면 WARNING 에 바뀌는 것의 이름(label, 값 없음)을 싣고, 해소책은 그 repo 의 `guard protect --project` dry-run 이다(전체 `--apply` 를 권하면 바로 그 덮어쓰기를 부른다). 상세를 못 읽은 repo 는 정합으로 세지 않는다. 첫 실행(2026-10-30)에서 `16bitdo/security` 의 `allowed_merge_methods`(`["merge"]`, 손으로 좁힘)를 잡았다 — `--apply` 였다면 서버 기본값 3종으로 돌아갔다. **ruleset 미설정 해소책도 그 repo 만 지정한다**(`anvyc guard protect --project <repo> --apply`) — `--project` 없는 `--apply` 는 모든 대상 repo 의 ruleset 을 덮어써, 한 repo 를 고치려다 다른 repo 의 손 설정(위 security 같은)을 지운다. 해소책 속 경로는 위치 표시처럼 홈 아래면 `~` 로 줄인다.
 
 ---
 
@@ -1305,7 +1305,7 @@ SoT = `src/anvyc/core/doctor.py` 의 `_REGISTRY`. 아래 표는 카테고리별 
 | `cost-github-pat-scope` | fine-grained PAT 의 billing endpoint smoke 호출 (CP-13) | CP-13 |
 | `hook-integrity-risk-gate` | risk-gate hook 의 배선 정합성 (CP-8) | v0.14.x |
 | `work-cwd-track-wired` | work-cwd hook + `env.WORK_CWD_CACHE` 주입 검증 (CP-12) | v0.15.0 |
-| `project-branch-protection` | manifest 정책 ↔ 서버 repository ruleset ↔ 로컬 pre-push 가드 drift (PR 강제; admin 아닌 repo silent) | v0.18.x |
+| `project-branch-protection` | manifest 정책 ↔ 서버 repository ruleset(존재 + 내용이 anvyc 기준과 같은지) ↔ 로컬 pre-push 가드 drift (PR 강제; admin 아닌 repo silent) | v0.18.x (내용 비교 2026-10-30) |
 | `session-bridge` | ccinspector session-bridge(프로필 경계 너머 세션 메시징 — 발견 레코드 쌍 `<pid>.json`+`.key` 를 다른 프로필 `sessions/` 로 복사) 의 read-only 미러. 훅이 배선된 머신에서만 동작: 살아있는 세션이 다른 프로필에서 안 보임(lib `status --check` 와 같은 두 예외 — 시작 120s 미만 세션은 다음 sync 대기라 보고 안 함, 헤드리스 `claude -p`(`entrypoint` sdk-cli) 세션은 브리지 대상 밖이라 가시성·`peerProtocol` 판정에서 제외) · 활성 프로필 미배선 · `peerProtocol≠1` · 레코드 형식 변경 의심 · manifest 파손 → WARNING, 복사본 5분 이상 stale → INFO 집계(정상 운영에서도 상시 발생하므로 차단하지 않음). 미배선 머신 silent. 조치는 lib `sync`/ccinspector `install.sh` 몫(anvyc 는 복사본·manifest 를 수정하지 않음) | v0.22.x |
 
 ### 27.2 모듈 구조
@@ -1393,7 +1393,7 @@ anvyc doctor
 조치 필요
   ⚠ project-branch-protection (6)
       · ~/dev/anvyc — 16bitdo/anvyc: 로컬 pre-push hook 미설치
-        → anvyc guard protect --apply / anvyc guard install
+        → anvyc guard install
       … +3 more
   ⚠ project-gh-account-mapping (2)
       · ~/dev/ctxport — GitHub origin 이 ssh alias '16bitdo' 를 쓰지만 .envrc 에 … 없음
