@@ -4283,6 +4283,17 @@ def guard_install(
             console.print(remedy, markup=False, highlight=False)
 
 
+def _print_ruleset_diff(target: str, lines: list[str], *, applying: bool) -> None:
+    """guard protect — 기존 ruleset 을 덮어쓸 때 바뀌는 것을 경고와 함께 보여 준다."""
+    if applying:
+        console.print(f"[yellow]⚠ {target}: 기존 ruleset 을 덮어쓴다 — 아래 내용이 바뀐다[/]")
+    else:
+        console.print("  [yellow]⚠ --apply 하면 기존 ruleset 의 아래 내용이 바뀐다[/]")
+    # 값이 JSON 이라 `[...]` 가 rich markup 으로 먹히지 않게 그대로 내고, 긴 줄도 자르지 않는다.
+    for line in lines:
+        console.print(f"    - {line}", markup=False, highlight=False, soft_wrap=True)
+
+
 @guard_app.command("protect")
 def guard_protect(
     project: list[Path] | None = typer.Option(
@@ -4291,7 +4302,13 @@ def guard_protect(
     root: Path | None = typer.Option(None, "--root", help="스캔 상위 디렉터리."),
     apply: bool = typer.Option(False, "--apply", help="실제 적용 (기본: dry-run)."),
 ) -> None:
-    """대상 repo 에 GitHub repository ruleset(PR 필수)을 적용한다. 기본 dry-run."""
+    """대상 repo 에 GitHub repository ruleset(PR 필수)을 적용한다. 기본 dry-run.
+
+    이미 있는 ruleset 은 payload 로 통째로 덮어쓴다. 그 전에 바뀌는 것(손으로 더한 규칙 ·
+    우회 권한자 · enforcement 등)을 경고와 함께 보여 준다 — dry-run 은 would-update 로.
+    """
+    from functools import partial
+
     from anvyc.core.branch_policy import resolve_policy
     from anvyc.core.git_protect import apply_ruleset, repo_admin, repo_archived
     from anvyc.core.guard_targets import resolve_guard_targets
@@ -4322,12 +4339,18 @@ def guard_protect(
             console.print(f"[dim]skip[/] {owner}/{name} (archived — read-only, ruleset 설정 불가)")
             continue
         res = apply_ruleset(
-            owner, name, required_reviews=policy.pr_reviewers_min, dry_run=not apply
+            owner,
+            name,
+            required_reviews=policy.pr_reviewers_min,
+            dry_run=not apply,
+            on_overwrite=partial(_print_ruleset_diff, f"{owner}/{name}", applying=True),
         )
         color = {"created": "green", "updated": "green", "exists": "dim", "no-access": "dim"}.get(
             res.action, "yellow"
         )
         console.print(f"[{color}]{res.action}[/] {owner}/{name} {res.detail}")
+        if not apply and res.diff:
+            _print_ruleset_diff(f"{owner}/{name}", res.diff, applying=False)
 
 
 @aws_profile_app.command("list")

@@ -13,7 +13,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 RULESET_NAME = "anvyc-pr-required"
@@ -25,7 +26,7 @@ _HTTP_STATUS_RE = re.compile(r"\(HTTP (\d{3})\)")
 GhAuthState = Literal["ok", "unauthenticated", "unavailable"]
 
 ProtectAction = Literal[
-    "created", "updated", "exists", "would-create", "no-access", "error"
+    "created", "updated", "exists", "would-create", "would-update", "no-access", "error"
 ]
 
 
@@ -143,16 +144,115 @@ def gh_auth_state() -> GhAuthState:
     return "unavailable"
 
 
+# ruleset 의 쓰기 가능한 최상위 필드(REST "Update a repository ruleset" body) 중 rules 를
+# 뺀 것. GET 응답의 나머지(id · node_id · _links · 시각 등)는 조회 전용이라 PUT 과 무관하다.
+_WRITABLE_TOP_KEYS = ("name", "target", "enforcement", "conditions", "bypass_actors")
+
+# payload 가 보내지 않는 파라미터는 PUT 뒤 서버 기본값이 된다. anvyc 가 만든 ruleset 4곳
+# (anvyc · okr · reflection · role-based-ruleset)을 조회해 확인한 값이다(2026-10-30).
+_SERVER_DEFAULTS: dict[str, dict[str, Any]] = {
+    "pull_request": {
+        "required_reviewers": [],
+        "require_extra_approval_for_unattributed_changes": True,
+        "allowed_merge_methods": ["merge", "squash", "rebase"],
+    },
+}
+
+
+def _canon(value: Any) -> str:
+    """비교용 표현 — dict 키 순서를 무시한다(GET 응답과 payload 의 키 순서가 다르다)."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+def _show(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _unsent_param_change(rule_type: str, key: str, before: Any) -> str | None:
+    """payload 가 보내지 않는 파라미터가 PUT 뒤 바뀌면 그 한 줄을, 그대로면 None 을 돌려준다.
+
+    PUT 은 rules 를 통째로 바꾸므로 이 파라미터는 서버 기본값으로 돌아간다. 기본값을 아는
+    파라미터는 값이 기본값과 다를 때만 알린다 — 손대지 않은 ruleset 에서 경고가 나면 매번
+    무시하게 된다. 기본값을 모르는 파라미터(GitHub 이 새로 더한 것 등)는 바뀔 수 있다고
+    알린다 — 조용히 넘기면 손으로 바꾼 값이 알림 없이 사라질 수 있다.
+    """
+    defaults = _SERVER_DEFAULTS.get(rule_type, {})
+    name = f"{rule_type}.{key}"
+    if key not in defaults:
+        return f"{name}: {_show(before)} → 서버 기본값(값을 모른다 — 바뀔 수 있다)"
+    if _canon(before) == _canon(defaults[key]):
+        return None
+    return f"{name}: {_show(before)} → {_show(defaults[key])}(서버 기본값)"
+
+
+def diff_ruleset(existing: dict[str, Any], payload: dict[str, Any]) -> list[str]:
+    """existing(GET rulesets/{id} 응답)을 payload 로 PUT 하면 바뀌는 것을 한 줄씩 돌려준다.
+
+    같으면 빈 리스트. 손으로 더한 규칙 · 우회 권한자 · 비상시 끈 enforcement 처럼 anvyc
+    payload 에 없는 설정은 PUT 이 지운다 — 덮어쓰기 전에 보여 주려는 것이 이것이다.
+    """
+    lines: list[str] = []
+    for key in _WRITABLE_TOP_KEYS:
+        before, after = existing.get(key), payload.get(key)
+        if _canon(before) != _canon(after):
+            lines.append(f"{key}: {_show(before)} → {_show(after)}")
+
+    before_rules = {
+        str(r.get("type")): r.get("parameters") or {} for r in existing.get("rules") or []
+    }
+    after_rules = {str(r["type"]): r.get("parameters") or {} for r in payload["rules"]}
+    for rtype in sorted(before_rules.keys() - after_rules.keys()):
+        params = before_rules[rtype]
+        lines.append(f"규칙 삭제: {rtype}" + (f" {_show(params)}" if params else ""))
+    for rtype in sorted(after_rules.keys() - before_rules.keys()):
+        lines.append(f"규칙 추가: {rtype}")
+    for rtype in sorted(before_rules.keys() & after_rules.keys()):
+        before_params, after_params = before_rules[rtype], after_rules[rtype]
+        for key in sorted(after_params):
+            if _canon(before_params.get(key)) != _canon(after_params[key]):
+                lines.append(
+                    f"{rtype}.{key}: {_show(before_params.get(key))} → {_show(after_params[key])}"
+                )
+        for key in sorted(before_params.keys() - after_params.keys()):
+            line = _unsent_param_change(rtype, key, before_params[key])
+            if line is not None:
+                lines.append(line)
+    return lines
+
+
+def _ruleset_detail(owner: str, repo: str, rid: Any) -> tuple[dict[str, Any] | None, str]:
+    """GET rulesets/{id} → (ruleset, ""), 실패면 (None, 사유).
+
+    LIST 응답에는 rules · bypass_actors 가 없어서 차이를 보려면 따로 읽어야 한다.
+    """
+    rc, out, err = _gh_api([f"repos/{owner}/{repo}/rulesets/{rid}"])
+    if rc != 0:
+        return None, err.strip() or f"exit {rc}"
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None, "응답이 JSON 이 아니다"
+    if not isinstance(data, dict):
+        return None, "응답 형식이 다르다"
+    return data, ""
+
+
 @dataclass
 class ProtectResult:
     owner: str
     repo: str
     action: ProtectAction
     detail: str = ""
+    diff: list[str] = field(default_factory=list)
 
 
 def apply_ruleset(
-    owner: str, repo: str, *, required_reviews: int = 0, dry_run: bool = True
+    owner: str,
+    repo: str,
+    *,
+    required_reviews: int = 0,
+    dry_run: bool = True,
+    on_overwrite: Callable[[list[str]], None] | None = None,
 ) -> ProtectResult:
     list_rc, items = _list_rulesets(owner, repo)
     if list_rc != 0:
@@ -177,10 +277,21 @@ def apply_ruleset(
     rid = existing.get("id")
     if rid is None:
         return ProtectResult(owner, repo, "error", "ruleset id missing in list response")
+    detail, why = _ruleset_detail(owner, repo, rid)
+    if detail is None:
+        # 기존 내용을 못 읽으면 무엇이 지워지는지 보여 줄 수 없다 — 덮어쓰지 않는다.
+        return ProtectResult(
+            owner, repo, "error", f"기존 ruleset 조회 실패 — 덮어쓰지 않음: {why[:80]}"
+        )
+    diff = diff_ruleset(detail, payload)
     if dry_run:
-        return ProtectResult(owner, repo, "exists", info)
+        return ProtectResult(owner, repo, "would-update" if diff else "exists", info, diff)
+    if diff and on_overwrite is not None:
+        on_overwrite(diff)  # PUT 전에 — 무엇이 바뀌는지 먼저 남긴다
     rc, _, err = _gh_api(
         [f"repos/{owner}/{repo}/rulesets/{rid}", "--method", "PUT", "--input", "-"],
         input_str=json.dumps(payload),
     )
-    return ProtectResult(owner, repo, "updated" if rc == 0 else "error", info if rc == 0 else err.strip()[:120])
+    return ProtectResult(
+        owner, repo, "updated" if rc == 0 else "error", info if rc == 0 else err.strip()[:120], diff
+    )
