@@ -4309,7 +4309,7 @@ def guard_protect(
     """
     from functools import partial
 
-    from anvyc.core.branch_policy import resolve_policy
+    from anvyc.core.branch_policy import enforced_merge_strategy, resolve_policy
     from anvyc.core.git_protect import apply_ruleset, repo_admin, repo_archived
     from anvyc.core.guard_targets import resolve_guard_targets
     from anvyc.utils.git_remote import origin_owner_repo
@@ -4342,6 +4342,7 @@ def guard_protect(
             owner,
             name,
             required_reviews=policy.pr_reviewers_min,
+            merge_strategy=enforced_merge_strategy(policy),
             dry_run=not apply,
             on_overwrite=partial(_print_ruleset_diff, f"{owner}/{name}", applying=True),
         )

@@ -3,7 +3,8 @@
 
 등록 프로젝트 중 정책상 보호 대상(push_to_main_allowed=false, 매니페스트 기반)인
 repo 에 대해 ① 서버 ruleset 존재 ② 서버 ruleset 내용이 anvyc 기준(`guard protect` 가 PUT 할
-payload)과 같은지 ③ 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
+payload)과 같은지 ③ manifest 에 직접 적은 merge_strategy 를 저장소 머지 설정이 허용하는지
+④ 로컬 pre-push 가드 설치 를 검증, 불일치 시 WARNING.
 정책 출처가 fallback(=role-based-ruleset 미발견)·정책상 main push 허용·origin 없음·
 **enforce 불가(admin 아님 — private 404 또는 public read-only whatap 등)** → silent(결과 0건).
 
@@ -12,7 +13,8 @@ payload)과 같은지 ③ 로컬 pre-push 가드 설치 를 검증, 불일치 �
 
 네트워크: 보호 대상 repo 당 `gh api` 1~2회(get_ruleset, 그다음 ruleset 이 있으면 상세 조회
 get_ruleset_detail · 없으면 repo_admin) + ruleset 미설정으로 판정된 repo 만 repo_archived 1회
-추가(정합 repo 에는 없음) + resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
+추가(정합 repo 에는 없음) + merge_strategy 를 직접 적은 repo 만 repo_merge_methods 1회
++ resolve_policy subprocess 1회 → repo 수에 비례. 무겁다면
 `anvyc doctor --skip project-branch-protection`.
 """
 from __future__ import annotations
@@ -21,15 +23,17 @@ from pathlib import Path
 from typing import Any
 
 from anvyc.checks.base import CheckContext, CheckResult, Severity
-from anvyc.core.branch_policy import resolve_policy
+from anvyc.core.branch_policy import enforced_merge_strategy, resolve_policy
 from anvyc.core.git_guards import GUARD_BEGIN, effective_hooks_dir
 from anvyc.core.git_protect import (
+    MERGE_METHODS,
     build_ruleset_payload,
     get_ruleset,
     get_ruleset_detail,
     gh_auth_state,
     repo_admin,
     repo_archived,
+    repo_merge_methods,
     ruleset_changes,
 )
 from anvyc.core.guard_targets import resolve_guard_targets
@@ -72,7 +76,12 @@ def _display_path(path: Path) -> str:
 
 
 def _ruleset_drift(
-    owner: str, name: str, ruleset: dict[str, Any], required_reviews: int, repo_dir: Path
+    owner: str,
+    name: str,
+    ruleset: dict[str, Any],
+    required_reviews: int,
+    merge_strategy: str | None,
+    repo_dir: Path,
 ) -> tuple[str, str] | None:
     """서버 ruleset 이 anvyc 기준(guard protect 가 PUT 할 payload)과 다르면 (사유, 해소책).
 
@@ -87,7 +96,10 @@ def _ruleset_drift(
             f"서버 ruleset 상세 조회 실패 — anvyc 기준과 비교하지 못함({why[:80]})",
             "anvyc doctor --only project-branch-protection 재실행",
         )
-    changes = ruleset_changes(detail, build_ruleset_payload(required_reviews=required_reviews))
+    payload = build_ruleset_payload(
+        required_reviews=required_reviews, merge_strategy=merge_strategy
+    )
+    changes = ruleset_changes(detail, payload)
     if not changes:
         return None
     labels = " · ".join(c.label for c in changes)
@@ -95,6 +107,36 @@ def _ruleset_drift(
         f"서버 ruleset 이 anvyc 기준과 다름 {len(changes)}건({labels}) — guard protect --apply 가 덮어쓴다",
         f"anvyc guard protect --project {_display_path(repo_dir)} 로 차이 확인 — "
         "남길 규칙은 별도 ruleset 으로 옮긴 뒤 --apply",
+    )
+
+
+
+def _merge_settings_problem(
+    owner: str, name: str, merge_strategy: str | None
+) -> tuple[str, str] | None:
+    """manifest 에 직접 적은 merge_strategy 를 저장소 머지 설정이 꺼 뒀으면 (사유, 해소책).
+
+    guard protect 는 ruleset 을 그 방식만 허용하게 만든다. 저장소 설정과 겹치는 방식이 없으면
+    어떤 방식으로도 머지할 수 없다 — guard protect 는 그런 ruleset 을 쓰지 않고, 이미 맞춘
+    뒤에 누가 저장소 설정을 바꾼 경우는 여기서 잡는다.
+    """
+    methods = MERGE_METHODS.get(merge_strategy or "")
+    if methods is None:
+        return None
+    allowed = repo_merge_methods(owner, name)
+    if allowed is None:
+        return (
+            "저장소 머지 설정 조회 실패 — manifest merge_strategy 와 충돌하는지 판정하지 못함",
+            "anvyc doctor --only project-branch-protection 재실행",
+        )
+    if set(methods) & allowed:
+        return None
+    shown = "/".join(methods)
+    return (
+        f"manifest merge_strategy={merge_strategy} 인데 저장소 머지 설정이 {shown} 를 꺼 뒀다"
+        f" — ruleset 이 {shown} 만 허용하면 머지가 막힌다",
+        f"저장소 Settings → General → Pull Requests 에서 {shown} 머지를 켜거나 manifest 의"
+        " merge_strategy 를 고친다",
     )
 
 
@@ -149,16 +191,26 @@ class ProjectBranchProtectionCheck:
             # 안내하면 무시가 훈련되어 진짜 신호까지 함께 묻힌다.
             # `and` 단축평가로 repo_archived 는 **ruleset 미설정일 때만** 호출된다 — 정합
             # repo 까지 API 를 쓰면 헤더가 선언한 'repo 당 gh api 1~2회' 예산이 깨진다.
-            if ruleset is None and not repo_archived(owner, name):
+            strategy = enforced_merge_strategy(policy)
+            archived = ruleset is None and repo_archived(owner, name)
+            if ruleset is None and not archived:
                 problems.append("서버 ruleset(anvyc-pr-required) 미설정")
                 # --project 없는 --apply 는 모든 대상 repo 의 ruleset 을 덮어쓴다 — 다른 repo 의
                 # 손 설정까지 지우지 않게 이 repo 만 지정한다.
                 fixes.append(f"anvyc guard protect --project {_display_path(repo)} --apply")
             elif ruleset is not None:
-                drift = _ruleset_drift(owner, name, ruleset, policy.pr_reviewers_min, repo)
+                drift = _ruleset_drift(
+                    owner, name, ruleset, policy.pr_reviewers_min, strategy, repo
+                )
                 if drift is not None:
                     problems.append(drift[0])
                     fixes.append(drift[1])
+            # archived 는 저장소 설정도 바꿀 수 없다 — 조치 불가능한 경고는 내지 않는다.
+            if not archived:
+                conflict = _merge_settings_problem(owner, name, strategy)
+                if conflict is not None:
+                    problems.append(conflict[0])
+                    fixes.append(conflict[1])
             # 로컬 훅은 archive 와 무관하게 설치 가능 — archived repo 에서도 계속 검사한다.
             hook_problem = _hook_problem(repo)
             if hook_problem:

@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from anvyc.cli import app
+from anvyc.core.branch_policy import BranchPolicy
 from anvyc.core.git_protect import (
     RULESET_NAME,
     apply_ruleset,
@@ -301,6 +302,109 @@ def test_apply_refuses_to_overwrite_when_detail_unreadable(
     assert not any("PUT" in a for a in sent)  # PUT 을 보내지 않았다
 
 
+# ── 허용 머지 방식 — manifest 에 직접 적은 merge_strategy ─────────────────────
+# ruleset 의 allowed_merge_methods 와 저장소 설정(allow_*_merge)이 겹치는 방식만 쓸 수 있다.
+# 겹치지 않으면 머지가 아예 막히므로, 그렇게 될 ruleset 은 쓰지 않는다.
+
+_SETTINGS_ARGS = [
+    "repos/16bitdo/anvyc",
+    "--jq",
+    "{allow_merge_commit, allow_squash_merge, allow_rebase_merge}",
+]
+_ALL_ALLOWED = {"allow_merge_commit": True, "allow_squash_merge": True, "allow_rebase_merge": True}
+
+
+@pytest.mark.parametrize(
+    ("strategy", "expected"),
+    [
+        ("merge", ["merge"]),
+        ("squash", ["squash"]),
+        ("rebase", ["rebase"]),
+        (None, None),  # 강제할 값 없음 — 지금처럼 서버 기본값
+        ("fast-forward", None),  # 모르는 값은 강제하지 않는다
+    ],
+    ids=["merge", "squash", "rebase", "none", "unknown"],
+)
+def test_payload_allowed_merge_methods_follow_strategy(
+    strategy: str | None, expected: list[str] | None
+) -> None:
+    payload = build_ruleset_payload(required_reviews=0, merge_strategy=strategy)
+    pr = next(r for r in payload["rules"] if r["type"] == "pull_request")
+    assert pr["parameters"].get("allowed_merge_methods") == expected
+
+
+def _fake_gh_with_settings(
+    settings: dict[str, bool] | None,
+    *,
+    existing: bool,
+    sent: list[tuple[list[str], str | None]],
+) -> Any:
+    def fake(
+        args: list[str], *, input_str: str | None = None, timeout: int = 20
+    ) -> tuple[int, str, str]:
+        sent.append((list(args), input_str))
+        if args == ["repos/16bitdo/anvyc/rulesets"]:
+            return (0, _listing() if existing else "[]", "")
+        if args == _SETTINGS_ARGS:
+            if settings is None:
+                return (1, "", "gh: Server Error (HTTP 502)")
+            return (0, json.dumps(settings), "")
+        if args == ["repos/16bitdo/anvyc/rulesets/7"]:
+            return (0, json.dumps(_detail()), "")
+        if "--method" in args:
+            return (0, "{}", "")
+        raise AssertionError(f"unexpected gh call: {args}")
+
+    return fake
+
+
+def test_apply_writes_declared_merge_methods() -> None:
+    sent: list[tuple[list[str], str | None]] = []
+    fake = _fake_gh_with_settings(_ALL_ALLOWED, existing=True, sent=sent)
+    with patch("anvyc.core.git_protect._gh_api", side_effect=fake):
+        res = apply_ruleset("16bitdo", "anvyc", merge_strategy="merge", dry_run=False)
+    assert res.action == "updated"
+    bodies = [body for args, body in sent if "PUT" in args]
+    assert len(bodies) == 1 and bodies[0] is not None
+    pr = next(r for r in json.loads(bodies[0])["rules"] if r["type"] == "pull_request")
+    assert pr["parameters"]["allowed_merge_methods"] == ["merge"]
+    # 서버 기본값 3종 → merge 만: 덮어쓰기 전에 보이는 차이에도 나온다
+    assert any("allowed_merge_methods" in line for line in res.diff)
+
+
+@pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "apply"])
+@pytest.mark.parametrize("existing", [True, False], ids=["update", "create"])
+def test_apply_refuses_when_repo_settings_block_the_method(existing: bool, dry_run: bool) -> None:
+    # 저장소가 merge commit 을 꺼 뒀는데 ruleset 을 merge 만 허용으로 만들면 머지가 아예 막힌다.
+    sent: list[tuple[list[str], str | None]] = []
+    blocked = {**_ALL_ALLOWED, "allow_merge_commit": False}
+    fake = _fake_gh_with_settings(blocked, existing=existing, sent=sent)
+    with patch("anvyc.core.git_protect._gh_api", side_effect=fake):
+        res = apply_ruleset("16bitdo", "anvyc", merge_strategy="merge", dry_run=dry_run)
+    assert res.action == "error"
+    assert not any("--method" in args for args, _ in sent)  # 쓰지 않았다
+
+
+def test_apply_refuses_when_repo_settings_unreadable() -> None:
+    # 설정을 못 읽으면 머지가 막힐지 알 수 없다 — 쓰지 않는다.
+    sent: list[tuple[list[str], str | None]] = []
+    fake = _fake_gh_with_settings(None, existing=True, sent=sent)
+    with patch("anvyc.core.git_protect._gh_api", side_effect=fake):
+        res = apply_ruleset("16bitdo", "anvyc", merge_strategy="merge", dry_run=False)
+    assert res.action == "error"
+    assert not any("--method" in args for args, _ in sent)
+
+
+def test_apply_skips_settings_check_without_merge_strategy() -> None:
+    # 강제할 머지 방식이 없으면 저장소 설정을 볼 이유가 없다(호출 예산).
+    sent: list[tuple[list[str], str | None]] = []
+    fake = _fake_gh_with_settings(_ALL_ALLOWED, existing=True, sent=sent)
+    with patch("anvyc.core.git_protect._gh_api", side_effect=fake):
+        res = apply_ruleset("16bitdo", "anvyc", dry_run=False)
+    assert res.action == "updated"
+    assert not any(args == _SETTINGS_ARGS for args, _ in sent)
+
+
 # ── CLI: guard protect 출력 ───────────────────────────────────────────────────
 
 
@@ -317,6 +421,7 @@ def _fake_gh_for_cli(calls: list[list[str]], detail: dict[str, Any]) -> Any:
     table: dict[tuple[str, ...], tuple[int, str, str]] = {
         ("repos/16bitdo/anvyc", "--jq", ".permissions.admin"): (0, "true\n", ""),
         ("repos/16bitdo/anvyc", "--jq", ".archived"): (0, "false\n", ""),
+        tuple(_SETTINGS_ARGS): (0, json.dumps(_ALL_ALLOWED), ""),
         ("repos/16bitdo/anvyc/rulesets",): (0, _listing(), ""),
         ("repos/16bitdo/anvyc/rulesets/7",): (0, json.dumps(detail), ""),
         ("repos/16bitdo/anvyc/rulesets/7", "--method", "PUT", "--input", "-"): (0, "{}", ""),
@@ -352,3 +457,27 @@ def test_cli_prints_diff_before_overwriting(
     else:
         assert not put_sent
         assert "would-update" in out
+
+
+def test_cli_enforces_declared_merge_strategy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # manifest 에 merge_strategy 를 직접 적은 repo 는 guard protect 가 그 방식만 허용하게 만든다.
+    declared = BranchPolicy(
+        default_branch="main",
+        protected_branches=("main",),
+        push_to_main_allowed=False,
+        pr_required=True,
+        pr_reviewers_min=0,
+        merge_strategy="merge",
+        source="manifest",
+        declared=frozenset({"merge_strategy"}),
+    )
+    monkeypatch.setattr("anvyc.core.branch_policy.resolve_policy", lambda repo: declared)
+    calls: list[list[str]] = []
+    args = ["guard", "protect", "--project", str(_repo_with_origin(tmp_path))]
+    with patch("anvyc.core.git_protect._gh_api", side_effect=_fake_gh_for_cli(calls, _detail())):
+        result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert "would-update" in result.stdout
+    assert "allowed_merge_methods" in result.stdout
