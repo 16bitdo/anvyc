@@ -2,8 +2,10 @@
 """Unit tests for project-branch-protection check."""
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +13,7 @@ import pytest
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.core.branch_policy import BranchPolicy
+from tests.unit._ruleset_fixtures import STATUS_CHECKS_RULE, ruleset_detail
 
 _PROTECTED = BranchPolicy(
     default_branch="main", protected_branches=("main",), push_to_main_allowed=False,
@@ -42,6 +45,19 @@ def _gh_authenticated(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _ruleset_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """서버 ruleset 상세 조회를 "anvyc 가 만든 그대로" 로 고정한다.
+
+    ruleset 이 있는 경로는 상세를 읽어 anvyc 기준과 비교한다. 고정하지 않으면 그 경로를
+    지나는 시험이 실제 gh 를 부른다(CI 엔 gh 가 없다). 차이를 시험하는 쪽은 덮어쓴다.
+    """
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.get_ruleset_detail",
+        lambda owner, repo, rid: (ruleset_detail(), ""),
+    )
+
+
 @pytest.fixture
 def one_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "proj"
@@ -65,6 +81,62 @@ def test_aligned_yields_info(one_repo: Path) -> None:
     assert len(res) == 1
     assert res[0].severity is Severity.INFO
     assert "정합" in res[0].message
+
+
+# ── 서버 ruleset 내용 ↔ anvyc 기준 ────────────────────────────────────────────
+# `guard protect --apply` 는 ruleset 을 payload 로 통째로 덮어쓴다. 손으로 더한 규칙 ·
+# 우회 권한자는 그때 사라지므로 --apply 전에 doctor 가 매일 보여 준다.
+
+
+def _hooked(repo: Path) -> None:
+    (repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
+
+
+def test_ruleset_drift_yields_warning_naming_the_change(one_repo: Path) -> None:
+    _hooked(one_repo)
+    asked: list[Any] = []
+
+    def drifted(owner: str, repo: str, rid: Any) -> tuple[dict[str, Any], str]:
+        asked.append((owner, repo, rid))
+        bypass = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]
+        rules = [*ruleset_detail()["rules"], STATUS_CHECKS_RULE]
+        return ruleset_detail(rules=rules, bypass_actors=bypass), ""
+
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 7}), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset_detail", side_effect=drifted):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
+    assert asked == [("16bitdo", "proj", 7)]  # LIST 가 준 id 로 상세를 읽는다
+    assert [r.severity for r in res] == [Severity.WARNING]  # 정합으로 세지 않는다
+    assert "required_status_checks" in res[0].message
+    assert "bypass_actors" in res[0].message
+    # 전체 --apply 를 권하면 바로 그 덮어쓰기를 부른다 — 이 repo 의 dry-run 으로 차이를 보게 한다.
+    assert res[0].suggestion is not None and f"--project {one_repo}" in res[0].suggestion
+
+
+def test_ruleset_drift_compares_against_manifest_review_count(one_repo: Path) -> None:
+    # manifest 가 리뷰 1명을 요구하는데 서버 ruleset 은 0 이면 --apply 가 바꿀 내용이다.
+    _hooked(one_repo)
+    needs_review = dataclasses.replace(_PROTECTED, pr_reviewers_min=1)
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=needs_review), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 7}):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "required_approving_review_count" in res[0].message
+
+
+def test_unreadable_ruleset_detail_is_not_reported_aligned(one_repo: Path) -> None:
+    # 내용을 못 읽었으면 정합인지 알 수 없다 — "정합" 으로 세면 확인 안 된 repo 가 초록이 된다.
+    _hooked(one_repo)
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 7}), \
+         patch(
+             "anvyc.checks.project_branch_protection.get_ruleset_detail",
+             return_value=(None, "gh: Server Error (HTTP 502)"),
+         ):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "HTTP 502" in res[0].message
 
 
 def test_missing_ruleset_yields_warning(one_repo: Path) -> None:
