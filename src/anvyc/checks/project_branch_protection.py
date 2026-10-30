@@ -61,6 +61,16 @@ def _hook_problem(repo_dir: Path) -> tuple[str, str] | None:
     return ("로컬 pre-push hook 미설치", "anvyc guard install")
 
 
+def _display_path(path: Path) -> str:
+    """해소책 속 repo 경로 — 홈 아래면 `~` 로 줄인다(위치 표시와 같은 모양).
+
+    `guard protect` 는 --project 를 expanduser 하므로 셸 없이 실행해도 그대로 동작한다.
+    홈 뒤에 `/` 가 이어질 때만 줄인다 — `/Users/edwardX` 를 `~X` 로 바꾸지 않는다.
+    """
+    home, text = str(Path.home()), str(path)
+    return "~" + text[len(home):] if text == home or text.startswith(home + "/") else text
+
+
 def _ruleset_drift(
     owner: str, name: str, ruleset: dict[str, Any], required_reviews: int, repo_dir: Path
 ) -> tuple[str, str] | None:
@@ -83,7 +93,8 @@ def _ruleset_drift(
     labels = " · ".join(c.label for c in changes)
     return (
         f"서버 ruleset 이 anvyc 기준과 다름 {len(changes)}건({labels}) — guard protect --apply 가 덮어쓴다",
-        f"anvyc guard protect --project {repo_dir} 로 차이 확인 — 남길 규칙은 별도 ruleset 으로 옮긴 뒤 --apply",
+        f"anvyc guard protect --project {_display_path(repo_dir)} 로 차이 확인 — "
+        "남길 규칙은 별도 ruleset 으로 옮긴 뒤 --apply",
     )
 
 
@@ -140,7 +151,9 @@ class ProjectBranchProtectionCheck:
             # repo 까지 API 를 쓰면 헤더가 선언한 'repo 당 gh api 1~2회' 예산이 깨진다.
             if ruleset is None and not repo_archived(owner, name):
                 problems.append("서버 ruleset(anvyc-pr-required) 미설정")
-                fixes.append("anvyc guard protect --apply")
+                # --project 없는 --apply 는 모든 대상 repo 의 ruleset 을 덮어쓴다 — 다른 repo 의
+                # 손 설정까지 지우지 않게 이 repo 만 지정한다.
+                fixes.append(f"anvyc guard protect --project {_display_path(repo)} --apply")
             elif ruleset is not None:
                 drift = _ruleset_drift(owner, name, ruleset, policy.pr_reviewers_min, repo)
                 if drift is not None:

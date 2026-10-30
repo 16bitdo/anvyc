@@ -149,6 +149,42 @@ def test_missing_ruleset_yields_warning(one_repo: Path) -> None:
     assert any(r.severity is Severity.WARNING and "ruleset" in r.message for r in res)
 
 
+def _missing_ruleset_suggestion(repo: Path) -> str:
+    (repo / ".git" / "hooks" / "pre-push").write_text("# >>> anvyc-pr-guard >>>\n")
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_PROTECTED), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True), \
+         patch("anvyc.checks.project_branch_protection.repo_archived", return_value=False):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert res[0].suggestion is not None
+    return res[0].suggestion
+
+
+def test_missing_ruleset_suggests_this_repo_only(one_repo: Path) -> None:
+    # `--project` 없는 `guard protect --apply` 는 모든 대상 repo 의 ruleset 을 덮어쓴다 —
+    # 다른 repo 의 손 설정까지 지우지 않게 이 repo 만 지정한다.
+    suggestion = _missing_ruleset_suggestion(one_repo)
+    assert suggestion == f"anvyc guard protect --project {one_repo} --apply"
+
+
+def test_suggestion_shortens_home_path(one_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 홈 아래 repo 는 `~` 로 줄여 위치(location) 표시와 맞춘다 — guard protect 가 --project 를
+    # expanduser 하므로 그대로 실행된다.
+    monkeypatch.setenv("HOME", str(one_repo.parent))
+    suggestion = _missing_ruleset_suggestion(one_repo)
+    assert suggestion == "anvyc guard protect --project ~/proj --apply"
+
+
+def test_suggestion_keeps_path_when_home_is_only_a_name_prefix(
+    one_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 홈이 `.../pro` 이면 `.../proj` 는 홈 아래가 아니다 — `~j` 같은 엉뚱한 경로를 만들면 안 된다.
+    monkeypatch.setenv("HOME", str(one_repo)[:-1])
+    suggestion = _missing_ruleset_suggestion(one_repo)
+    assert suggestion == f"anvyc guard protect --project {one_repo} --apply"
+
+
 def test_archived_repo_skipped(one_repo: Path) -> None:
     """archived repo 는 ruleset 설정이 **영원히 불가능**하다 — 조치 불가 WARN 을 내지 않는다.
 
