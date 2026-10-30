@@ -30,7 +30,54 @@ ProtectAction = Literal[
 ]
 
 
-def build_ruleset_payload(*, required_reviews: int = 0) -> dict[str, Any]:
+# manifest merge_strategy → ruleset 의 allowed_merge_methods. 그 밖의 값은 강제하지 않는다.
+MERGE_METHODS: dict[str, tuple[str, ...]] = {
+    "merge": ("merge",),
+    "squash": ("squash",),
+    "rebase": ("rebase",),
+}
+# 저장소 설정(Settings → General → Pull Requests)에서 각 머지 방식을 켜는 필드
+_MERGE_SETTING_FIELDS = {
+    "merge": "allow_merge_commit",
+    "squash": "allow_squash_merge",
+    "rebase": "allow_rebase_merge",
+}
+
+
+def repo_merge_methods(owner: str, repo: str) -> set[str] | None:
+    """저장소 설정이 허용하는 머지 방식. 조회 실패면 None.
+
+    ruleset 의 allowed_merge_methods 와 겹치는 방식만 쓸 수 있다 — 겹치지 않으면 머지가 아예
+    막힌다(GitHub 문서 「Require a pull request before merging」).
+    """
+    rc, out, _ = _gh_api(
+        [f"repos/{owner}/{repo}", "--jq", "{allow_merge_commit, allow_squash_merge, allow_rebase_merge}"]
+    )
+    if rc != 0:
+        return None
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {method for method, field in _MERGE_SETTING_FIELDS.items() if data.get(field) is True}
+
+
+def build_ruleset_payload(
+    *, required_reviews: int = 0, merge_strategy: str | None = None
+) -> dict[str, Any]:
+    """anvyc-pr-required 의 내용. merge_strategy 가 MERGE_METHODS 에 있으면 그 방식만 허용한다."""
+    params: dict[str, Any] = {
+        "required_approving_review_count": required_reviews,
+        "dismiss_stale_reviews_on_push": False,
+        "require_code_owner_review": False,
+        "require_last_push_approval": False,
+        "required_review_thread_resolution": False,
+    }
+    methods = MERGE_METHODS.get(merge_strategy or "")
+    if methods is not None:
+        params["allowed_merge_methods"] = list(methods)
     return {
         "name": RULESET_NAME,
         "target": "branch",
@@ -39,16 +86,7 @@ def build_ruleset_payload(*, required_reviews: int = 0) -> dict[str, Any]:
         "rules": [
             {"type": "deletion"},
             {"type": "non_fast_forward"},
-            {
-                "type": "pull_request",
-                "parameters": {
-                    "required_approving_review_count": required_reviews,
-                    "dismiss_stale_reviews_on_push": False,
-                    "require_code_owner_review": False,
-                    "require_last_push_approval": False,
-                    "required_review_thread_resolution": False,
-                },
-            },
+            {"type": "pull_request", "parameters": params},
         ],
         "bypass_actors": [],
     }
@@ -270,6 +308,7 @@ def apply_ruleset(
     repo: str,
     *,
     required_reviews: int = 0,
+    merge_strategy: str | None = None,
     dry_run: bool = True,
     on_overwrite: Callable[[list[str]], None] | None = None,
 ) -> ProtectResult:
@@ -281,10 +320,29 @@ def apply_ruleset(
             return ProtectResult(owner, repo, "no-access", err.strip()[:80])
         return ProtectResult(owner, repo, "error", "rulesets list failed")
     existing = _find_named(items, RULESET_NAME)
-    payload = build_ruleset_payload(required_reviews=required_reviews)
+    payload = build_ruleset_payload(
+        required_reviews=required_reviews, merge_strategy=merge_strategy
+    )
     # 적용(예정)값 가시화 — manifest defaults 상속으로 의도치 않은 값이 가는 것을
     # dry-run 단계에서 감지할 수 있게 한다 (2026-06-04 whatap count=1 오적용 재발 방지).
     info = f"required_reviews={required_reviews}"
+    methods = MERGE_METHODS.get(merge_strategy or "")
+    if methods is not None:
+        shown = "/".join(methods)
+        info += f" merge={shown}"
+        # ruleset 이 허용할 방식을 저장소 설정이 모두 꺼 뒀으면 어떤 방식으로도 머지할 수 없다.
+        # 그런 ruleset 은 만들지도 덮어쓰지도 않는다 — 설정을 못 읽어도 마찬가지다.
+        allowed = repo_merge_methods(owner, repo)
+        if allowed is None:
+            return ProtectResult(owner, repo, "error", f"저장소 머지 설정 조회 실패 — 쓰지 않음 ({info})")
+        if not set(methods) & allowed:
+            return ProtectResult(
+                owner,
+                repo,
+                "error",
+                f"저장소 설정이 {shown} 머지를 꺼 둬서 이 ruleset 이면 머지가 막힌다 — 쓰지 않음"
+                " (저장소 설정이나 manifest merge_strategy 를 먼저 맞춘다)",
+            )
     if existing is None:
         if dry_run:
             return ProtectResult(owner, repo, "would-create", info)

@@ -13,7 +13,7 @@ import pytest
 from anvyc.checks.base import CheckContext, CheckResult, Severity
 from anvyc.checks.project_branch_protection import ProjectBranchProtectionCheck
 from anvyc.core.branch_policy import BranchPolicy
-from tests.unit._ruleset_fixtures import STATUS_CHECKS_RULE, ruleset_detail
+from tests.unit._ruleset_fixtures import STATUS_CHECKS_RULE, pr_rules, ruleset_detail
 
 _PROTECTED = BranchPolicy(
     default_branch="main", protected_branches=("main",), push_to_main_allowed=False,
@@ -55,6 +55,15 @@ def _ruleset_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "anvyc.checks.project_branch_protection.get_ruleset_detail",
         lambda owner, repo, rid: (ruleset_detail(), ""),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _repo_allows_every_merge_method(monkeypatch: pytest.MonkeyPatch) -> None:
+    """저장소 머지 설정 조회를 "세 방식 모두 허용" 으로 고정한다(실제 gh 를 부르지 않게)."""
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.repo_merge_methods",
+        lambda owner, repo: {"merge", "squash", "rebase"},
     )
 
 
@@ -323,4 +332,84 @@ def test_tracked_hookspath_with_guard_is_aligned(tracked_hooks_repo: Path) -> No
         "#!/bin/sh\n# >>> anvyc-pr-guard >>>\n"
     )
     res = _run_with_ruleset_ok()
+    assert not any(r.severity is Severity.WARNING for r in res)
+
+
+# ── 허용 머지 방식 — manifest 에 직접 적은 merge_strategy ─────────────────────
+
+_DECLARED_MERGE = dataclasses.replace(
+    _PROTECTED, merge_strategy="merge", declared=frozenset({"merge_strategy"})
+)
+
+
+def _run_with(policy: BranchPolicy, detail: dict[str, Any] | None = None) -> list[CheckResult]:
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=policy), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value={"id": 7}), \
+         patch(
+             "anvyc.checks.project_branch_protection.get_ruleset_detail",
+             return_value=(detail if detail is not None else ruleset_detail(), ""),
+         ):
+        return ProjectBranchProtectionCheck().run(CheckContext())
+
+
+def test_declared_merge_strategy_is_compared(one_repo: Path) -> None:
+    # 서버 ruleset 은 기본값 3종인데 manifest 는 merge 만 — guard protect --apply 가 좁힐 내용이다.
+    _hooked(one_repo)
+    res = _run_with(_DECLARED_MERGE)
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "allowed_merge_methods" in res[0].message
+
+
+def test_inherited_merge_strategy_is_not_enforced(one_repo: Path) -> None:
+    # _PROTECTED 의 squash 는 항목에 안 적은(defaults 상속) 값이다 — 기본값 3종 ruleset 은 정합.
+    _hooked(one_repo)
+    res = _run_with(_PROTECTED)
+    assert [r.severity for r in res] == [Severity.INFO]
+
+
+def test_repo_settings_blocking_declared_method_yields_warning(
+    one_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ruleset 은 merge 만, 저장소는 merge commit 을 꺼 뒀다 — 어떤 방식으로도 머지할 수 없다.
+    _hooked(one_repo)
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.repo_merge_methods",
+        lambda owner, repo: {"squash", "rebase"},
+    )
+    aligned = ruleset_detail(rules=pr_rules(allowed_merge_methods=["merge"]))
+    res = _run_with(_DECLARED_MERGE, aligned)
+    assert [r.severity for r in res] == [Severity.WARNING]
+    assert "merge_strategy" in res[0].message
+    assert res[0].suggestion is not None and "merge_strategy" in res[0].suggestion
+
+
+def test_unreadable_repo_settings_is_not_reported_aligned(
+    one_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _hooked(one_repo)
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.repo_merge_methods", lambda owner, repo: None
+    )
+    aligned = ruleset_detail(rules=pr_rules(allowed_merge_methods=["merge"]))
+    res = _run_with(_DECLARED_MERGE, aligned)
+    assert [r.severity for r in res] == [Severity.WARNING]
+    # ruleset 은 merge 로 이미 맞다 — 경고는 머지 설정을 못 읽어서여야 한다
+    assert "머지 설정" in res[0].message
+    assert "allowed_merge_methods" not in res[0].message
+
+
+def test_archived_repo_gets_no_merge_settings_warning(
+    one_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # archived 는 저장소 설정도 바꿀 수 없다 — 조치 불가능한 경고를 매일 내지 않는다.
+    _hooked(one_repo)
+    monkeypatch.setattr(
+        "anvyc.checks.project_branch_protection.repo_merge_methods",
+        lambda owner, repo: {"squash", "rebase"},
+    )
+    with patch("anvyc.checks.project_branch_protection.resolve_policy", return_value=_DECLARED_MERGE), \
+         patch("anvyc.checks.project_branch_protection.get_ruleset", return_value=None), \
+         patch("anvyc.checks.project_branch_protection.repo_admin", return_value=True), \
+         patch("anvyc.checks.project_branch_protection.repo_archived", return_value=True):
+        res = ProjectBranchProtectionCheck().run(CheckContext())
     assert not any(r.severity is Severity.WARNING for r in res)

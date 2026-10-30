@@ -27,6 +27,20 @@ class BranchPolicy:
     pr_reviewers_min: int
     merge_strategy: str
     source: str  # "manifest" | "defaults" | "fallback"
+    # manifest 항목에 직접 적은 정책 키(rbr lookup JSON 의 declared). 옛 rbr 출력에는 없다 → 빈 집합.
+    declared: frozenset[str] = frozenset()
+
+
+def enforced_merge_strategy(policy: BranchPolicy) -> str | None:
+    """ruleset 으로 강제할 머지 방식 — manifest 항목에 직접 적은 merge_strategy 만.
+
+    defaults 에서 물려받은 값(항목에 안 적음) · manifest 밖(defaults) · fallback 은 강제하지
+    않는다. 물려받은 squash 를 강제하면 실제로 merge commit 을 쓰는 repo 를 막을 수 있다
+    (rbr manifest notes 의 「defaults=squash 상속 오적용 정정」 사례들).
+    """
+    if policy.source != "manifest" or "merge_strategy" not in policy.declared:
+        return None
+    return policy.merge_strategy
 
 
 FALLBACK_POLICY = BranchPolicy(
@@ -78,4 +92,10 @@ def resolve_policy(repo_dir: Path) -> BranchPolicy:
         pr_reviewers_min=int(pol.get("pr_reviewers_min", 0)),
         merge_strategy=str(pol.get("merge_strategy", "squash")),
         source="manifest" if data.get("registered") else "defaults",
+        declared=_declared_keys(data.get("declared")),
     )
+
+
+def _declared_keys(raw: object) -> frozenset[str]:
+    """lookup JSON 의 declared → 집합. 목록이 아니면(옛 출력 · 형식 오류) 아무것도 선언으로 보지 않는다."""
+    return frozenset(str(k) for k in raw) if isinstance(raw, list) else frozenset()
