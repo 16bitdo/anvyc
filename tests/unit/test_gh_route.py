@@ -63,6 +63,22 @@ def test_resolve_account_none_when_no_git(tmp_path: Path) -> None:
     assert gh_route.resolve_account(tmp_path) is None
 
 
+def test_resolve_account_survives_multivalued_key(tmp_path: Path) -> None:
+    """다중값 키가 있는 저장소에서도 계정을 도출해야 한다.
+
+    2026-11-12 `anvyc gh` 가 "account 를 도출할 수 없습니다" 로 실패한 원인 —
+    parse_git_config 가 DuplicateOptionError 를 삼키고 [] 를 돌려줬다.
+    """
+    repo = _write_git_config(tmp_path, """\
+        [remote "origin"]
+            url = git@github.com-secondary:acme/widgets.git
+        [personal-config-guard]
+            allow = templates/dev.env.config
+            allow = templates/prod.env.config
+    """)
+    assert gh_route.resolve_account(repo) == "secondary"
+
+
 def test_token_for_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
         assert cmd == ["gh", "auth", "token", "--user", "16bitdo"]
