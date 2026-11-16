@@ -4,6 +4,8 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from anvyc.utils.git_remote import origin_owner_repo, parse_git_config, to_dict
 
 
@@ -297,6 +299,52 @@ def test_local_path_with_colon_is_not_scp(tmp_path: Path) -> None:
             url = ./mirrors/host:owner/repo.git
         [remote "abs"]
             url = /srv/git/host:owner/repo.git
+        """,
+    )
+    assert parse_git_config(g) == []
+
+
+# ---------------------------------------------------------------------------
+# 이름 속의 점 — GitHub·GitLab 모두 repo 이름에 `.` 을 허용한다(`<user>.github.io` 등)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("url", "want"),
+    [
+        ("git@github.com:octo/octo.github.io.git", ("octo", "octo.github.io")),
+        ("git@github.com:octo/.github.git", ("octo", ".github")),  # 조직 기본값 저장소
+        ("github.com-16bitdo:octo/socket.io", ("octo", "socket.io")),
+        ("https://github.com/octo/octo.github.io.git", ("octo", "octo.github.io")),
+        ("https://github.com/octo/socket.io/", ("octo", "socket.io")),
+    ],
+)
+def test_repo_name_with_dots_is_parsed(tmp_path: Path, url: str, want: tuple[str, str]) -> None:
+    """repo 이름의 점은 이름의 일부다 — 점을 막던 정규식은 `.git` 을 떼기 전에 매치가 끊겨
+    그 원격을 통째로 잃었다(SSH·HTTPS 모두)."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        f"""\
+        [remote "origin"]
+            url = {url}
+        """,
+    )
+    assert [(r.owner, r.repo) for r in parse_git_config(g)] == [want]
+
+
+def test_dot_only_segment_is_not_a_name(tmp_path: Path) -> None:
+    """`.`·`..` 는 경로 이동 표기이지 owner·repo 이름이 아니다 — 어느 호스팅도 허용하지 않는다.
+    점을 막던 정규식이 우연히 repo 쪽을 걸러 주던 성질을, 점을 허용한 뒤에도 지킨다."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        """\
+        [remote "up"]
+            url = git@github.com:../repo.git
+        [remote "here"]
+            url = https://github.com/./repo
+        [remote "parent"]
+            url = https://github.com/octo/..
         """,
     )
     assert parse_git_config(g) == []
