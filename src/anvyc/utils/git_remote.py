@@ -16,12 +16,16 @@ from typing import Any
 # git 의 scp 형식은 `[user@]host:path`(git-clone(1) "GIT URLS") — 사용자 부분은 생략할 수 있고
 # `git` 으로 정해져 있지도 않다(`git@` 를 필수로 두면 사용자 생략 원격을 통째로 잃는다).
 # 첫 콜론 앞에 슬래시가 있으면 git 은 로컬 경로로 보므로 host 에 `/` 를 허용하지 않는다.
+# repo 이름은 점을 포함할 수 있다(`<user>.github.io`·`.github`) — 게으른 `[^/]+?` 가 끝의
+# `.git` 만 남기고 멈춘다. 점을 막으면 `.git` 을 떼기 전에 매치가 끊겨 원격을 통째로 잃는다.
 _SSH_RE = re.compile(
-    r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?$"
+    r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$"
 )
 _HTTPS_RE = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?/?$"
+    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
 )
+# `.`·`..` 는 경로 이동 표기이지 owner·repo 이름이 아니다(어느 호스팅도 허용하지 않는다).
+_DOT_SEGMENTS = frozenset({".", ".."})
 
 # git config 문법(git-config(1) "Syntax") 중 원격 URL 을 읽는 데 필요한 부분.
 # `[section]` · `[section "subsection"]` · 구식 `[section.subsection]` 헤더, 그 뒤의
@@ -44,6 +48,8 @@ class GitRemoteInfo:
 def _parse_url(name: str, url: str) -> GitRemoteInfo | None:
     m = _SSH_RE.match(url)
     if m:
+        if {m.group("owner"), m.group("repo")} & _DOT_SEGMENTS:
+            return None
         host = m.group("host")
         alias: str | None = None
         if host.startswith("github.com-"):
@@ -59,6 +65,8 @@ def _parse_url(name: str, url: str) -> GitRemoteInfo | None:
         )
     m = _HTTPS_RE.match(url)
     if m:
+        if {m.group("owner"), m.group("repo")} & _DOT_SEGMENTS:
+            return None
         return GitRemoteInfo(
             name=name,
             url=url,
