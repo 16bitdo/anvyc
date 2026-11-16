@@ -304,6 +304,29 @@ def test_local_path_with_colon_is_not_scp(tmp_path: Path) -> None:
     assert parse_git_config(g) == []
 
 
+@pytest.mark.parametrize(
+    ("url", "want"),
+    [
+        ("git@github.com:octo/repo.git/", ("github.com", "octo", "repo")),
+        ("github.com-16bitdo:octo/repo/", ("github.com-16bitdo", "octo", "repo")),
+    ],
+)
+def test_scp_remote_with_trailing_slash_is_parsed(
+    tmp_path: Path, url: str, want: tuple[str, str, str]
+) -> None:
+    """scp 형식도 끝 슬래시를 허용한다(git-clone(1) 예시 `host.xz:path/to/repo.git/`) — GitHub 도
+    `repo.git/`·`repo/` 를 받아들인다(2026-11-16 `git ls-remote` 실측). HTTPS 처럼 떼고 읽는다."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        f"""\
+        [remote "origin"]
+            url = {url}
+        """,
+    )
+    assert [(r.host, r.owner, r.repo) for r in parse_git_config(g)] == [want]
+
+
 # ---------------------------------------------------------------------------
 # 이름 속의 점 — GitHub·GitLab 모두 repo 이름에 `.` 을 허용한다(`<user>.github.io` 등)
 # ---------------------------------------------------------------------------
