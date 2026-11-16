@@ -1,7 +1,7 @@
 """`.git/config` 의 remote URL → owner/repo/ssh_alias 추출 (P4, v0.8.0).
 
 지원 URL 형식:
-- [<user>@]<host>:<owner>/<repo>(.git)?       ← SSH scp 형식 (ssh alias 패턴 'github.com-<alias>' 포함)
+- [<user>@]<host>:<owner>/<repo>(.git)?/?     ← SSH scp 형식 (ssh alias 패턴 'github.com-<alias>' 포함)
 - https://<host>/<owner>/<repo>(.git)?/?       ← HTTPS
 
 다른 hoster (gitlab.com, bitbucket.org, ...) 도 동일 패턴이라 host 그대로 보존.
@@ -18,8 +18,10 @@ from typing import Any
 # 첫 콜론 앞에 슬래시가 있으면 git 은 로컬 경로로 보므로 host 에 `/` 를 허용하지 않는다.
 # repo 이름은 점을 포함할 수 있다(`<user>.github.io`·`.github`) — 게으른 `[^/]+?` 가 끝의
 # `.git` 만 남기고 멈춘다. 점을 막으면 `.git` 을 떼기 전에 매치가 끊겨 원격을 통째로 잃는다.
+# 끝 슬래시도 HTTPS 처럼 뗀다 — git-clone(1) 예시가 `host.xz:path/to/repo.git/` 이고 GitHub 도
+# `repo.git/`·`repo/` 를 받아들인다(2026-11-16 `git ls-remote` 실측).
 _SSH_RE = re.compile(
-    r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$"
+    r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
 )
 _HTTPS_RE = re.compile(
     r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
