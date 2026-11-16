@@ -19,7 +19,9 @@ DEFAULT_SSH_CONFIG = Path("~/.ssh/config").expanduser()
 DEFAULT_CURSOR_PROJECTS = Path("~/.cursor/projects").expanduser()
 DEFAULT_CLAUDE_HOME = Path("~").expanduser()
 
-_GITHUB_HOST_RE = re.compile(r"^\s*Host\s+(github\.com-\S+)\s*$", re.IGNORECASE)
+# ssh_config(5): 키워드는 대소문자를 가리지 않고, 인자와는 공백 또는 `=`(앞뒤 공백 선택)로 나뉜다.
+# `Host` 한 줄에 패턴이 여럿 올 수 있다. `\s*=\s*|\s+` 라서 `HostName` 같은 다른 키워드는 매치하지 않는다.
+_HOST_LINE_RE = re.compile(r"^\s*Host(?:\s*=\s*|\s+)(?P<patterns>.+?)\s*$", re.IGNORECASE)
 # Cursor user-keyed project dir: `Users-<user>-<path>` (마지막 세그먼트 무관 — SoT 이전 안전)
 _USERS_DIR_RE = re.compile(r"^Users-[^-]+-")
 
@@ -47,6 +49,28 @@ def _detect_aws(profiles: set[str]) -> CheckResult | None:
     )
 
 
+def _github_alias_tokens(patterns: str) -> list[str]:
+    """`Host` 줄의 패턴 문자열(키워드 뒤 전부) → 감지 결과에 올릴 GitHub ssh 별칭들.
+
+    입력 예: "github.com-a github.com-b" · "github.com !github.com-old" · "github.com-* github.com-a"
+
+    토큰은 OpenSSH 와 같은 규칙으로 읽는다(2026-11-16 `ssh -G` 실측, OpenSSH 10.3):
+      - `#` 로 시작하는 토큰부터는 주석 — 주석 속 별칭은 그 블록에 걸리지 않는다
+      - 큰따옴표로 감싼 토큰은 벗겨서 본다
+      - `!` 로 시작하는 패턴은 그 호스트를 제외한다는 뜻이라 별칭이 아니다(접두사 검사로 걸러진다)
+    와일드카드(`*`·`?`) 패턴은 여러 별칭에 설정을 거는 블록이지 별칭이 아니라 올리지 않는다
+    — 목록이 실제로 쓰는 별칭만 보여 주게 한다.
+    """
+    out: list[str] = []
+    for token in patterns.split():
+        if token.startswith("#"):
+            break
+        token = token.strip('"')
+        if token.startswith("github.com-") and not any(c in token for c in "*?"):
+            out.append(token)
+    return out
+
+
 def _read_github_ssh_aliases(ssh_config: Path) -> list[str]:
     if not ssh_config.is_file():
         return []
@@ -56,12 +80,9 @@ def _read_github_ssh_aliases(ssh_config: Path) -> list[str]:
         return []
     out: list[str] = []
     for line in text.splitlines():
-        m = _GITHUB_HOST_RE.match(line)
+        m = _HOST_LINE_RE.match(line)
         if m:
-            # `Host alias1 alias2` 같이 한 줄에 다중 alias 도 가능 — 일단 첫 매치만
-            for token in m.group(1).split():
-                if token.startswith("github.com-"):
-                    out.append(token)
+            out.extend(_github_alias_tokens(m.group("patterns")))
     return sorted(set(out))
 
 
