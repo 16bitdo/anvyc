@@ -318,6 +318,25 @@ def test_origin_owner_repo_ssh_alias(tmp_path: Path) -> None:
     assert origin_owner_repo(tmp_path) == ("owner", "repo")
 
 
+def test_origin_owner_repo_linked_worktree(tmp_path: Path) -> None:
+    """`.git` 이 worktree 포인터 파일이면 본체(commondir) config 의 origin 을 읽는다."""
+    main_git = tmp_path / "main" / ".git"
+    _write_git_config(
+        main_git,
+        """\
+        [remote "origin"]
+            url = git@github.com-16bitdo:16bitdo/anvyc.git
+        """,
+    )
+    private = main_git / "worktrees" / "feat"
+    private.mkdir(parents=True)
+    (private / "commondir").write_text("../..\n")
+    wt = tmp_path / "feat"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {private}\n")
+    assert origin_owner_repo(wt) == ("16bitdo", "anvyc")
+
+
 def test_origin_owner_repo_no_origin(tmp_path: Path) -> None:
     """origin remote 없음(또는 .git 없음) → None."""
     # No .git directory at all — parse_git_config returns []

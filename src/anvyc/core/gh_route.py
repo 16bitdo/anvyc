@@ -19,14 +19,19 @@ class GhRouteError(RuntimeError):
 
 
 def resolve_account(start: Path) -> str | None:
-    """start 에서 .git 디렉터리를 상위로 탐색 → origin remote 의 ssh_alias(=account).
+    """start 에서 상위로 올라가며 처음 만나는 `.git` → origin remote 의 ssh_alias(=account).
+
+    `.git` 은 디렉터리이거나 linked worktree 의 포인터 파일이다. git 처럼 처음 만난 `.git`
+    에서 멈춘다 — 포인터 파일을 건너뛰고 더 올라가면 worktree 에서 계정을 못 찾거나,
+    worktree 가 다른 저장소 안에 있으면 그 바깥 저장소의 계정 토큰을 주입한다(2026-11-16).
+    포인터가 깨져 있어도 더 올라가지 않고 None 이다.
 
     origin 없음 / alias 없는 plain remote / .git 없음 → None.
     """
     cur = Path(start).resolve()
     for d in (cur, *cur.parents):
         git_dir = d / ".git"
-        if git_dir.is_dir():
+        if git_dir.exists():
             for remote in parse_git_config(git_dir):
                 if remote.name == "origin":
                     return remote.ssh_alias
