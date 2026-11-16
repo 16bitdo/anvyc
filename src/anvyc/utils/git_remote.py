@@ -1,7 +1,7 @@
 """`.git/config` 의 remote URL → owner/repo/ssh_alias 추출 (P4, v0.8.0).
 
 지원 URL 형식:
-- git@<host>:<owner>/<repo>(.git)?            ← SSH (ssh alias 패턴 'github.com-<alias>' 포함)
+- [<user>@]<host>:<owner>/<repo>(.git)?       ← SSH scp 형식 (ssh alias 패턴 'github.com-<alias>' 포함)
 - https://<host>/<owner>/<repo>(.git)?/?       ← HTTPS
 
 다른 hoster (gitlab.com, bitbucket.org, ...) 도 동일 패턴이라 host 그대로 보존.
@@ -13,8 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+# git 의 scp 형식은 `[user@]host:path`(git-clone(1) "GIT URLS") — 사용자 부분은 생략할 수 있고
+# `git` 으로 정해져 있지도 않다(`git@` 를 필수로 두면 사용자 생략 원격을 통째로 잃는다).
+# 첫 콜론 앞에 슬래시가 있으면 git 은 로컬 경로로 보므로 host 에 `/` 를 허용하지 않는다.
 _SSH_RE = re.compile(
-    r"^git@(?P<host>[^:]+):(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?$"
+    r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?$"
 )
 _HTTPS_RE = re.compile(
     r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?/?$"
