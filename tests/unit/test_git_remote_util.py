@@ -251,6 +251,58 @@ def test_section_and_key_names_are_case_insensitive(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# scp 형식 — git 문법은 `[user@]host:path` (git-clone(1) "GIT URLS")
+# ---------------------------------------------------------------------------
+
+def test_scp_remote_without_user_is_parsed(tmp_path: Path) -> None:
+    """사용자를 생략한 scp 형식도 git 은 원격으로 쓴다 — 2026-11-16 dotfiles 원격을 놓쳐
+    `anvyc gh` 가 계정 도출에 실패하고 doctor 가 저장소를 건너뛰었다."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        """\
+        [remote "origin"]
+            url = github.com-16bitdo:16bitdo/dotfiles.git
+        """,
+    )
+    out = parse_git_config(g)
+    assert [(r.host, r.owner, r.repo, r.ssh_alias, r.protocol) for r in out] == [
+        ("github.com-16bitdo", "16bitdo", "dotfiles", "16bitdo", "ssh"),
+    ]
+
+
+def test_scp_remote_with_other_user_is_parsed(tmp_path: Path) -> None:
+    """사용자 부분은 `git` 이 아니어도 된다 — host 는 `@` 뒤부터다."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        """\
+        [remote "origin"]
+            url = deploy@gitlab.example.com:team/app.git
+        """,
+    )
+    out = parse_git_config(g)
+    assert [(r.host, r.owner, r.repo, r.ssh_alias, r.protocol) for r in out] == [
+        ("gitlab.example.com", "team", "app", None, "ssh"),
+    ]
+
+
+def test_local_path_with_colon_is_not_scp(tmp_path: Path) -> None:
+    """첫 콜론 앞에 슬래시가 있으면 git 은 scp 가 아니라 로컬 경로로 본다 — 원격으로 읽지 않는다."""
+    g = tmp_path / ".git"
+    _write_git_config(
+        g,
+        """\
+        [remote "rel"]
+            url = ./mirrors/host:owner/repo.git
+        [remote "abs"]
+            url = /srv/git/host:owner/repo.git
+        """,
+    )
+    assert parse_git_config(g) == []
+
+
+# ---------------------------------------------------------------------------
 # origin_owner_repo tests
 # ---------------------------------------------------------------------------
 
@@ -264,6 +316,25 @@ def test_origin_owner_repo_ssh_alias(tmp_path: Path) -> None:
         """,
     )
     assert origin_owner_repo(tmp_path) == ("owner", "repo")
+
+
+def test_origin_owner_repo_linked_worktree(tmp_path: Path) -> None:
+    """`.git` 이 worktree 포인터 파일이면 본체(commondir) config 의 origin 을 읽는다."""
+    main_git = tmp_path / "main" / ".git"
+    _write_git_config(
+        main_git,
+        """\
+        [remote "origin"]
+            url = git@github.com-16bitdo:16bitdo/anvyc.git
+        """,
+    )
+    private = main_git / "worktrees" / "feat"
+    private.mkdir(parents=True)
+    (private / "commondir").write_text("../..\n")
+    wt = tmp_path / "feat"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {private}\n")
+    assert origin_owner_repo(wt) == ("16bitdo", "anvyc")
 
 
 def test_origin_owner_repo_no_origin(tmp_path: Path) -> None:

@@ -63,6 +63,62 @@ def test_resolve_account_none_when_no_git(tmp_path: Path) -> None:
     assert gh_route.resolve_account(tmp_path) is None
 
 
+def _make_linked_worktree(wt: Path, main: Path, url: str) -> Path:
+    """`main`(origin=url) 의 linked worktree 를 `wt` 에 실측 레이아웃대로 만든다 — git 프로세스 없이.
+
+    `wt/.git` 은 `gitdir: <main/.git/worktrees/<name>>` 포인터 파일이고, 그 사설 gitdir 의
+    `commondir` 이 `../..`(본체 `.git`)를 가리킨다(test_project_info_worktree.py 와 같은 실측).
+    """
+    _write_git_config(main, f"""\
+        [remote "origin"]
+            url = {url}
+    """)
+    private = main / ".git" / "worktrees" / wt.name
+    private.mkdir(parents=True)
+    (private / "commondir").write_text("../..\n")
+    wt.mkdir(parents=True)
+    (wt / ".git").write_text(f"gitdir: {private}\n")
+    return wt
+
+
+def test_resolve_account_from_linked_worktree_subdir(tmp_path: Path) -> None:
+    """worktree 의 `.git` 은 디렉터리가 아니라 포인터 파일 — 본체 config 의 origin 으로 도출한다."""
+    wt = _make_linked_worktree(
+        tmp_path / "worktrees" / "feat", tmp_path / "main",
+        "git@github.com-16bitdo:16bitdo/anvyc.git",
+    )
+    sub = wt / "src"
+    sub.mkdir()
+    assert gh_route.resolve_account(sub) == "16bitdo"
+
+
+def test_resolve_account_worktree_inside_other_repo_uses_its_own_origin(tmp_path: Path) -> None:
+    """다른 저장소 안에 놓인 worktree — `.git` 파일을 건너뛰고 올라가면 바깥 저장소의 계정
+    토큰을 주입하게 된다(2026-11-16 재현: 'work' 로 잘못 라우팅)."""
+    outer = _write_git_config(tmp_path / "outer", """\
+        [remote "origin"]
+            url = git@github.com-work:acme/other.git
+    """)
+    wt = _make_linked_worktree(
+        outer / "nested-wt", tmp_path / "main",
+        "git@github.com-16bitdo:16bitdo/anvyc.git",
+    )
+    assert gh_route.resolve_account(wt) == "16bitdo"
+
+
+def test_resolve_account_broken_worktree_pointer_does_not_climb(tmp_path: Path) -> None:
+    """포인터가 깨진 worktree 는 None — 바깥 저장소 계정으로 대신 라우팅하지 않는다.
+    git 도 처음 만난 `.git` 에서 멈추고 더 올라가지 않는다."""
+    outer = _write_git_config(tmp_path / "outer", """\
+        [remote "origin"]
+            url = git@github.com-work:acme/other.git
+    """)
+    wt = outer / "stale-wt"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {tmp_path / 'gone'}\n")
+    assert gh_route.resolve_account(wt) is None
+
+
 def test_resolve_account_survives_multivalued_key(tmp_path: Path) -> None:
     """다중값 키가 있는 저장소에서도 계정을 도출해야 한다.
 

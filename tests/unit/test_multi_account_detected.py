@@ -9,7 +9,10 @@ from typing import Any
 import pytest
 
 from anvyc.checks.base import CheckContext, Severity
-from anvyc.checks.multi_account_detected import MultiAccountDetectedCheck
+from anvyc.checks.multi_account_detected import (
+    MultiAccountDetectedCheck,
+    _read_github_ssh_aliases,
+)
 
 
 def _write_aws_config(path: Path, profiles: list[str]) -> None:
@@ -149,3 +152,75 @@ def test_combined_aws_plus_ssh_yields_two(patched_sources: dict[str, Any]) -> No
     assert len(res) == 2
     severities = {r.severity for r in res}
     assert severities == {Severity.INFO}
+
+
+# ---------------------------------------------------------------------------
+# `Host` 줄 파싱 — ssh_config(5): 한 줄에 패턴 여러 개, 키워드와 인자 사이 공백 또는 `=`
+# ---------------------------------------------------------------------------
+
+def _aliases(tmp_path: Path, body: str) -> list[str]:
+    cfg = tmp_path / "ssh_config"
+    cfg.write_text(textwrap.dedent(body))
+    return _read_github_ssh_aliases(cfg)
+
+
+def test_multiple_aliases_on_one_host_line(tmp_path: Path) -> None:
+    """`Host` 한 줄의 별칭을 모두 감지한다 — 인자가 토큰 하나인 줄만 매치하던 정규식은 줄 전체를 놓쳤다."""
+    assert _aliases(tmp_path, """\
+        Host github.com-a github.com-b
+            HostName github.com
+        """) == ["github.com-a", "github.com-b"]
+
+
+def test_alias_after_non_alias_pattern(tmp_path: Path) -> None:
+    """첫 패턴이 별칭이 아니어도(`github.com`) 뒤의 별칭을 감지한다."""
+    assert _aliases(tmp_path, """\
+        Host github.com github.com-e
+            HostName github.com
+        """) == ["github.com-e"]
+
+
+def test_equals_separator(tmp_path: Path) -> None:
+    """ssh_config(5) 는 키워드와 인자 사이에 `=`(앞뒤 공백 선택)도 허용한다."""
+    assert _aliases(tmp_path, """\
+        Host=github.com-d
+        Host = github.com-f
+        """) == ["github.com-d", "github.com-f"]
+
+
+def test_negated_pattern_is_not_an_alias(tmp_path: Path) -> None:
+    """`!` 로 부정한 패턴은 그 호스트를 제외한다는 뜻 — 감지한 별칭이 아니다."""
+    assert _aliases(tmp_path, """\
+        Host github.com-a !github.com-old
+        """) == ["github.com-a"]
+
+
+def test_hostname_keyword_is_not_host(tmp_path: Path) -> None:
+    """`HostName` 은 `Host` 가 아니다 — 키워드 접두사만 보는 매치로 섞이지 않게 지킨다."""
+    assert _aliases(tmp_path, """\
+        Host github.com-a
+            HostName github.com-zzz
+        """) == ["github.com-a"]
+
+
+def test_wildcard_pattern_is_not_listed_as_alias(tmp_path: Path) -> None:
+    """`github.com-*`·`github.com-?x` 는 여러 별칭에 설정을 거는 패턴이지 별칭이 아니다 — 목록에 올리지 않는다."""
+    assert _aliases(tmp_path, """\
+        Host github.com-*
+            IdentitiesOnly yes
+        Host github.com-a github.com-?x
+        """) == ["github.com-a"]
+
+
+def test_trailing_comment_is_not_patterns(tmp_path: Path) -> None:
+    """`#` 로 시작하는 토큰부터는 주석이다 — OpenSSH 10.3 실측: 주석 속 별칭은 그 블록에 걸리지 않는다."""
+    assert _aliases(tmp_path, """\
+        Host github.com-a # 예전 github.com-old
+        """) == ["github.com-a"]
+
+
+def test_quoted_pattern_is_unquoted(tmp_path: Path) -> None:
+    """ssh_config 인자는 큰따옴표로 감쌀 수 있다 — OpenSSH 는 벗겨서 매치한다."""
+    assert _aliases(tmp_path, """\
+        Host "github.com-q"
+        """) == ["github.com-q"]
